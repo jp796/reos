@@ -27,9 +27,11 @@ export function SyncButton() {
       }
       const processed = data.result?.processed ?? 0;
       const fetched = data.result?.fetched ?? processed;
+      const txCreated = data.result?.transactionsCreated ?? 0;
       const total = data.totalContactsInDb ?? 0;
+      const txPart = txCreated > 0 ? ` · ${txCreated} txn created` : "";
       setMessage(
-        `Synced ${processed}/${fetched} · ${total} total in DB · ${data.durationMs}ms`,
+        `Synced ${processed}/${fetched} · ${total} total${txPart} · ${data.durationMs}ms`,
       );
       startTransition(() => router.refresh());
     } catch (err) {

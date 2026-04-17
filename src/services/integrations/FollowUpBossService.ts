@@ -25,6 +25,13 @@ import type {
   FUBWebhookPayload,
 } from "@/types/integrations";
 import { IntegrationError } from "@/types";
+import {
+  TransactionService,
+  inferTransactionType,
+  inferSide,
+  resolveTriggerConfig,
+  shouldCreateTransactionForPerson,
+} from "@/services/core/TransactionService";
 
 // ==================================================
 // CONFIG
@@ -348,24 +355,31 @@ export class FollowUpBossService extends EventEmitter {
    */
   async syncPeopleFirstPage(
     limit: number,
-  ): Promise<{ processed: number; errors: FUBSyncResult["errors"]; fetched: number }> {
+  ): Promise<{
+    processed: number;
+    errors: FUBSyncResult["errors"];
+    fetched: number;
+    transactionsCreated: number;
+  }> {
     let processed = 0;
+    let transactionsCreated = 0;
     const errors: FUBSyncResult["errors"] = [];
     const { people } = await this.searchPeople({ limit, offset: 0 });
     for (const person of people) {
       try {
-        await this.upsertPerson(person);
+        const result = await this.upsertPerson(person);
         processed++;
+        if (result.transactionCreated) transactionsCreated++;
       } catch (err) {
         errors.push({
           type: "person_sync",
           entity: "person",
-          id: person.id,
+          id: String(person.id),
           error: err instanceof Error ? err.message : String(err),
         });
       }
     }
-    return { processed, errors, fetched: people.length };
+    return { processed, errors, fetched: people.length, transactionsCreated };
   }
 
   async syncAllData(): Promise<FUBSyncResult> {
@@ -411,7 +425,7 @@ export class FollowUpBossService extends EventEmitter {
           errors.push({
             type: "person_sync",
             entity: "person",
-            id: person.id,
+            id: String(person.id),
             error: err instanceof Error ? err.message : String(err),
           });
         }
@@ -423,7 +437,9 @@ export class FollowUpBossService extends EventEmitter {
     return { processed, errors };
   }
 
-  private async upsertPerson(person: FUBPerson): Promise<void> {
+  private async upsertPerson(
+    person: FUBPerson,
+  ): Promise<{ contactId: string; transactionCreated: boolean; triggerReason?: string }> {
     // FUB API returns numeric IDs; our DB stores as string. Coerce once here.
     const fubPersonId = String(person.id);
     // Defensive access: FUB payloads sometimes omit emails/phones entirely.
@@ -434,7 +450,7 @@ export class FollowUpBossService extends EventEmitter {
     const primaryPhone =
       phones.find((p) => p.primary)?.value ?? phones[0]?.value ?? null;
 
-    await this.db.contact.upsert({
+    const upserted = await this.db.contact.upsert({
       where: { fubPersonId },
       update: {
         fullName: person.name,
@@ -457,6 +473,65 @@ export class FollowUpBossService extends EventEmitter {
         rawFubPayloadJson: person as unknown as Prisma.InputJsonValue,
       },
     });
+
+    // Auto-trigger transaction creation for qualifying FUB stage / tags.
+    const fubStage = (person as unknown as { stage?: string | null }).stage;
+    const triggerCheck = shouldCreateTransactionForPerson(
+      { stage: fubStage, tags: person.tags ?? [] },
+      await this.loadTriggerConfig(),
+    );
+
+    if (triggerCheck.match) {
+      const type = inferTransactionType({
+        type: (person as unknown as { type?: string }).type,
+        tags: person.tags ?? [],
+      });
+      const txnSvc = new TransactionService(this.db);
+      const { created } = await txnSvc.createFromContact({
+        accountId: this.accountId,
+        contactId: upserted.id,
+        fubPersonId,
+        transactionType: type,
+        side: inferSide(type),
+      });
+      if (created) {
+        await this.auditService.logAction({
+          accountId: this.accountId,
+          transactionId: null,
+          entityType: "transaction",
+          entityId: upserted.id,
+          ruleName: "fub_trigger_autocreate",
+          actionType: "create",
+          sourceType: "fub_webhook",
+          confidenceScore: 0.85,
+          decision: "applied",
+          beforeJson: null,
+          afterJson: {
+            reason: triggerCheck.reason,
+            type,
+          } as Prisma.InputJsonValue,
+        });
+      }
+      return {
+        contactId: upserted.id,
+        transactionCreated: created,
+        triggerReason: triggerCheck.reason,
+      };
+    }
+
+    return { contactId: upserted.id, transactionCreated: false };
+  }
+
+  /** Cached per-instance. Reads Account.settingsJson for custom triggers. */
+  private _triggerConfigCache: ReturnType<typeof resolveTriggerConfig> | null = null;
+  private async loadTriggerConfig() {
+    if (this._triggerConfigCache) return this._triggerConfigCache;
+    const account = await this.db.account.findUnique({
+      where: { id: this.accountId },
+      select: { settingsJson: true },
+    });
+    this._triggerConfigCache = resolveTriggerConfig(account?.settingsJson ?? null);
+    return this._triggerConfigCache;
   }
 
   // --------------------------------------------------
