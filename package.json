@@ -1,0 +1,40 @@
+{
+  "name": "real-estate-os",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:reset": "prisma migrate reset",
+    "db:studio": "prisma studio",
+    "db:validate": "prisma validate",
+    "db:seed": "tsx prisma/seed.ts",
+    "crypto:test": "tsx src/lib/encryption.test.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "date-fns": "^3.6.0",
+    "google-auth-library": "^9.14.1",
+    "googleapis": "^144.0.0",
+    "next": "^15.0.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.10",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.1",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "prisma": "^5.22.0",
+    "tailwindcss": "^3.4.13",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2"
+  }
+}

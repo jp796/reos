@@ -1,0 +1,414 @@
+// Real Estate Operating System — Prisma schema
+// Ported from architecture artifact with the following fixes applied:
+//   1. CalendarEvent was missing accountId; two relations were both pointing at `transactionId`.
+//      Added accountId + separate Account relation.
+//   2. AutomationAuditLog was missing accountId; Account relation was bound to `transactionId`.
+//      Added accountId + separate Account relation.
+//   3. Orphan @@index block at file bottom moved INSIDE the correct models.
+//   4. Added missing back-relations on CalendarEvent / AutomationAuditLog from Account.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================================================
+// CORE ENTITIES
+// ==================================================
+
+model Account {
+  id                              String   @id @default(cuid())
+  businessName                    String   @map("business_name")
+  ownerUserId                     String   @map("owner_user_id")
+  followUpBossApiKeyEncrypted     String?  @map("follow_up_boss_api_key_encrypted")
+  followUpBossSystemKeyEncrypted  String?  @map("follow_up_boss_system_key_encrypted")
+  googleOauthTokensEncrypted      String?  @map("google_oauth_tokens_encrypted")
+  settingsJson                    Json?    @map("settings_json")
+  createdAt                       DateTime @default(now()) @map("created_at")
+  updatedAt                       DateTime @updatedAt @map("updated_at")
+
+  users                User[]
+  contacts             Contact[]
+  transactions         Transaction[]
+  sourceChannels       SourceChannel[]
+  marketingSpends      MarketingSpend[]
+  calendarEvents       CalendarEvent[]
+  automationAuditLogs  AutomationAuditLog[]
+
+  @@map("accounts")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  accountId String   @map("account_id")
+  name      String
+  email     String   @unique
+  role      String   @default("owner") // owner, assistant, tc, agent
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+  @@map("users")
+}
+
+// ==================================================
+// CRM / CONTACT ENTITIES
+// ==================================================
+
+model Contact {
+  id                 String   @id @default(cuid())
+  accountId          String   @map("account_id")
+  fubPersonId        String?  @unique @map("fub_person_id")
+  fullName           String   @map("full_name")
+  primaryEmail       String?  @map("primary_email")
+  primaryPhone       String?  @map("primary_phone")
+  assignedAgentName  String?  @map("assigned_agent_name")
+  sourceName         String?  @map("source_name")
+  tagsJson           Json?    @map("tags_json")
+  rawFubPayloadJson  Json?    @map("raw_fub_payload_json")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  account      Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@index([accountId])
+  @@index([fubPersonId], map: "idx_contacts_fub_person")
+  @@map("contacts")
+}
+
+// ==================================================
+// TRANSACTION ENTITIES
+// ==================================================
+
+model Transaction {
+  id                     String    @id @default(cuid())
+  accountId              String    @map("account_id")
+  contactId              String    @map("contact_id")
+  fubPersonId            String?   @map("fub_person_id")
+  fubDealId              String?   @map("fub_deal_id")
+  propertyAddress        String?   @map("property_address")
+  city                   String?
+  state                  String?
+  zip                    String?
+  transactionType        String    @default("buyer") @map("transaction_type") // buyer, seller, investor, wholesale, other
+  side                   String?
+  status                 String    @default("active") // active, pending, closed, dead
+  pipelineName           String?   @map("pipeline_name")
+  stageName              String?   @map("stage_name")
+  contractDate           DateTime? @map("contract_date")
+  closingDate            DateTime? @map("closing_date")
+  listDate               DateTime? @map("list_date")
+  inspectionDate         DateTime? @map("inspection_date")
+  appraisalDate          DateTime? @map("appraisal_date")
+  financingDeadline      DateTime? @map("financing_deadline")
+  titleDeadline          DateTime? @map("title_deadline")
+  possessionDate         DateTime? @map("possession_date")
+  earnestMoneyDueDate    DateTime? @map("earnest_money_due_date")
+  walkthroughDate        DateTime? @map("walkthrough_date")
+  lenderName             String?   @map("lender_name")
+  titleCompanyName       String?   @map("title_company_name")
+  attorneyName           String?   @map("attorney_name")
+  notesSummary           String?   @map("notes_summary")
+  riskScore              Float     @default(0) @map("risk_score")
+  missingItemsJson       Json?     @map("missing_items_json")
+  lastMeaningfulTouchAt  DateTime? @map("last_meaningful_touch_at")
+  lastSyncedAt           DateTime? @map("last_synced_at")
+  rawSourceJson          Json?     @map("raw_source_json")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+
+  account             Account                  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  contact             Contact                  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  milestones          Milestone[]
+  tasks               Task[]
+  documents           Document[]
+  extractedDates      ExtractedDate[]
+  communicationEvents CommunicationEvent[]
+  calendarEvents      CalendarEvent[]
+  automationAuditLogs AutomationAuditLog[]
+  attributions        TransactionAttribution[]
+  financials          TransactionFinancials?
+
+  @@index([accountId])
+  @@index([contactId, status], map: "idx_transactions_contact_status")
+  @@index([status, closingDate], map: "idx_transactions_status_closing")
+  @@map("transactions")
+}
+
+model Milestone {
+  id              String    @id @default(cuid())
+  transactionId   String    @map("transaction_id")
+  type            String    // contract, inspection, appraisal, financing, title, closing, etc.
+  label           String
+  dueAt           DateTime  @map("due_at")
+  completedAt     DateTime? @map("completed_at")
+  status          String    @default("pending") // pending, completed, overdue, cancelled
+  ownerRole       String    @default("agent") @map("owner_role") // agent, lender, title, inspector, client
+  source          String    @default("manual") // manual, extracted, fub_sync, calendar_sync
+  confidenceScore Float     @default(1.0) @map("confidence_score")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  tasks       Task[]
+
+  @@index([transactionId, type], map: "idx_milestones_transaction_type")
+  @@index([transactionId, dueAt], map: "idx_milestones_transaction_due")
+  @@map("milestones")
+}
+
+model Task {
+  id            String    @id @default(cuid())
+  transactionId String    @map("transaction_id")
+  milestoneId   String?   @map("milestone_id")
+  fubTaskId     String?   @unique @map("fub_task_id")
+  title         String
+  description   String?
+  dueAt         DateTime? @map("due_at")
+  completedAt   DateTime? @map("completed_at")
+  assignedTo    String?   @map("assigned_to")
+  priority      String    @default("normal") // low, normal, high, urgent
+  syncStatus    String    @default("pending") @map("sync_status") // pending, synced, failed
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  milestone   Milestone?  @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+
+  @@index([transactionId])
+  @@index([milestoneId])
+  @@index([dueAt, completedAt])
+  @@map("tasks")
+}
+
+// ==================================================
+// DOCUMENT ENTITIES
+// ==================================================
+
+model Document {
+  id             String   @id @default(cuid())
+  transactionId  String   @map("transaction_id")
+  category       String?  // contract, addendum, inspection, appraisal, title, closing, other
+  fileName       String   @map("file_name")
+  mimeType       String   @map("mime_type")
+  storageUrl     String?  @map("storage_url")
+  source         String   @default("upload") // upload, gmail_attachment, fub_attachment
+  extractedText  String?  @map("extracted_text")
+  uploadOrigin   String?  @map("upload_origin")
+  uploadedAt     DateTime @map("uploaded_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  transaction         Transaction          @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  documentExtractions DocumentExtraction[]
+  extractedDates      ExtractedDate[]
+
+  @@index([transactionId])
+  @@map("documents")
+}
+
+model DocumentExtraction {
+  id                String   @id @default(cuid())
+  documentId        String   @map("document_id")
+  extractionStatus  String   @default("pending") @map("extraction_status") // pending, processing, completed, failed
+  extractorVersion  String   @map("extractor_version")
+  confidenceScore   Float    @default(0) @map("confidence_score")
+  rawOutputJson     Json?    @map("raw_output_json")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  document       Document        @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  extractedDates ExtractedDate[]
+
+  @@index([documentId])
+  @@map("document_extractions")
+}
+
+model ExtractedDate {
+  id                   String   @id @default(cuid())
+  transactionId        String   @map("transaction_id")
+  documentId           String   @map("document_id")
+  documentExtractionId String   @map("document_extraction_id")
+  dateType             String   @map("date_type") // contract, closing, inspection, appraisal, financing_deadline, etc.
+  extractedValue       String   @map("extracted_value") // raw extracted text
+  normalizedValue      DateTime @map("normalized_value")
+  sourcePage           Int?     @map("source_page")
+  sourceSnippet        String?  @map("source_snippet")
+  confidenceScore      Float    @map("confidence_score")
+  documentType         String?  @map("document_type")
+  matchStatus          String   @default("pending") @map("match_status") // pending, matched, ignored, conflict
+  syncStatus           String   @default("pending") @map("sync_status") // pending, synced, rejected
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  transaction        Transaction        @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  document           Document           @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  documentExtraction DocumentExtraction @relation(fields: [documentExtractionId], references: [id], onDelete: Cascade)
+
+  @@index([transactionId, dateType], map: "idx_extracted_dates_transaction_type")
+  @@index([matchStatus])
+  @@map("extracted_dates")
+}
+
+// ==================================================
+// COMMUNICATION ENTITIES
+// ==================================================
+
+model CommunicationEvent {
+  id             String   @id @default(cuid())
+  transactionId  String   @map("transaction_id")
+  type           String   // email, call, text, meeting
+  source         String   // gmail, fub, calendar, manual
+  subject        String?
+  summary        String?
+  happenedAt     DateTime @map("happened_at")
+  rawPayloadJson Json?    @map("raw_payload_json")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@index([transactionId, happenedAt])
+  @@map("communication_events")
+}
+
+model CalendarEvent {
+  id              String   @id @default(cuid())
+  accountId       String   @map("account_id")
+  transactionId   String?  @map("transaction_id")
+  googleEventId   String?  @unique @map("google_event_id")
+  calendarType    String   @default("external") @map("calendar_type") // private_ops, client_safe, external
+  title           String
+  startAt         DateTime @map("start_at")
+  endAt           DateTime @map("end_at")
+  location        String?
+  description     String?
+  attendeesJson   Json?    @map("attendees_json")
+  createdByApp    Boolean  @default(false) @map("created_by_app")
+  source          String?  // document_extraction, milestone_auto, manual
+  rawPayloadJson  Json?    @map("raw_payload_json")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  account     Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  transaction Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  @@index([accountId])
+  @@index([transactionId])
+  @@index([startAt])
+  @@map("calendar_events")
+}
+
+// ==================================================
+// AUTOMATION ENTITIES
+// ==================================================
+
+model AutomationAuditLog {
+  id              String   @id @default(cuid())
+  accountId       String   @map("account_id")
+  transactionId   String?  @map("transaction_id")
+  entityType      String   @map("entity_type") // transaction, task, milestone, fub_stage, fub_tag
+  entityId        String?  @map("entity_id")
+  ruleName        String   @map("rule_name")
+  actionType      String   @map("action_type") // create, update, sync, suggest
+  sourceType      String   @map("source_type") // document_extraction, email_analysis, calendar_sync, manual
+  confidenceScore Float    @map("confidence_score")
+  decision        String   // applied, suggested, rejected, failed
+  beforeJson      Json?    @map("before_json")
+  afterJson       Json?    @map("after_json")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  account     Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  transaction Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  @@index([accountId, createdAt])
+  @@index([transactionId])
+  @@map("automation_audit_logs")
+}
+
+// ==================================================
+// MARKETING / SOURCE ENTITIES
+// ==================================================
+
+model SourceChannel {
+  id        String   @id @default(cuid())
+  accountId String   @map("account_id")
+  name      String
+  category  String   // paid, organic, referral, sphere, direct_mail, youtube, ppc, portal, open_house, repeat_client, other
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  account         Account                  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  marketingSpends MarketingSpend[]
+  attributions    TransactionAttribution[]
+
+  @@index([accountId])
+  @@map("source_channels")
+}
+
+model MarketingSpend {
+  id              String   @id @default(cuid())
+  accountId       String   @map("account_id")
+  sourceChannelId String   @map("source_channel_id")
+  spendDate       DateTime @map("spend_date")
+  amount          Float
+  notes           String?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  account       Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  sourceChannel SourceChannel @relation(fields: [sourceChannelId], references: [id], onDelete: Cascade)
+
+  @@index([sourceChannelId, spendDate], map: "idx_marketing_spends_channel_date")
+  @@index([accountId])
+  @@map("marketing_spends")
+}
+
+model TransactionAttribution {
+  id              String   @id @default(cuid())
+  transactionId   String   @map("transaction_id")
+  sourceChannelId String   @map("source_channel_id")
+  attributionType String   @default("primary") @map("attribution_type") // primary, secondary
+  weight          Float    @default(1.0)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  transaction   Transaction   @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  sourceChannel SourceChannel @relation(fields: [sourceChannelId], references: [id], onDelete: Cascade)
+
+  @@index([transactionId])
+  @@index([sourceChannelId])
+  @@map("transaction_attributions")
+}
+
+// ==================================================
+// FINANCIAL ENTITIES
+// ==================================================
+
+model TransactionFinancials {
+  id                     String   @id @default(cuid())
+  transactionId          String   @unique @map("transaction_id")
+  salePrice              Float?   @map("sale_price")
+  commissionPercent      Float?   @map("commission_percent")
+  grossCommission        Float?   @map("gross_commission")
+  referralFeePercent     Float?   @map("referral_fee_percent")
+  referralFeeAmount      Float?   @map("referral_fee_amount")
+  brokerageSplitPercent  Float?   @map("brokerage_split_percent")
+  brokerageSplitAmount   Float?   @map("brokerage_split_amount")
+  marketingCostAllocated Float?   @map("marketing_cost_allocated")
+  netCommission          Float?   @map("net_commission")
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@map("transaction_financials")
+}
