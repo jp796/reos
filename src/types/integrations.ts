@@ -48,7 +48,9 @@ export interface FUBNote {
 }
 
 export interface FUBPerson {
-  id: string;
+  // FUB v1 returns numeric IDs; type permits string or number — coerce with
+  // String(person.id) at DB write sites.
+  id: string | number;
   name: string;
   firstName?: string;
   lastName?: string;

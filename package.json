@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:reset": "prisma migrate reset",
+    "db:reset": "node -e \"if(process.env.REOS_ALLOW_RESET!=='1'){console.error('\\u001b[31mDB reset blocked.\\u001b[0m Destructive. Re-run with REOS_ALLOW_RESET=1 to confirm.');process.exit(1)}\" && prisma migrate reset",
     "db:studio": "prisma studio",
     "db:validate": "prisma validate",
     "db:seed": "tsx prisma/seed.ts",

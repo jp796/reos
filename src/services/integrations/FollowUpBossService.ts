@@ -199,13 +199,22 @@ export class FollowUpBossService extends EventEmitter {
     limit?: number;
     offset?: number;
   }): Promise<{ people: FUBPerson[]; total: number; hasMore: boolean }> {
+    // FUB v1 response shape:
+    //   { _metadata: { total, offset, limit, next, nextLink }, people: [...] }
+    const limit = query.limit ?? 50;
+    const offset = query.offset ?? 0;
     const res = await this.apiRequest<{
       people?: FUBPerson[];
-      total?: number;
-      hasMore?: boolean;
+      _metadata?: {
+        total?: number;
+        offset?: number;
+        limit?: number;
+        next?: string | null;
+        nextLink?: string | null;
+      };
     }>("GET", "/people", undefined, {
-      limit: query.limit ?? 50,
-      offset: query.offset ?? 0,
+      limit,
+      offset,
       name: query.name,
       email: query.email,
       phone: query.phone,
@@ -213,11 +222,12 @@ export class FollowUpBossService extends EventEmitter {
       source: query.source,
       assignedTo: query.assignedTo,
     });
-    return {
-      people: res.people ?? [],
-      total: res.total ?? 0,
-      hasMore: res.hasMore ?? false,
-    };
+    const meta = res._metadata ?? {};
+    const total = meta.total ?? 0;
+    const people = res.people ?? [];
+    // "hasMore" derived from meta.next OR offset+limit < total
+    const hasMore = Boolean(meta.next) || offset + people.length < total;
+    return { people, total, hasMore };
   }
 
   async getPerson(personId: string): Promise<FUBPerson | null> {
@@ -332,6 +342,32 @@ export class FollowUpBossService extends EventEmitter {
   // Sync
   // --------------------------------------------------
 
+  /**
+   * First-page-only sync. Fetches one page of `limit` people and upserts them.
+   * Intended for small diagnostic syncs; use syncAllData() for full catalog.
+   */
+  async syncPeopleFirstPage(
+    limit: number,
+  ): Promise<{ processed: number; errors: FUBSyncResult["errors"]; fetched: number }> {
+    let processed = 0;
+    const errors: FUBSyncResult["errors"] = [];
+    const { people } = await this.searchPeople({ limit, offset: 0 });
+    for (const person of people) {
+      try {
+        await this.upsertPerson(person);
+        processed++;
+      } catch (err) {
+        errors.push({
+          type: "person_sync",
+          entity: "person",
+          id: person.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    return { processed, errors, fetched: people.length };
+  }
+
   async syncAllData(): Promise<FUBSyncResult> {
     const startedAt = new Date().toISOString();
     const result: FUBSyncResult = {
@@ -388,13 +424,18 @@ export class FollowUpBossService extends EventEmitter {
   }
 
   private async upsertPerson(person: FUBPerson): Promise<void> {
+    // FUB API returns numeric IDs; our DB stores as string. Coerce once here.
+    const fubPersonId = String(person.id);
+    // Defensive access: FUB payloads sometimes omit emails/phones entirely.
+    const emails = person.emails ?? [];
+    const phones = person.phones ?? [];
     const primaryEmail =
-      person.emails.find((e) => e.primary)?.value ?? person.emails[0]?.value;
+      emails.find((e) => e.primary)?.value ?? emails[0]?.value ?? null;
     const primaryPhone =
-      person.phones.find((p) => p.primary)?.value ?? person.phones[0]?.value;
+      phones.find((p) => p.primary)?.value ?? phones[0]?.value ?? null;
 
     await this.db.contact.upsert({
-      where: { fubPersonId: person.id },
+      where: { fubPersonId },
       update: {
         fullName: person.name,
         primaryEmail,
@@ -406,7 +447,7 @@ export class FollowUpBossService extends EventEmitter {
       },
       create: {
         accountId: this.accountId,
-        fubPersonId: person.id,
+        fubPersonId,
         fullName: person.name,
         primaryEmail,
         primaryPhone,
