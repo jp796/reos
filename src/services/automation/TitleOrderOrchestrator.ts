@@ -38,6 +38,10 @@ import {
   type ParsedAddress,
 } from "@/lib/address-parser";
 import {
+  parseSubjectParties,
+  nameVariants,
+} from "@/lib/subject-parser";
+import {
   inferTransactionType,
   inferSide,
 } from "@/services/core/TransactionService";
@@ -289,7 +293,11 @@ export class TitleOrderOrchestrator {
       ...extractAddresses(bodyText),
     ]);
 
-    const contact = await this.matchContact(thread, addresses);
+    // Pull structured buyer/seller/file fields from the subject — vendors
+    // like firstam.com ship them as "-Buyer-Name-Seller-Name-".
+    const parties = parseSubjectParties(subject);
+
+    const contact = await this.matchContact(thread, addresses, parties);
     if (!contact) {
       return {
         threadId,
@@ -422,12 +430,21 @@ export class TitleOrderOrchestrator {
   private async matchContact(
     thread: gmail_v1.Schema$Thread,
     addresses: ParsedAddress[],
+    parties: { buyer?: string; seller?: string; fileNumber?: string } = {},
   ): Promise<Contact | null> {
     const selfSet = new Set(this.config.selfEmails);
+    const notSelf = {
+      NOT: {
+        primaryEmail: {
+          in: this.config.selfEmails,
+          mode: "insensitive" as const,
+        },
+      },
+    };
 
     // Strategy 1: any participant email matches a contact primary email.
-    // Exclude self emails (account owner, team, agent) so a title-company
-    // email addressed TO the agent doesn't match the agent as a client.
+    // Most title-company emails never CC the client, but keep it as a cheap
+    // first check for the rare cases where they do.
     const participantEmails = this.extractParticipantEmails(thread).filter(
       (e) => !selfSet.has(e.toLowerCase()),
     );
@@ -436,29 +453,50 @@ export class TitleOrderOrchestrator {
         where: {
           accountId: this.accountId,
           primaryEmail: { in: participantEmails, mode: "insensitive" },
-          // Double defense: even if one of these participant emails IS stored
-          // as a contact, exclude any contact whose own email is in the self
-          // set. Catches the case where the owner is also in FUB as a contact.
-          NOT: {
-            primaryEmail: {
-              in: this.config.selfEmails,
-              mode: "insensitive",
-            },
-          },
+          ...notSelf,
         },
       });
       if (contact) return contact;
     }
 
-    // Strategy 2: property address in subject/body matches a contact's
-    // stored FUB address.
+    // Strategy 2: name extracted from subject (Buyer/Seller fields) matches
+    // a contact's fullName. Primary matching path for firstam.com-style
+    // commission subjects where the client never sees the email.
+    for (const name of [parties.buyer, parties.seller]) {
+      if (!name) continue;
+      for (const variant of nameVariants(name)) {
+        const parts = variant.split(/\s+/).filter(Boolean);
+        const whereAllWordsMatch =
+          parts.length >= 2
+            ? {
+                AND: parts.map((p) => ({
+                  fullName: { contains: p, mode: "insensitive" as const },
+                })),
+              }
+            : { fullName: { contains: variant, mode: "insensitive" as const } };
+        const contact = await this.db.contact.findFirst({
+          where: {
+            accountId: this.accountId,
+            ...whereAllWordsMatch,
+            ...notSelf,
+          },
+        });
+        if (contact) return contact;
+      }
+    }
+
+    // Strategy 3: property address in subject/body matches a contact's
+    // stored FUB address. (Usually the PROPERTY address, not the client's
+    // home, so this only hits when the client's home is the property —
+    // e.g., a listing of their own residence.)
     if (addresses.length > 0) {
       const candidates = await this.db.contact.findMany({
         where: {
           accountId: this.accountId,
           rawFubPayloadJson: { not: Prisma.JsonNull },
+          ...notSelf,
         },
-        take: 500,
+        take: 1000,
       });
       for (const c of candidates) {
         const fubAddrs = getContactFubField<Array<Record<string, unknown>>>(
