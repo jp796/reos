@@ -70,6 +70,39 @@ function assert(cond: unknown, msg: string): asserts cond {
   assert(r.confidence < 0.7, `too high confidence: ${r.confidence}`);
 }
 
+// 4b. GUARD: known-title domain BUT marketing (no transactional signal) → capped below threshold
+{
+  const r = detectTitleCompanyEmail({
+    fromEmail: "marketing@fste.com",
+    fromName: "FSTE Marketing",
+    subject: "Want Smoother Closings? Start Here.",
+    bodyText: "Upgrade your workflow. Learn more at fste.com/features.",
+  });
+  assert(
+    !r.isTitleCompany,
+    `marketing from title domain must NOT auto-apply; got conf=${r.confidence} reasons=${r.reasons.join(",")}`,
+  );
+  assert(
+    r.reasons.includes("capped:no-transactional-signal"),
+    "must record the cap reason",
+  );
+  assert(r.confidence === 0.65, `expected 0.65 cap, got ${r.confidence}`);
+}
+
+// 4c. Known-title domain WITH one transactional signal (address in subject) → auto-applies
+{
+  const r = detectTitleCompanyEmail({
+    fromEmail: "closings@fste.com",
+    fromName: "FSTE",
+    subject: "Title order for 123 Main St, Springfield MO",
+    bodyText: "Please review the attached.",
+  });
+  assert(
+    r.isTitleCompany,
+    `title domain + address in subject must auto-apply; got conf=${r.confidence}`,
+  );
+}
+
 // 5. All known domains configured
 assert(KNOWN_TITLE_DOMAINS.length >= 5, "expected at least 5 seed domains");
 for (const d of ["fste.com", "firstam.com", "mtc.llc", "tsqtitle.com", "hogantitle.ccsend.com"]) {

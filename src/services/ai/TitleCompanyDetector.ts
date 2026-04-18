@@ -114,6 +114,12 @@ export interface DetectionResult {
 /**
  * Scores an email for "is this from a title company?"
  * Pure function — no I/O, safe to call per-message.
+ *
+ * Scoring: identity signals (who sent) + transactional signals (what about).
+ * Domain match alone cannot cross the auto-apply threshold — there must be
+ * at least one transactional signal (attachment, body keyword, or a property
+ * address extracted from subject/body). This prevents promotional/marketing
+ * emails from a known title-company domain from triggering disposition.
  */
 export function detectTitleCompanyEmail(
   email: EmailForDetection,
@@ -129,6 +135,11 @@ export function detectTitleCompanyEmail(
   const filenames = (email.attachmentFilenames ?? []).map((f) =>
     f.toLowerCase(),
   );
+
+  // Track signal classes — we need BOTH identity and transactional for auto-apply.
+  let hasTransactionalSignal = false;
+
+  // --- IDENTITY SIGNALS ---
 
   // 1. Known domain match (heaviest signal: +0.7)
   if (fromEmail) {
@@ -168,29 +179,61 @@ export function detectTitleCompanyEmail(
     }
   }
 
+  // --- TRANSACTIONAL SIGNALS ---
+
   // 4. Body / subject keywords (+0.1 each, capped at +0.3)
   let bodyHits = 0;
   for (const kw of BODY_KEYWORDS) {
     if (subject.includes(kw) || body.includes(kw)) {
       bodyHits++;
       reasons.push(`body-keyword:${kw}`);
+      hasTransactionalSignal = true;
       if (bodyHits >= 3) break;
     }
   }
   score += Math.min(bodyHits * 0.1, 0.3);
 
-  // 5. Attachment pattern (+0.25 for first match)
+  // 5. Attachment pattern (+0.25)
   for (const pat of ATTACHMENT_PATTERNS) {
     if (filenames.some((f) => pat.test(f))) {
       score += 0.25;
       reasons.push(`attachment-pattern:${pat.source}`);
+      hasTransactionalSignal = true;
       break;
     }
   }
 
+  // 6. Subject contains a street address (+0.2) — strong transactional signal
+  if (/\b\d{1,6}\s+[A-Za-z0-9'.-]+(?:\s+[A-Za-z0-9'.-]+){0,4}\s+(?:St|Street|Rd|Road|Dr|Drive|Ave|Avenue|Ln|Lane|Blvd|Boulevard|Ct|Court|Pl|Place|Way|Ter|Terrace|Cir|Circle|Pkwy|Parkway|Hwy|Highway|Trl|Trail|Loop|Run|Sq|Square)\.?/i.test(
+    email.subject ?? "",
+  )) {
+    score += 0.2;
+    reasons.push("subject-contains-address");
+    hasTransactionalSignal = true;
+  }
+
+  // 7. Subject / body contains order / file / escrow number (+0.15)
+  if (
+    /(?:order|file|escrow)\s*(?:#|number|no\.?)\s*[:\s]\s*\w+/i.test(
+      (email.subject ?? "") + " " + (email.bodyText ?? ""),
+    )
+  ) {
+    score += 0.15;
+    reasons.push("order-number-reference");
+    hasTransactionalSignal = true;
+  }
+
+  // --- HARD CAP: identity alone never crosses the threshold ---
+  // If we have no transactional signal, cap below the auto-apply cutoff.
+  const AUTO_APPLY_THRESHOLD = 0.7;
+  if (!hasTransactionalSignal && score >= AUTO_APPLY_THRESHOLD) {
+    score = 0.65;
+    reasons.push("capped:no-transactional-signal");
+  }
+
   score = Math.min(score, 1);
   return {
-    isTitleCompany: score >= 0.7,
+    isTitleCompany: score >= AUTO_APPLY_THRESHOLD,
     confidence: score,
     reasons,
     matchedDomain,
