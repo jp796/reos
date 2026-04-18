@@ -40,7 +40,10 @@ function assert(cond: unknown, msg: string): asserts cond {
     bodyText: "Order number included. Please review the closing disclosure.",
   });
   assert(r.isTitleCompany, "hogantitle.ccsend.com should match");
-  assert(r.matchedDomain === "hogantitle.ccsend.com");
+  assert(
+    r.matchedDomain === "hogantitle.ccsend.com",
+    "should match hogantitle.ccsend.com",
+  );
 }
 
 // 3. Unknown domain with strong body signals → still detects via fallback
