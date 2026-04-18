@@ -12,8 +12,9 @@
  * Caches label IDs to avoid a list call on every apply.
  */
 
-import { google, type gmail_v1 } from "googleapis";
+import type { gmail_v1 } from "googleapis";
 import type { OAuth2Client } from "google-auth-library";
+import { makeSafeGmail } from "@/lib/gmail-guard";
 
 const DEFAULT_LABEL_PREFIX = "REOS/Transactions";
 
@@ -28,7 +29,9 @@ export class GmailLabelService {
   private idCache = new Map<string, string>(); // name → id
 
   constructor(auth: OAuth2Client, config: GmailLabelServiceConfig = {}) {
-    this.gmail = google.gmail({ version: "v1", auth });
+    // Guarded Gmail client — see src/lib/gmail-guard.ts. Blocks delete/
+    // trash/send/batchDelete/batchModify even if called by accident.
+    this.gmail = makeSafeGmail(auth);
     this.prefix = config.labelPrefix ?? DEFAULT_LABEL_PREFIX;
   }
 

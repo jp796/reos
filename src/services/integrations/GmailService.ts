@@ -17,6 +17,7 @@ import { google, type gmail_v1 } from "googleapis";
 import type { OAuth2Client } from "google-auth-library";
 import type { PrismaClient, Prisma } from "@prisma/client";
 import type { Contact, Transaction } from "@/types";
+import { makeSafeGmail } from "@/lib/gmail-guard";
 
 // ==================================================
 // CONFIG & TYPES
@@ -199,7 +200,10 @@ export class GmailService extends EventEmitter {
     private readonly matching: EmailTransactionMatchingService,
   ) {
     super();
-    this.gmail = google.gmail({ version: "v1", auth });
+    // makeSafeGmail wraps the Gmail client so destructive methods
+    // (delete, trash, send, batchDelete, batchModify, import, insert)
+    // throw at call time. See src/lib/gmail-guard.ts.
+    this.gmail = makeSafeGmail(auth);
   }
 
   // --------------------------------------------------
