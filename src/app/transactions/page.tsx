@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
+import { ScanButton } from "./ScanButton";
 
 export const dynamic = "force-dynamic";
 
@@ -52,14 +53,16 @@ export default async function TransactionsPage() {
         </Link>
       </nav>
 
-      <div className="flex items-end justify-between">
+      <div className="flex items-start justify-between gap-6">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Transactions</h1>
           <p className="mt-1 text-sm text-neutral-600">
             {total.toLocaleString()} transaction{total === 1 ? "" : "s"} ·
-            auto-created from FUB stage/tag triggers during sync
+            auto-created from FUB stage/tag triggers during sync, or from
+            title-company emails during a Gmail scan
           </p>
         </div>
+        <ScanButton />
       </div>
 
       {transactions.length === 0 ? (

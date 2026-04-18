@@ -252,6 +252,32 @@ export class FollowUpBossService extends EventEmitter {
     }
   }
 
+  /**
+   * Update a person's pipeline stage. Accepts the human stage name as it
+   * appears in FUB (e.g. "Pending", "Under Contract"). FUB's PUT /people
+   * endpoint accepts `stage` as a string and maps it server-side.
+   */
+  async updatePersonStage(
+    personId: string,
+    stage: string,
+    opts?: { reason?: string; transactionId?: string | null },
+  ): Promise<void> {
+    await this.auditService.logAction({
+      accountId: this.accountId,
+      transactionId: opts?.transactionId ?? null,
+      entityType: "fub_stage",
+      entityId: personId,
+      ruleName: opts?.reason ?? "manual_stage_update",
+      actionType: "update",
+      sourceType: "automated",
+      confidenceScore: 1.0,
+      decision: "applied",
+      beforeJson: null,
+      afterJson: { stage } as Prisma.InputJsonValue,
+    });
+    await this.apiRequest("PUT", `/people/${personId}`, { stage });
+  }
+
   async updatePersonTags(personId: string, tags: string[]): Promise<void> {
     await this.auditService.logAction({
       accountId: this.accountId,
