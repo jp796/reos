@@ -38,6 +38,7 @@ model Account {
   marketingSpends      MarketingSpend[]
   calendarEvents       CalendarEvent[]
   automationAuditLogs  AutomationAuditLog[]
+  pendingEmailMatches  PendingEmailMatch[]
 
   @@map("accounts")
 }
@@ -392,6 +393,37 @@ model TransactionAttribution {
 // ==================================================
 // FINANCIAL ENTITIES
 // ==================================================
+
+// ==================================================
+// PENDING EMAIL MATCHES (title-order detections awaiting manual review)
+// ==================================================
+
+model PendingEmailMatch {
+  id                 String    @id @default(cuid())
+  accountId          String    @map("account_id")
+  threadId           String    @unique @map("thread_id")
+  subject            String
+  fromEmail          String    @map("from_email")
+  matchedDomain      String?   @map("matched_domain")
+  confidenceScore    Float     @map("confidence_score")
+  reasonsJson        Json?     @map("reasons_json")
+  extractedBuyer     String?   @map("extracted_buyer")
+  extractedSeller    String?   @map("extracted_seller")
+  extractedAddress   String?   @map("extracted_address")
+  extractedFileNumber String?  @map("extracted_file_number")
+  status             String    @default("pending") // pending | resolved | ignored
+  resolvedContactId  String?   @map("resolved_contact_id")
+  resolvedTransactionId String? @map("resolved_transaction_id")
+  resolvedAt         DateTime? @map("resolved_at")
+  detectedAt         DateTime  @default(now()) @map("detected_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, status])
+  @@index([detectedAt])
+  @@map("pending_email_matches")
+}
 
 model TransactionFinancials {
   id                     String   @id @default(cuid())

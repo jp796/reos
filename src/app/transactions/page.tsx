@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { ScanButton } from "./ScanButton";
+import { PendingMatchesPanel } from "./PendingMatchesPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +65,8 @@ export default async function TransactionsPage() {
         </div>
         <ScanButton />
       </div>
+
+      <PendingMatchesPanel />
 
       {transactions.length === 0 ? (
         <div className="mt-10 rounded-lg border border-dashed border-neutral-300 bg-white p-12 text-center">

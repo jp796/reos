@@ -299,6 +299,39 @@ export class TitleOrderOrchestrator {
 
     const contact = await this.matchContact(thread, addresses, parties);
     if (!contact) {
+      // Persist as pending review so the user can manually assign a contact
+      // from the /transactions page. Upsert by threadId so rescanning the
+      // same thread doesn't create duplicates.
+      await this.db.pendingEmailMatch.upsert({
+        where: { threadId },
+        update: {
+          subject,
+          fromEmail,
+          matchedDomain: detection.matchedDomain,
+          confidenceScore: detection.confidence,
+          reasonsJson: detection.reasons as unknown as Prisma.InputJsonValue,
+          extractedBuyer: parties.buyer,
+          extractedSeller: parties.seller,
+          extractedAddress: addresses[0]?.raw,
+          extractedFileNumber: parties.fileNumber,
+          status: "pending",
+        },
+        create: {
+          accountId: this.accountId,
+          threadId,
+          subject,
+          fromEmail,
+          matchedDomain: detection.matchedDomain,
+          confidenceScore: detection.confidence,
+          reasonsJson: detection.reasons as unknown as Prisma.InputJsonValue,
+          extractedBuyer: parties.buyer,
+          extractedSeller: parties.seller,
+          extractedAddress: addresses[0]?.raw,
+          extractedFileNumber: parties.fileNumber,
+          status: "pending",
+        },
+      });
+
       return {
         threadId,
         subject,
@@ -310,6 +343,16 @@ export class TitleOrderOrchestrator {
         address: addresses[0]?.raw,
       };
     }
+
+    // If this thread had been queued for manual review before, mark resolved.
+    await this.db.pendingEmailMatch.updateMany({
+      where: { threadId, status: "pending" },
+      data: {
+        status: "resolved",
+        resolvedContactId: contact.id,
+        resolvedAt: new Date(),
+      },
+    });
 
     // Disposition: FUB stage → Pending + Transaction + Label
     const detail = await this.disposition(
