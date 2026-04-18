@@ -136,8 +136,11 @@ export function detectTitleCompanyEmail(
     f.toLowerCase(),
   );
 
-  // Track signal classes — we need BOTH identity and transactional for auto-apply.
-  let hasTransactionalSignal = false;
+  // Track transactional signal score separately. Cap fires unless
+  // transactional evidence >= 0.2, which prevents a single weak body
+  // keyword ("earnest money" in a marketing footer, for example) from
+  // unlocking auto-apply on domain match alone.
+  let transactionalScore = 0;
 
   // --- IDENTITY SIGNALS ---
 
@@ -187,18 +190,19 @@ export function detectTitleCompanyEmail(
     if (subject.includes(kw) || body.includes(kw)) {
       bodyHits++;
       reasons.push(`body-keyword:${kw}`);
-      hasTransactionalSignal = true;
       if (bodyHits >= 3) break;
     }
   }
-  score += Math.min(bodyHits * 0.1, 0.3);
+  const bodyScore = Math.min(bodyHits * 0.1, 0.3);
+  score += bodyScore;
+  transactionalScore += bodyScore;
 
   // 5. Attachment pattern (+0.25)
   for (const pat of ATTACHMENT_PATTERNS) {
     if (filenames.some((f) => pat.test(f))) {
       score += 0.25;
+      transactionalScore += 0.25;
       reasons.push(`attachment-pattern:${pat.source}`);
-      hasTransactionalSignal = true;
       break;
     }
   }
@@ -208,27 +212,30 @@ export function detectTitleCompanyEmail(
     email.subject ?? "",
   )) {
     score += 0.2;
+    transactionalScore += 0.2;
     reasons.push("subject-contains-address");
-    hasTransactionalSignal = true;
   }
 
-  // 7. Subject / body contains order / file / escrow number (+0.15)
+  // 7. Subject / body contains order / file / escrow number (+0.2)
   if (
-    /(?:order|file|escrow)\s*(?:#|number|no\.?)\s*[:\s]\s*\w+/i.test(
+    /(?:order|file|escrow)\s*(?:#|number|no\.?)\s*[:\s-]\s*\w+/i.test(
       (email.subject ?? "") + " " + (email.bodyText ?? ""),
     )
   ) {
-    score += 0.15;
+    score += 0.2;
+    transactionalScore += 0.2;
     reasons.push("order-number-reference");
-    hasTransactionalSignal = true;
   }
 
-  // --- HARD CAP: identity alone never crosses the threshold ---
-  // If we have no transactional signal, cap below the auto-apply cutoff.
+  // --- HARD CAP: identity alone isn't enough ---
+  // Require transactional evidence of at least 0.2 (≈ an attachment, address,
+  // order number, or 2+ body keywords). A single "earnest money" mention in
+  // marketing copy is only 0.1 — NOT enough to auto-apply.
   const AUTO_APPLY_THRESHOLD = 0.7;
-  if (!hasTransactionalSignal && score >= AUTO_APPLY_THRESHOLD) {
+  const MIN_TRANSACTIONAL_SCORE = 0.2;
+  if (transactionalScore < MIN_TRANSACTIONAL_SCORE && score >= AUTO_APPLY_THRESHOLD) {
     score = 0.65;
-    reasons.push("capped:no-transactional-signal");
+    reasons.push(`capped:weak-transactional-signal(${transactionalScore.toFixed(2)})`);
   }
 
   score = Math.min(score, 1);

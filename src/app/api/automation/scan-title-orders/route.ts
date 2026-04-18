@@ -117,11 +117,17 @@ export async function POST(req: NextRequest) {
     const labels = new GmailLabelService(gAuth);
     const txnSvc = new TransactionService(prisma);
 
+    // Load Google-connected user email so we can exclude self-matches.
+    const stored = await oauth.getStoredTokens(account.id);
+    const ownerEmail = stored?.userEmail?.toLowerCase();
+    const selfEmailsBase: string[] = ownerEmail ? [ownerEmail] : [];
+
     const config = resolveOrchestratorConfig(account.settingsJson, {
       daysBack,
       maxThreads,
       confidenceThreshold: threshold,
       pendingStage,
+      selfEmails: selfEmailsBase,
     });
 
     const orchestrator = new TitleOrderOrchestrator(

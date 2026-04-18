@@ -57,6 +57,13 @@ export interface TitleOrchestratorConfig {
   daysBack?: number;
   /** Gmail label prefix. Default "REOS/Transactions" (handled by GmailLabelService). */
   labelPrefix?: string;
+  /**
+   * Emails that represent the account owner / team / agent itself.
+   * These are excluded from participant-based contact matching so a
+   * title-company email addressed TO the agent doesn't match the agent
+   * as if they were a client.
+   */
+  selfEmails?: string[];
 }
 
 const DEFAULTS = {
@@ -69,10 +76,13 @@ const DEFAULTS = {
 export function resolveOrchestratorConfig(
   settings: Prisma.JsonValue | null,
   overrides?: TitleOrchestratorConfig,
-): Required<Omit<TitleOrchestratorConfig, "labelPrefix">> & { labelPrefix?: string } {
+): Required<Omit<TitleOrchestratorConfig, "labelPrefix">> & {
+  labelPrefix?: string;
+} {
   let pendingStage = DEFAULTS.pendingStage;
   let confidenceThreshold = DEFAULTS.confidenceThreshold;
   let labelPrefix: string | undefined;
+  let selfEmailsFromSettings: string[] = [];
 
   if (settings && typeof settings === "object" && !Array.isArray(settings)) {
     const s = settings as Record<string, unknown>;
@@ -82,8 +92,23 @@ export function resolveOrchestratorConfig(
       if (typeof t.pendingStage === "string") pendingStage = t.pendingStage;
       if (typeof t.confidenceThreshold === "number") confidenceThreshold = t.confidenceThreshold;
       if (typeof t.labelPrefix === "string") labelPrefix = t.labelPrefix;
+      if (Array.isArray(t.selfEmails)) {
+        selfEmailsFromSettings = (t.selfEmails as unknown[]).filter(
+          (x): x is string => typeof x === "string",
+        );
+      }
     }
   }
+
+  // Self-emails are ADDITIVE: combine OAuth-connected email (via overrides)
+  // with any settings-configured team emails. Dedup, lowercase.
+  const selfEmails = Array.from(
+    new Set(
+      [...selfEmailsFromSettings, ...(overrides?.selfEmails ?? [])]
+        .map((e) => e.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  );
 
   return {
     pendingStage: overrides?.pendingStage ?? pendingStage,
@@ -91,6 +116,7 @@ export function resolveOrchestratorConfig(
     maxThreads: overrides?.maxThreads ?? DEFAULTS.maxThreads,
     daysBack: overrides?.daysBack ?? DEFAULTS.daysBack,
     labelPrefix: overrides?.labelPrefix ?? labelPrefix,
+    selfEmails,
   };
 }
 
@@ -150,7 +176,12 @@ export class TitleOrderOrchestrator {
     private readonly config: Required<Omit<TitleOrchestratorConfig, "labelPrefix">> & {
       labelPrefix?: string;
     },
-  ) {}
+  ) {
+    // normalize once; callers should already have lowercased but be defensive
+    this.config.selfEmails = this.config.selfEmails.map((e) =>
+      e.trim().toLowerCase(),
+    );
+  }
 
   async scan(): Promise<ScanResult> {
     const result: ScanResult = {
@@ -392,13 +423,28 @@ export class TitleOrderOrchestrator {
     thread: gmail_v1.Schema$Thread,
     addresses: ParsedAddress[],
   ): Promise<Contact | null> {
+    const selfSet = new Set(this.config.selfEmails);
+
     // Strategy 1: any participant email matches a contact primary email.
-    const participantEmails = this.extractParticipantEmails(thread);
+    // Exclude self emails (account owner, team, agent) so a title-company
+    // email addressed TO the agent doesn't match the agent as a client.
+    const participantEmails = this.extractParticipantEmails(thread).filter(
+      (e) => !selfSet.has(e.toLowerCase()),
+    );
     if (participantEmails.length > 0) {
       const contact = await this.db.contact.findFirst({
         where: {
           accountId: this.accountId,
           primaryEmail: { in: participantEmails, mode: "insensitive" },
+          // Double defense: even if one of these participant emails IS stored
+          // as a contact, exclude any contact whose own email is in the self
+          // set. Catches the case where the owner is also in FUB as a contact.
+          NOT: {
+            primaryEmail: {
+              in: this.config.selfEmails,
+              mode: "insensitive",
+            },
+          },
         },
       });
       if (contact) return contact;

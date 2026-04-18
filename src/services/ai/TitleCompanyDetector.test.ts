@@ -83,10 +83,26 @@ function assert(cond: unknown, msg: string): asserts cond {
     `marketing from title domain must NOT auto-apply; got conf=${r.confidence} reasons=${r.reasons.join(",")}`,
   );
   assert(
-    r.reasons.includes("capped:no-transactional-signal"),
-    "must record the cap reason",
+    r.reasons.some((x) => x.startsWith("capped:weak-transactional-signal")),
+    `must record the cap reason; got reasons=${r.reasons.join(",")}`,
   );
   assert(r.confidence === 0.65, `expected 0.65 cap, got ${r.confidence}`);
+}
+
+// 4d. Weak transactional signal (single body keyword only) still caps
+// — was the real-world "Want Smoother Closings?" false positive bug.
+{
+  const r = detectTitleCompanyEmail({
+    fromEmail: "hello@fste.com",
+    fromName: "FSTE",
+    subject: "Want Smoother Closings? Start Here.",
+    bodyText:
+      "Upgrade your workflow. Never miss an earnest money deadline again.",
+  });
+  assert(
+    !r.isTitleCompany,
+    `single body keyword should NOT unlock auto-apply; got conf=${r.confidence} reasons=${r.reasons.join(",")}`,
+  );
 }
 
 // 4c. Known-title domain WITH one transactional signal (address in subject) → auto-applies

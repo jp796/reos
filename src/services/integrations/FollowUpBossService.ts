@@ -435,14 +435,53 @@ export class FollowUpBossService extends EventEmitter {
     processed: number;
     errors: FUBSyncResult["errors"];
   }> {
+    // FUB disables offset-based pagination past a few thousand records
+    // ("Deep pagination disabled, use 'nextLink'"), so we follow the
+    // nextLink cursor returned in each response's _metadata.
     let processed = 0;
     const errors: FUBSyncResult["errors"] = [];
-    let offset = 0;
-    const limit = 100;
+    let nextUrl: string | null = null;
 
     while (true) {
-      const { people, hasMore } = await this.searchPeople({ limit, offset });
+      let people: FUBPerson[] = [];
+      let meta: { next?: string | null; nextLink?: string | null } = {};
+
+      if (nextUrl) {
+        // Absolute URL returned by FUB — fetch directly, reusing auth headers.
+        const res = await fetch(nextUrl, {
+          method: "GET",
+          headers: {
+            Authorization: this.authHeader(),
+            "X-System": this.config.systemKey,
+            "User-Agent": "real-estate-os/0.1",
+          },
+        });
+        if (!res.ok) {
+          const body = await res.text().catch(() => "");
+          throw new IntegrationError(
+            "FollowUpBoss",
+            "GET (nextLink)",
+            `HTTP ${res.status}: ${body}`,
+          );
+        }
+        const json = (await res.json()) as {
+          people?: FUBPerson[];
+          _metadata?: typeof meta;
+        };
+        people = json.people ?? [];
+        meta = json._metadata ?? {};
+      } else {
+        // First page — normal search with limit/offset.
+        const firstRes = await this.apiRequest<{
+          people?: FUBPerson[];
+          _metadata?: typeof meta;
+        }>("GET", "/people", undefined, { limit: 100, offset: 0 });
+        people = firstRes.people ?? [];
+        meta = firstRes._metadata ?? {};
+      }
+
       if (people.length === 0) break;
+
       for (const person of people) {
         try {
           await this.upsertPerson(person);
@@ -456,8 +495,19 @@ export class FollowUpBossService extends EventEmitter {
           });
         }
       }
-      if (!hasMore) break;
-      offset += limit;
+
+      // FUB returns two fields:
+      //   nextLink: full absolute URL to the next page  (preferred)
+      //   next:     opaque cursor token only (must be embedded as query param)
+      if (meta.nextLink) {
+        nextUrl = meta.nextLink;
+      } else if (meta.next) {
+        nextUrl = `${this.baseUrl}/people?limit=100&next=${encodeURIComponent(meta.next)}`;
+      } else {
+        nextUrl = null;
+      }
+      if (!nextUrl) break;
+
       await new Promise((r) => setTimeout(r, this.rateLimitDelayMs));
     }
     return { processed, errors };
