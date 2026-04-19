@@ -107,7 +107,10 @@ export default async function TransactionsPage() {
                 className="rounded-lg border border-neutral-200 bg-white p-4 hover:shadow-sm transition-shadow"
               >
                 <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0 flex-1">
+                  <Link
+                    href={`/transactions/${txn.id}`}
+                    className="min-w-0 flex-1 group"
+                  >
                     <div className="flex items-center gap-3">
                       <span className={statusBadge(txn.status)}>
                         {txn.status}
@@ -115,7 +118,7 @@ export default async function TransactionsPage() {
                       <span className="text-xs uppercase tracking-wide text-neutral-500">
                         {txn.transactionType}
                       </span>
-                      <span className="text-sm font-medium">
+                      <span className="text-sm font-medium group-hover:underline">
                         {txn.contact.fullName}
                       </span>
                     </div>
@@ -128,7 +131,7 @@ export default async function TransactionsPage() {
                         </>
                       )}
                     </div>
-                  </div>
+                  </Link>
                   <div className="flex flex-col items-end gap-2">
                     <div className="text-right text-xs text-neutral-500">
                       <div>
