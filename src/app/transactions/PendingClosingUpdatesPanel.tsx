@@ -53,6 +53,9 @@ export function PendingClosingUpdatesPanel() {
     load();
   }, [load]);
 
+  const [bulkMsg, setBulkMsg] = useState<string | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+
   async function cleanupLowConfidence() {
     try {
       const res = await fetch(
@@ -68,6 +71,40 @@ export function PendingClosingUpdatesPanel() {
       startTransition(() => router.refresh());
     } catch (e) {
       setErr(e instanceof Error ? e.message : "cleanup failed");
+    }
+  }
+
+  async function bulkApplyAll() {
+    const count = items?.length ?? 0;
+    if (count === 0) return;
+    if (
+      !window.confirm(
+        `Apply all ${count} pending closing-date updates to FUB?\n\nThis will:\n- Update each person's dealCloseDate\n- Move their FUB stage to Closed\n- Flip the local transaction status to closed\n\nReversible per-row via the audit log, not via undo.`,
+      )
+    ) {
+      return;
+    }
+    setBulkBusy(true);
+    setBulkMsg(null);
+    try {
+      const res = await fetch(
+        "/api/automation/pending-closing-updates/bulk-apply",
+        { method: "POST" },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setBulkMsg(`Error: ${data.error ?? res.statusText}`);
+        return;
+      }
+      setBulkMsg(
+        `Bulk apply: ${data.applied} applied · ${data.skipped} local-only · ${data.errored} errored`,
+      );
+      await load();
+      startTransition(() => router.refresh());
+    } catch (e) {
+      setBulkMsg(e instanceof Error ? e.message : "bulk apply failed");
+    } finally {
+      setBulkBusy(false);
     }
   }
 
@@ -98,8 +135,21 @@ export function PendingClosingUpdatesPanel() {
           >
             Ignore low-confidence
           </button>
+          <button
+            type="button"
+            onClick={bulkApplyAll}
+            disabled={bulkBusy}
+            className="rounded bg-emerald-700 px-2 py-1 font-medium text-white hover:bg-emerald-800 disabled:opacity-50"
+          >
+            {bulkBusy ? "Applying…" : "Apply all"}
+          </button>
         </div>
       </div>
+      {bulkMsg && (
+        <div className="mb-2 rounded border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-800">
+          {bulkMsg}
+        </div>
+      )}
       <div className="space-y-3">
         {items.map((it) => (
           <ClosingUpdateRow

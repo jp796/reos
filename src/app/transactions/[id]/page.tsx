@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { CalendarSyncButton } from "../CalendarSyncButton";
+import { FinancialsForm } from "./FinancialsForm";
+import { AISummaryPanel } from "./AISummaryPanel";
 import {
   RiskScoringService,
   riskHealth,
@@ -156,6 +158,12 @@ export default async function TransactionDetailPage({
         />
       </section>
 
+      <AISummaryPanel
+        transactionId={txn.id}
+        initialSummary={txn.aiSummary}
+        initialUpdatedAt={txn.aiSummaryUpdatedAt?.toISOString() ?? null}
+      />
+
       {/* Risk */}
       <section className="mt-6">
         <div
@@ -187,6 +195,22 @@ export default async function TransactionDetailPage({
           )}
         </div>
       </section>
+
+      <FinancialsForm
+        transactionId={txn.id}
+        initial={
+          txn.financials
+            ? {
+                salePrice: txn.financials.salePrice,
+                grossCommission: txn.financials.grossCommission,
+                referralFeeAmount: txn.financials.referralFeeAmount,
+                brokerageSplitAmount: txn.financials.brokerageSplitAmount,
+                marketingCostAllocated: txn.financials.marketingCostAllocated,
+                netCommission: txn.financials.netCommission,
+              }
+            : null
+        }
+      />
 
       {/* Tags */}
       {tags.length > 0 && (

@@ -123,6 +123,8 @@ model Transaction {
   lastMeaningfulTouchAt  DateTime? @map("last_meaningful_touch_at")
   lastSyncedAt           DateTime? @map("last_synced_at")
   rawSourceJson          Json?     @map("raw_source_json")
+  aiSummary              String?   @map("ai_summary")
+  aiSummaryUpdatedAt     DateTime? @map("ai_summary_updated_at")
   createdAt              DateTime  @default(now()) @map("created_at")
   updatedAt              DateTime  @updatedAt @map("updated_at")
 
