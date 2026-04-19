@@ -28,6 +28,8 @@ export async function GET() {
       anchor: i.anchor,
       extractedDate: i.extractedDate.toISOString(),
       previousDate: i.previousDate?.toISOString() ?? null,
+      proposedStage: i.proposedStage,
+      side: i.side,
       confidence: i.confidence,
       snippet: i.snippet,
       detectedAt: i.detectedAt.toISOString(),

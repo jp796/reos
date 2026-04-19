@@ -436,21 +436,27 @@ model PendingEmailMatch {
 // ==================================================
 
 model PendingClosingDateUpdate {
-  id              String    @id @default(cuid())
-  accountId       String    @map("account_id")
-  transactionId   String    @map("transaction_id")
-  threadId        String?   @map("thread_id")
-  attachmentId    String?   @map("attachment_id")
-  documentType    String    @map("document_type") // settlement_statement | closing_disclosure | alta | hud_1 | unknown
-  anchor          String    // Which anchor fired in the PDF ("Disbursement Date", etc.)
-  extractedDate   DateTime  @map("extracted_date")
-  previousDate    DateTime? @map("previous_date")
-  confidence      Float
-  snippet         String?
-  status          String    @default("pending") // pending | applied | ignored
-  appliedAt       DateTime? @map("applied_at")
-  detectedAt      DateTime  @default(now()) @map("detected_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  id                 String    @id @default(cuid())
+  accountId          String    @map("account_id")
+  transactionId      String    @map("transaction_id")
+  threadId           String?   @map("thread_id")
+  attachmentId       String?   @map("attachment_id")
+  documentType       String    @map("document_type") // settlement_statement | closing_disclosure | alta | hud_1 | unknown
+  anchor             String    // Which anchor fired in the PDF ("Disbursement Date", etc.)
+  extractedDate      DateTime  @map("extracted_date")
+  previousDate       DateTime? @map("previous_date")
+  // proposedStage: if set, applying also transitions FUB stage + local txn
+  // status. Typical value: "Closed" for SS reconciliation.
+  proposedStage      String?   @map("proposed_stage")
+  // side: which side the contact occupies on THIS deal (buy | sell),
+  // so one SS can produce two queue rows (buyer + seller).
+  side               String?
+  confidence         Float
+  snippet            String?
+  status             String    @default("pending") // pending | applied | ignored
+  appliedAt          DateTime? @map("applied_at")
+  detectedAt         DateTime  @default(now()) @map("detected_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 

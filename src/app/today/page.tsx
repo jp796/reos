@@ -18,6 +18,7 @@ import {
   riskHealth,
   riskHealthTone,
 } from "@/services/core/RiskScoringService";
+import { ReconcileSSButton } from "./ReconcileSSButton";
 
 export const dynamic = "force-dynamic";
 
@@ -165,12 +166,15 @@ export default async function TodayPage() {
         </Link>
       </nav>
 
-      <header>
-        <h1 className="text-3xl font-semibold tracking-tight">Today</h1>
-        <p className="mt-1 text-sm text-neutral-600">
-          What needs your attention right now · {activeCount} active ·{" "}
-          {closedCount} closed · {contactCount.toLocaleString()} contacts
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight">Today</h1>
+          <p className="mt-1 text-sm text-neutral-600">
+            What needs your attention right now · {activeCount} active ·{" "}
+            {closedCount} closed · {contactCount.toLocaleString()} contacts
+          </p>
+        </div>
+        <ReconcileSSButton />
       </header>
 
       {/* Quick-stats strip */}

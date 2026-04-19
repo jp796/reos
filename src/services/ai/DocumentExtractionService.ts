@@ -16,22 +16,48 @@
  * the common Settlement Statement templates from fste.com / firstam.com.
  */
 
-// pdf-parse ships mixed ESM/CJS shapes across versions — resolve the
-// callable lazily at first use instead of at import time. This avoids
-// webpack's "Object.defineProperty called on non-object" error under
-// Next's server bundler.
-let _pdfParseFn: ((b: Buffer) => Promise<{ text: string }>) | null = null;
+// pdf-parse v2 exports a PDFParse class (no callable default), unlike
+// v1 which was `pdfParse(buffer) -> {text}`. Lazy-load + adapt to keep
+// the callsite shape stable.
+interface PDFParseV2Instance {
+  getText(): Promise<{ text: string }>;
+  destroy(): void;
+}
+interface PDFParseV2Ctor {
+  new (opts: { data: Buffer }): PDFParseV2Instance;
+}
+let _PDFParse: PDFParseV2Ctor | null = null;
+
 async function pdfParse(buf: Buffer): Promise<{ text: string }> {
-  if (!_pdfParseFn) {
+  if (!_PDFParse) {
     const mod = (await import("pdf-parse")) as unknown as {
-      default?: (b: Buffer) => Promise<{ text: string }>;
+      PDFParse?: PDFParseV2Ctor;
+      default?: PDFParseV2Ctor | ((b: Buffer) => Promise<{ text: string }>);
     };
-    const fn = (mod.default ?? (mod as unknown)) as (
-      b: Buffer,
-    ) => Promise<{ text: string }>;
-    _pdfParseFn = fn;
+    if (mod.PDFParse) {
+      _PDFParse = mod.PDFParse;
+    } else if (mod.default && typeof mod.default === "function") {
+      // Fallback for v1-style callable (not current, but defensive)
+      const legacy = mod.default as (b: Buffer) => Promise<{ text: string }>;
+      return legacy(buf);
+    } else {
+      throw new Error("pdf-parse: no PDFParse export and no callable default");
+    }
   }
-  return _pdfParseFn(buf);
+  const inst = new _PDFParse({ data: buf });
+  try {
+    const { text } = await inst.getText();
+    return { text };
+  } finally {
+    inst.destroy();
+  }
+}
+
+export interface SettlementParties {
+  buyers: string[];
+  sellers: string[];
+  propertyAddress?: string;
+  fileNumber?: string;
 }
 
 export interface ClosingDateExtraction {
@@ -161,6 +187,67 @@ export class DocumentExtractionService {
     return { date: parsed, snippet };
   }
 
+  /**
+   * Pull buyers, sellers, property, and file number from Settlement
+   * Statement text. Regex-only — covers the ALTA / HUD-1 / CD templates
+   * from firstam + fste. OpenAI fallback is a TODO.
+   */
+  async extractParties(buffer: Buffer): Promise<SettlementParties | null> {
+    const text = await this.extractText(buffer);
+    if (!text) return null;
+    return this.partiesFromText(text);
+  }
+
+  partiesFromText(text: string): SettlementParties {
+    const out: SettlementParties = { buyers: [], sellers: [] };
+    const windowAfter = (label: RegExp, chars = 200) => {
+      const m = label.exec(text);
+      if (!m) return null;
+      return text.slice(m.index + m[0].length, m.index + m[0].length + chars);
+    };
+
+    const NAME_STOP =
+      /\n|(?=\s{2,})|(?=Address|Property|File|Loan|Borrower|Buyer|Seller|Date|Amount|Settlement)/i;
+
+    const cleanName = (s: string | undefined): string | null => {
+      if (!s) return null;
+      const cleaned = s
+        .split(NAME_STOP)[0]
+        .replace(/[:;]+$/, "")
+        .replace(/\s+/g, " ")
+        .trim();
+      return isLikelyPersonOrEntityName(cleaned) ? cleaned : null;
+    };
+
+    // Buyers: "Borrower(s)" (HUD-1, CD) or "Buyer(s)"
+    const buyerWindow =
+      windowAfter(/\bBorrower(?:\(s\))?[:\s]+/i) ??
+      windowAfter(/\bBuyer(?:\(s\))?[:\s]+/i);
+    const buyer = cleanName(buyerWindow ?? undefined);
+    if (buyer) out.buyers.push(buyer);
+
+    // Sellers — try several label phrasings
+    const sellerWindow =
+      windowAfter(/\bSeller(?:\(s\))?[:\s]+/i) ??
+      windowAfter(/\bGrantor(?:\(s\))?[:\s]+/i);
+    const seller = cleanName(sellerWindow ?? undefined);
+    if (seller) out.sellers.push(seller);
+
+    // Property address
+    const propRe =
+      /(?:Property|Subject\s+Property|Property\s+Address)[:\s]+(\d+\s+[^\n]{3,120})/i;
+    const pm = propRe.exec(text);
+    if (pm) out.propertyAddress = pm[1].split(NAME_STOP)[0].trim();
+
+    // File / order number
+    const fileRe =
+      /\b(?:File(?:\s*Number|\s*#|\s*No\.?)?|Order\s*(?:Number|#|No\.?))[:\s-]\s*([A-Z0-9-]+)/i;
+    const fm = fileRe.exec(text);
+    if (fm) out.fileNumber = fm[1].replace(/-+$/, "").trim();
+
+    return out;
+  }
+
   private parseDate(s: string): Date | null {
     const t = Date.parse(s);
     if (!Number.isNaN(t)) return new Date(t);
@@ -177,4 +264,43 @@ export class DocumentExtractionService {
     }
     return null;
   }
+}
+
+// ==================================================
+// NAME VALIDATION
+// Settlement Statement templates include boilerplate that our regex
+// sometimes slurps into the buyer/seller slot. Filter the obvious
+// garbage so it doesn't pollute matching.
+// ==================================================
+
+const BAD_NAME_PATTERNS: readonly RegExp[] = [
+  /^adopted/i, // ALTA "Adopted 05-01-2015" boilerplate
+  /^copyright/i,
+  /^american\s+land\s+title/i,
+  /^all\s+rights\s+reserved/i,
+  /^page\s+\d+/i,
+  /^n\/a$/i,
+  /^none$/i,
+  /^see\s+attached/i,
+  /^various$/i,
+  /^buyer[s]?$/i,
+  /^seller[s]?$/i,
+];
+
+function isLikelyPersonOrEntityName(s: string): boolean {
+  if (!s) return false;
+  const t = s.trim();
+  if (t.length < 3 || t.length > 200) return false;
+  if (!/[A-Za-z]/.test(t)) return false;
+  for (const pat of BAD_NAME_PATTERNS) if (pat.test(t)) return false;
+  // Reject if the whole thing looks like a date
+  if (/^\d{1,4}[-\/]\d{1,2}[-\/]\d{1,4}$/.test(t)) return false;
+  return true;
+}
+
+/** Strip null bytes + other characters Postgres rejects in TEXT/JSONB. */
+export function safeForDb(s: string | null | undefined): string | null {
+  if (!s) return null;
+  // eslint-disable-next-line no-control-regex
+  return s.replace(/\u0000/g, "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
 }

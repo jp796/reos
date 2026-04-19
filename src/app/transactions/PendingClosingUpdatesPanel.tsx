@@ -13,6 +13,8 @@ interface ClosingUpdate {
   anchor: string;
   extractedDate: string;
   previousDate: string | null;
+  proposedStage: string | null;
+  side: string | null;
   confidence: number;
   snippet: string | null;
 }
@@ -116,11 +118,17 @@ function ClosingUpdateRow({
         setMsg(data.error || res.statusText);
         return;
       }
-      setMsg(
-        `Applied · FUB dealCloseDate = ${fmtDate(data.newClosingDate)}${
-          data.fubUpdated ? "" : " (FUB not pushed — no fubPersonId)"
-        }`,
-      );
+      const parts: string[] = [];
+      if (data.fubDateUpdated) {
+        parts.push(`FUB closeDate → ${fmtDate(data.newClosingDate)}`);
+      }
+      if (data.fubStageUpdated && data.newStage) {
+        parts.push(`FUB stage → ${data.newStage}`);
+      }
+      if (!data.fubDateUpdated && !data.fubStageUpdated) {
+        parts.push("FUB not pushed (no fubPersonId)");
+      }
+      setMsg(`Applied · ${parts.join(" · ")}`);
       setTimeout(onDone, 700);
     } catch (e) {
       setIsError(true);
@@ -163,10 +171,26 @@ function ClosingUpdateRow({
         <span className="rounded bg-white px-1.5 py-0.5 font-mono">
           {update.documentType}
         </span>
+        {update.side && (
+          <>
+            <span>·</span>
+            <span className="rounded bg-white px-1.5 py-0.5 uppercase">
+              {update.side === "buy" ? "buyer" : "seller"}
+            </span>
+          </>
+        )}
         <span>·</span>
         <span>conf {(update.confidence * 100).toFixed(0)}%</span>
         <span>·</span>
         <span>anchor: {update.anchor}</span>
+        {update.proposedStage && (
+          <>
+            <span>·</span>
+            <span className="rounded bg-white px-1.5 py-0.5 text-emerald-800">
+              → stage {update.proposedStage}
+            </span>
+          </>
+        )}
       </div>
       <div className="mt-1 flex items-center gap-3 text-sm">
         <Link

@@ -45,7 +45,8 @@ export async function POST(
     return NextResponse.json({ error: "transaction not found" }, { status: 404 });
   }
 
-  let fubUpdated = false;
+  let fubDateUpdated = false;
+  let fubStageUpdated = false;
   if (txn.contact.fubPersonId) {
     const audit = new AutomationAuditService(prisma);
     const fub = new FollowUpBossService(
@@ -68,7 +69,7 @@ export async function POST(
           previousDate: row.previousDate,
         },
       );
-      fubUpdated = true;
+      fubDateUpdated = true;
     } catch (err) {
       console.error("FUB closing-date update failed:", err);
       return NextResponse.json(
@@ -78,12 +79,34 @@ export async function POST(
         { status: 500 },
       );
     }
+
+    if (row.proposedStage) {
+      try {
+        await fub.updatePersonStage(
+          txn.contact.fubPersonId,
+          row.proposedStage,
+          {
+            reason: "settlement_statement_apply",
+            transactionId: txn.id,
+          },
+        );
+        fubStageUpdated = true;
+      } catch (err) {
+        // Non-fatal — closing date already pushed. Log and continue.
+        console.warn("FUB stage update failed:", err);
+      }
+    }
   }
 
-  // Local write
+  // Local writes: closing date + (if proposedStage=Closed) status=closed
+  const localStatus =
+    row.proposedStage && /closed/i.test(row.proposedStage) ? "closed" : undefined;
   await prisma.transaction.update({
     where: { id: txn.id },
-    data: { closingDate: row.extractedDate },
+    data: {
+      closingDate: row.extractedDate,
+      ...(localStatus ? { status: localStatus } : {}),
+    },
   });
 
   await prisma.pendingClosingDateUpdate.update({
@@ -93,7 +116,9 @@ export async function POST(
 
   return NextResponse.json({
     ok: true,
-    fubUpdated,
+    fubDateUpdated,
+    fubStageUpdated,
     newClosingDate: row.extractedDate.toISOString(),
+    newStage: row.proposedStage ?? null,
   });
 }

@@ -240,6 +240,52 @@ export class GmailService extends EventEmitter {
     };
   }
 
+  /**
+   * Paginated thread search. Follows nextPageToken until either
+   *   - maxTotal threads collected
+   *   - no more pages
+   *   - an error occurs (swallowed, returns what we have so far)
+   *
+   * Gmail's users.threads.list caps maxResults at 500 per request, so
+   * deep scans need multiple round trips. Rate-limited at config.rateLimitDelayMs.
+   */
+  async searchThreadsPaged(query: {
+    q?: string;
+    maxTotal?: number;
+    pageSize?: number;
+    labelIds?: string[];
+  }): Promise<{
+    threads: gmail_v1.Schema$Thread[];
+    pages: number;
+    hitCap: boolean;
+  }> {
+    const maxTotal = query.maxTotal ?? 2000;
+    const pageSize = Math.min(query.pageSize ?? 100, 500);
+    const collected: gmail_v1.Schema$Thread[] = [];
+    let pageToken: string | undefined;
+    let pages = 0;
+
+    while (collected.length < maxTotal) {
+      const { threads, nextPageToken } = await this.searchThreads({
+        q: query.q,
+        maxResults: Math.min(pageSize, maxTotal - collected.length),
+        pageToken,
+        labelIds: query.labelIds,
+      });
+      pages++;
+      collected.push(...threads);
+      if (!nextPageToken || threads.length === 0) break;
+      pageToken = nextPageToken;
+      await this.sleep();
+    }
+
+    return {
+      threads: collected,
+      pages,
+      hitCap: collected.length >= maxTotal,
+    };
+  }
+
   async getThread(threadId: string): Promise<gmail_v1.Schema$Thread | null> {
     try {
       const res = await this.gmail.users.threads.get({
