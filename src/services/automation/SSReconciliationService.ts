@@ -74,7 +74,20 @@ export class SSReconciliationService {
     private readonly extraction: DocumentExtractionService,
     private readonly txnSvc: TransactionService,
     private readonly selfEmails: string[] = [],
+    /** Name fragments that identify the account owner (agent). Used to
+     *  filter them out of party-match candidates so the agent doesn't
+     *  end up queued as a buyer/seller on their own deals. */
+    private readonly selfNameFragments: string[] = [],
   ) {}
+
+  /** Check whether a party name matches any self-name fragment. */
+  private isSelfName(name: string): boolean {
+    if (this.selfNameFragments.length === 0) return false;
+    const lower = name.toLowerCase();
+    return this.selfNameFragments.some((frag) =>
+      lower.includes(frag.toLowerCase()),
+    );
+  }
 
   async reconcileRecent(options: {
     daysBack?: number;
@@ -199,6 +212,7 @@ export class SSReconciliationService {
 
       // Match each buyer → queue buy-side row
       for (const buyer of parties.buyers) {
+        if (this.isSelfName(buyer)) continue;
         const contact = await this.matchContact(buyer, parties);
         if (!contact) continue;
         result.contactsMatched++;
@@ -222,6 +236,7 @@ export class SSReconciliationService {
 
       // Match each seller → queue sell-side row
       for (const seller of parties.sellers) {
+        if (this.isSelfName(seller)) continue;
         const contact = await this.matchContact(seller, parties);
         if (!contact) continue;
         result.contactsMatched++;

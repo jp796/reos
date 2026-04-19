@@ -40,7 +40,11 @@ export async function POST(req: NextRequest) {
   }
 
   const account = await prisma.account.findFirst({
-    select: { id: true, googleOauthTokensEncrypted: true },
+    select: {
+      id: true,
+      googleOauthTokensEncrypted: true,
+      settingsJson: true,
+    },
   });
   if (!account) return NextResponse.json({ error: "no account" }, { status: 500 });
   if (!account.googleOauthTokensEncrypted) {
@@ -49,6 +53,28 @@ export async function POST(req: NextRequest) {
       { status: 412 },
     );
   }
+
+  // Pull self-name fragments from settings so the agent isn't matched
+  // as a buyer/seller on their own deals. Default includes "Fluellen"
+  // so "James Fluellen" / "Jp Fluellen" / "James P. Fluellen" all filter.
+  const selfNameFragments: string[] = (() => {
+    const raw = account.settingsJson;
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      const r = raw as Record<string, unknown>;
+      const titleCfg = r.titleAutomation;
+      if (
+        titleCfg &&
+        typeof titleCfg === "object" &&
+        !Array.isArray(titleCfg)
+      ) {
+        const names = (titleCfg as Record<string, unknown>).selfNameFragments;
+        if (Array.isArray(names)) {
+          return names.filter((x): x is string => typeof x === "string");
+        }
+      }
+    }
+    return ["Fluellen"];
+  })();
 
   const oauth = new GoogleOAuthService(
     {
@@ -88,6 +114,7 @@ export async function POST(req: NextRequest) {
       new DocumentExtractionService(),
       new TransactionService(prisma),
       selfEmails,
+      selfNameFragments,
     );
 
     const result = await svc.reconcileRecent({ daysBack: days, maxThreads: max });

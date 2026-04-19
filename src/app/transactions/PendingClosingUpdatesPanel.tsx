@@ -53,6 +53,24 @@ export function PendingClosingUpdatesPanel() {
     load();
   }, [load]);
 
+  async function cleanupLowConfidence() {
+    try {
+      const res = await fetch(
+        "/api/automation/pending-closing-updates/cleanup-low-confidence",
+        { method: "POST" },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setErr(data.error ?? res.statusText);
+        return;
+      }
+      await load();
+      startTransition(() => router.refresh());
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "cleanup failed");
+    }
+  }
+
   if (loading && items === null) return null;
   if (err)
     return (
@@ -64,14 +82,23 @@ export function PendingClosingUpdatesPanel() {
 
   return (
     <section className="mt-8">
-      <div className="mb-3 flex items-baseline justify-between">
+      <div className="mb-3 flex items-baseline justify-between gap-3">
         <h2 className="text-lg font-medium">
           Closing dates to confirm ·{" "}
           <span className="text-amber-700">{items.length}</span>
         </h2>
-        <span className="text-xs text-neutral-500">
-          Extracted from Settlement Statement / Closing Disclosure PDFs
-        </span>
+        <div className="flex items-center gap-3 text-xs">
+          <span className="text-neutral-500">
+            From Settlement Statement PDFs
+          </span>
+          <button
+            type="button"
+            onClick={cleanupLowConfidence}
+            className="rounded border border-neutral-300 bg-white px-2 py-1 font-medium text-neutral-700 hover:border-neutral-500"
+          >
+            Ignore low-confidence
+          </button>
+        </div>
       </div>
       <div className="space-y-3">
         {items.map((it) => (

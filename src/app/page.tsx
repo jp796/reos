@@ -19,6 +19,12 @@ export default function HomePage() {
           Today →
         </Link>
         <Link
+          href="/production"
+          className="rounded-md border border-neutral-200 bg-white px-4 py-2 text-sm font-medium hover:border-neutral-400"
+        >
+          Production →
+        </Link>
+        <Link
           href="/transactions"
           className="rounded-md border border-neutral-200 bg-white px-4 py-2 text-sm font-medium hover:border-neutral-400"
         >

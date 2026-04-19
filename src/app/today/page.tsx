@@ -157,6 +157,10 @@ export default async function TodayPage() {
           Home
         </Link>
         <span className="text-neutral-300">·</span>
+        <Link href="/production" className="hover:text-neutral-900">
+          Production
+        </Link>
+        <span className="text-neutral-300">·</span>
         <Link href="/contacts" className="hover:text-neutral-900">
           Contacts
         </Link>
