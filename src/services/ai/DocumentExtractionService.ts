@@ -16,13 +16,23 @@
  * the common Settlement Statement templates from fste.com / firstam.com.
  */
 
-import * as pdfParseModule from "pdf-parse";
-// pdf-parse v2 ships both ESM and CJS; access the callable regardless.
-const pdfParse: (
-  b: Buffer,
-) => Promise<{ text: string }> =
-  // @ts-expect-error — mixed export shapes across versions
-  (pdfParseModule.default as never) ?? (pdfParseModule as never);
+// pdf-parse ships mixed ESM/CJS shapes across versions — resolve the
+// callable lazily at first use instead of at import time. This avoids
+// webpack's "Object.defineProperty called on non-object" error under
+// Next's server bundler.
+let _pdfParseFn: ((b: Buffer) => Promise<{ text: string }>) | null = null;
+async function pdfParse(buf: Buffer): Promise<{ text: string }> {
+  if (!_pdfParseFn) {
+    const mod = (await import("pdf-parse")) as unknown as {
+      default?: (b: Buffer) => Promise<{ text: string }>;
+    };
+    const fn = (mod.default ?? (mod as unknown)) as (
+      b: Buffer,
+    ) => Promise<{ text: string }>;
+    _pdfParseFn = fn;
+  }
+  return _pdfParseFn(buf);
+}
 
 export interface ClosingDateExtraction {
   date: Date;

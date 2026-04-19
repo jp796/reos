@@ -310,23 +310,37 @@ export class TitleOrderOrchestrator {
 
     const contact = await this.matchContact(thread, addresses, parties);
     if (!contact) {
-      // Skip threads the user has already dealt with — auto-scans must
-      // not resurrect a manually-resolved or ignored detection.
+      // Skip threads already dealt with — unless the underlying
+      // transaction was deleted (e.g. by a backfill script), in which
+      // case we let the scan rebuild it.
       const prior = await this.db.pendingEmailMatch.findFirst({
         where: { threadId, status: { in: ["ignored", "resolved"] } },
-        select: { id: true, status: true },
+        select: { id: true, status: true, resolvedTransactionId: true },
       });
       if (prior) {
-        return {
-          threadId,
-          subject,
-          fromEmail,
-          action: "no-contact-match",
-          confidence: detection.confidence,
-          matchedDomain: detection.matchedDomain,
-          reasons: [...detection.reasons, `previously-${prior.status}`],
-          address: addresses[0]?.raw,
-        };
+        let shouldSkip = true;
+        if (prior.status === "resolved" && prior.resolvedTransactionId) {
+          const txn = await this.db.transaction.findUnique({
+            where: { id: prior.resolvedTransactionId },
+            select: { id: true },
+          });
+          if (!txn) {
+            // The linked transaction was deleted — re-disposition.
+            shouldSkip = false;
+          }
+        }
+        if (shouldSkip) {
+          return {
+            threadId,
+            subject,
+            fromEmail,
+            action: "no-contact-match",
+            confidence: detection.confidence,
+            matchedDomain: detection.matchedDomain,
+            reasons: [...detection.reasons, `previously-${prior.status}`],
+            address: addresses[0]?.raw,
+          };
+        }
       }
 
       // Persist as pending review so the user can manually assign a contact

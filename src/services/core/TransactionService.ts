@@ -32,12 +32,33 @@ export class TransactionService {
    * the existing one rather than creating a duplicate.
    */
   async createFromContact(
-    input: CreateTransactionInput & { idempotent?: boolean },
+    input: CreateTransactionInput & {
+      idempotent?: boolean;
+      /** Override default 'active' — e.g. 'closed' for historical deals. */
+      status?: "active" | "pending" | "closed" | "dead";
+    },
   ): Promise<{ transaction: Transaction; created: boolean }> {
-    // Idempotency: one transaction per contact by default.
+    // Idempotency: one transaction per (contact, propertyAddress, side).
+    // A single contact can be on multiple deals (buyer of 4808 Rock
+    // Springs AND seller of 4769 Windmill), so we only dedupe when the
+    // property or side matches. If no propertyAddress provided, fall
+    // back to contact-level dedup (legacy).
     if (input.idempotent !== false) {
+      const where: Prisma.TransactionWhereInput = input.propertyAddress
+        ? {
+            contactId: input.contactId,
+            propertyAddress: {
+              equals: input.propertyAddress,
+              mode: "insensitive",
+            },
+          }
+        : {
+            contactId: input.contactId,
+            side: input.side ?? null,
+            propertyAddress: null,
+          };
       const existing = await this.db.transaction.findFirst({
-        where: { contactId: input.contactId },
+        where,
         orderBy: { createdAt: "desc" },
       });
       if (existing) return { transaction: existing, created: false };
@@ -55,6 +76,7 @@ export class TransactionService {
         zip: input.zip,
         transactionType: input.transactionType,
         side: input.side,
+        status: input.status ?? "active",
         contractDate: input.contractDate,
         closingDate: input.closingDate,
         listDate: input.listDate,
@@ -197,11 +219,16 @@ export interface TransactionTriggerConfig {
 }
 
 export const DEFAULT_TRIGGER_CONFIG: TransactionTriggerConfig = {
+  // Stages that warrant opening a transaction workspace. Note that
+  // "Closed" is deliberately absent — closed deals are historical and
+  // should not auto-create NEW workspaces on sync, only update existing
+  // ones' status. "Lead" and "Nurture" stages are also absent — those
+  // are pre-contract and don't need workspaces yet.
   stages: [
     "Under Contract",
+    "Under contract",
     "Pending",
     "Closing",
-    "Closed",
     "Active Client",
     "Active Buyer",
     "Active Seller",
@@ -217,6 +244,49 @@ export const DEFAULT_TRIGGER_CONFIG: TransactionTriggerConfig = {
 };
 
 /**
+ * FUB stages that block transaction creation regardless of tag matches.
+ * A "Lead" stage with a "buyer" tag should NOT produce a transaction —
+ * they haven't committed to anything yet.
+ */
+const BLOCKING_STAGES = new Set(
+  ["lead", "nurture", "attempted contact", "unresponsive", "bad data"].map((s) =>
+    s.toLowerCase(),
+  ),
+);
+
+/**
+ * FUB stages that indicate a deal is already done.
+ * Transactions created from these stages should be status='closed'.
+ */
+const CLOSED_STAGES = new Set(
+  ["closed", "closed won", "sold", "closed lost"].map((s) => s.toLowerCase()),
+);
+
+/**
+ * FUB stages that indicate a dead / archived deal.
+ */
+const DEAD_STAGES = new Set(
+  ["dead", "lost", "archive", "archived", "trash"].map((s) => s.toLowerCase()),
+);
+
+/**
+ * Infer Transaction.status from the FUB stage string. Returns null when
+ * the stage indicates a transaction should NOT exist at all (pre-deal
+ * stages like Lead / Nurture).
+ */
+export function inferTransactionStatus(
+  fubStage: string | null | undefined,
+): "active" | "pending" | "closed" | "dead" | null {
+  const s = (fubStage ?? "").trim().toLowerCase();
+  if (!s) return "active";
+  if (BLOCKING_STAGES.has(s)) return null;
+  if (CLOSED_STAGES.has(s)) return "closed";
+  if (DEAD_STAGES.has(s)) return "dead";
+  if (/under\s*contract|pending|closing|escrow/.test(s)) return "active";
+  return "active";
+}
+
+/**
  * Decide whether a FUB person should get an auto-created transaction.
  * Checks stage first, then tags.
  */
@@ -228,6 +298,14 @@ export function shouldCreateTransactionForPerson(
   config: TransactionTriggerConfig = DEFAULT_TRIGGER_CONFIG,
 ): { match: true; reason: string } | { match: false } {
   const stage = (person.stage ?? "").trim().toLowerCase();
+
+  // Hard block: pre-deal stages never create a transaction, even if a
+  // tag would otherwise match. Prevents "Lead" contacts with an
+  // 'active-buyer-nurture' tag from triggering workspace creation.
+  if (stage && BLOCKING_STAGES.has(stage)) {
+    return { match: false };
+  }
+
   if (stage) {
     const stageHit = config.stages.find(
       (s) => s.trim().toLowerCase() === stage,

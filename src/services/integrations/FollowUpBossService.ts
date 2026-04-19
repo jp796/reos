@@ -28,6 +28,7 @@ import { IntegrationError } from "@/types";
 import {
   TransactionService,
   inferTransactionType,
+  inferTransactionStatus,
   inferSide,
   resolveTriggerConfig,
   shouldCreateTransactionForPerson,
@@ -594,6 +595,13 @@ export class FollowUpBossService extends EventEmitter {
         type: (person as unknown as { type?: string }).type,
         tags: person.tags ?? [],
       });
+      const inferredStatus = inferTransactionStatus(fubStage);
+      if (inferredStatus === null) {
+        // Pre-deal stage (Lead / Nurture / etc.) — don't create a
+        // transaction even though a tag matched. This protects against
+        // broad tag matches producing premature workspaces.
+        return { contactId: upserted.id, transactionCreated: false };
+      }
       const txnSvc = new TransactionService(this.db);
       const { created } = await txnSvc.createFromContact({
         accountId: this.accountId,
@@ -601,6 +609,7 @@ export class FollowUpBossService extends EventEmitter {
         fubPersonId,
         transactionType: type,
         side: inferSide(type),
+        status: inferredStatus,
       });
       if (created) {
         await this.auditService.logAction({
