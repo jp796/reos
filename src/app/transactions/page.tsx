@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { ScanButton } from "./ScanButton";
 import { PendingMatchesPanel } from "./PendingMatchesPanel";
+import { CalendarSyncButton } from "./CalendarSyncButton";
 
 export const dynamic = "force-dynamic";
 
@@ -128,19 +129,24 @@ export default async function TransactionsPage() {
                       )}
                     </div>
                   </div>
-                  <div className="text-right text-xs text-neutral-500">
-                    <div>
-                      {txn._count.milestones} milestones
-                      {overdue.length > 0 && (
-                        <span className="ml-1 text-red-600">
-                          · {overdue.length} overdue
-                        </span>
+                  <div className="flex flex-col items-end gap-2">
+                    <div className="text-right text-xs text-neutral-500">
+                      <div>
+                        {txn._count.milestones} milestones
+                        {overdue.length > 0 && (
+                          <span className="ml-1 text-red-600">
+                            · {overdue.length} overdue
+                          </span>
+                        )}
+                      </div>
+                      {nextMs && (
+                        <div className="mt-0.5">
+                          Next: {nextMs.label} — {formatDate(nextMs.dueAt)}
+                        </div>
                       )}
                     </div>
-                    {nextMs && (
-                      <div className="mt-0.5">
-                        Next: {nextMs.label} — {formatDate(nextMs.dueAt)}
-                      </div>
+                    {txn._count.milestones > 0 && (
+                      <CalendarSyncButton transactionId={txn.id} />
                     )}
                   </div>
                 </div>

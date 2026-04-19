@@ -284,6 +284,7 @@ model CalendarEvent {
   id              String   @id @default(cuid())
   accountId       String   @map("account_id")
   transactionId   String?  @map("transaction_id")
+  milestoneId     String?  @map("milestone_id")
   googleEventId   String?  @unique @map("google_event_id")
   calendarType    String   @default("external") @map("calendar_type") // private_ops, client_safe, external
   title           String
@@ -293,6 +294,7 @@ model CalendarEvent {
   description     String?
   attendeesJson   Json?    @map("attendees_json")
   createdByApp    Boolean  @default(false) @map("created_by_app")
+  status          String   @default("active") // active, cancelled
   source          String?  // document_extraction, milestone_auto, manual
   rawPayloadJson  Json?    @map("raw_payload_json")
   createdAt       DateTime @default(now()) @map("created_at")
@@ -303,6 +305,7 @@ model CalendarEvent {
 
   @@index([accountId])
   @@index([transactionId])
+  @@index([milestoneId])
   @@index([startAt])
   @@map("calendar_events")
 }
