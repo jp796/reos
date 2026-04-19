@@ -41,6 +41,16 @@ import {
   parseSubjectParties,
   nameVariants,
 } from "@/lib/subject-parser";
+import { DocumentExtractionService } from "@/services/ai/DocumentExtractionService";
+
+const SETTLEMENT_ATTACHMENT_PATTERNS: readonly RegExp[] = [
+  /settlement[_\s-]*statement/i,
+  /closing[_\s-]*disclosure/i,
+  /alta.*settlement/i,
+  /\bcd\b.*\.pdf$/i,
+  /hud[-\s]?1/i,
+  /final.*cd/i,
+];
 import {
   inferTransactionType,
   inferSide,
@@ -180,6 +190,7 @@ export class TitleOrderOrchestrator {
     private readonly config: Required<Omit<TitleOrchestratorConfig, "labelPrefix">> & {
       labelPrefix?: string;
     },
+    private readonly extraction: DocumentExtractionService = new DocumentExtractionService(),
   ) {
     // normalize once; callers should already have lowercased but be defensive
     this.config.selfEmails = this.config.selfEmails.map((e) =>
@@ -469,6 +480,13 @@ export class TitleOrderOrchestrator {
       } as Prisma.InputJsonValue,
     });
 
+    // 5. Settlement-statement closing-date extraction (best-effort).
+    // If the email has an attachment that looks like a Final Settlement
+    // Statement / Closing Disclosure, parse it, pull the actual closing
+    // date, and queue a pending closing-date update if it's earlier than
+    // the transaction's current closingDate.
+    await this.processSettlementAttachments(thread, transaction, detection);
+
     return {
       threadId,
       subject,
@@ -483,6 +501,118 @@ export class TitleOrderOrchestrator {
       transactionCreated: txnCreated,
       labelApplied,
     };
+  }
+
+  // --------------------------------------------------
+  // Settlement-statement processing
+  // --------------------------------------------------
+
+  /**
+   * Scan attachments on the thread; for anything that looks like a Final
+   * Settlement Statement / Closing Disclosure, parse it and queue a
+   * PendingClosingDateUpdate if we find a closing date earlier than the
+   * transaction's currently-stored closingDate.
+   *
+   * Best-effort: errors are logged, never thrown. Runs only on threads
+   * already tied to a transaction.
+   */
+  private async processSettlementAttachments(
+    thread: gmail_v1.Schema$Thread,
+    transaction: Transaction,
+    detection: DetectionResult,
+  ): Promise<void> {
+    if (!thread.messages?.length) return;
+
+    for (const msg of thread.messages) {
+      if (!msg.id) continue;
+      const attachments = await this.gmail.getMessageAttachments(msg.id);
+      if (attachments.length === 0) continue;
+
+      const settlements = attachments.filter((a) =>
+        SETTLEMENT_ATTACHMENT_PATTERNS.some((pat) => pat.test(a.filename)),
+      );
+      if (settlements.length === 0) continue;
+
+      for (const att of settlements) {
+        try {
+          const buf = await this.gmail.downloadAttachment(
+            att.messageId,
+            att.attachmentId,
+          );
+          const extracted = await this.extraction.extractClosingDate(buf);
+          if (!extracted) continue;
+
+          // Only queue if the extracted close date is BEFORE the
+          // transaction's current closing date. If the txn has no
+          // closingDate, queue with null previousDate so the user can
+          // review (this is new data — likely the authoritative close
+          // date for a deal with none on file).
+          const existing = transaction.closingDate;
+          const shouldQueue =
+            existing == null || extracted.date < existing;
+          if (!shouldQueue) continue;
+
+          await this.db.pendingClosingDateUpdate.upsert({
+            where: {
+              transactionId_extractedDate: {
+                transactionId: transaction.id,
+                extractedDate: extracted.date,
+              },
+            },
+            update: {
+              confidence: extracted.confidence,
+              snippet: extracted.snippet,
+              anchor: extracted.anchor,
+              documentType: extracted.documentType,
+              threadId: thread.id ?? null,
+              attachmentId: att.attachmentId,
+              previousDate: existing,
+            },
+            create: {
+              accountId: this.accountId,
+              transactionId: transaction.id,
+              threadId: thread.id ?? null,
+              attachmentId: att.attachmentId,
+              documentType: extracted.documentType,
+              anchor: extracted.anchor,
+              extractedDate: extracted.date,
+              previousDate: existing,
+              confidence: extracted.confidence,
+              snippet: extracted.snippet,
+            },
+          });
+
+          await this.audit.logAction({
+            accountId: this.accountId,
+            transactionId: transaction.id,
+            entityType: "transaction",
+            entityId: transaction.id,
+            ruleName: "settlement_statement_closing_date_suggest",
+            actionType: "suggest",
+            sourceType: "document_extraction",
+            confidenceScore: extracted.confidence,
+            decision: "suggested",
+            beforeJson: {
+              currentClosingDate: existing?.toISOString() ?? null,
+            } as Prisma.InputJsonValue,
+            afterJson: {
+              proposedClosingDate: extracted.date.toISOString(),
+              documentType: extracted.documentType,
+              anchor: extracted.anchor,
+              snippet: extracted.snippet,
+              filename: att.filename,
+              threadId: thread.id,
+              detectionConfidence: detection.confidence,
+            } as Prisma.InputJsonValue,
+          });
+        } catch (err) {
+          console.warn(
+            `[settlement] failed for ${att.filename} on ${transaction.id}:`,
+            err,
+          );
+        }
+      }
+    }
   }
 
   // --------------------------------------------------

@@ -31,14 +31,15 @@ model Account {
   createdAt                       DateTime @default(now()) @map("created_at")
   updatedAt                       DateTime @updatedAt @map("updated_at")
 
-  users                User[]
-  contacts             Contact[]
-  transactions         Transaction[]
-  sourceChannels       SourceChannel[]
-  marketingSpends      MarketingSpend[]
-  calendarEvents       CalendarEvent[]
-  automationAuditLogs  AutomationAuditLog[]
-  pendingEmailMatches  PendingEmailMatch[]
+  users                     User[]
+  contacts                  Contact[]
+  transactions              Transaction[]
+  sourceChannels            SourceChannel[]
+  marketingSpends           MarketingSpend[]
+  calendarEvents            CalendarEvent[]
+  automationAuditLogs       AutomationAuditLog[]
+  pendingEmailMatches       PendingEmailMatch[]
+  pendingClosingDateUpdates PendingClosingDateUpdate[]
 
   @@map("accounts")
 }
@@ -426,6 +427,37 @@ model PendingEmailMatch {
   @@index([accountId, status])
   @@index([detectedAt])
   @@map("pending_email_matches")
+}
+
+// ==================================================
+// PENDING CLOSING-DATE UPDATES
+// Queued when a Settlement Statement / Closing Disclosure PDF is
+// detected that implies a closing date earlier than the one in FUB.
+// ==================================================
+
+model PendingClosingDateUpdate {
+  id              String    @id @default(cuid())
+  accountId       String    @map("account_id")
+  transactionId   String    @map("transaction_id")
+  threadId        String?   @map("thread_id")
+  attachmentId    String?   @map("attachment_id")
+  documentType    String    @map("document_type") // settlement_statement | closing_disclosure | alta | hud_1 | unknown
+  anchor          String    // Which anchor fired in the PDF ("Disbursement Date", etc.)
+  extractedDate   DateTime  @map("extracted_date")
+  previousDate    DateTime? @map("previous_date")
+  confidence      Float
+  snippet         String?
+  status          String    @default("pending") // pending | applied | ignored
+  appliedAt       DateTime? @map("applied_at")
+  detectedAt      DateTime  @default(now()) @map("detected_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([transactionId, extractedDate])
+  @@index([accountId, status])
+  @@index([detectedAt])
+  @@map("pending_closing_date_updates")
 }
 
 model TransactionFinancials {

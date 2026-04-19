@@ -278,6 +278,38 @@ export class FollowUpBossService extends EventEmitter {
     await this.apiRequest("PUT", `/people/${personId}`, { stage });
   }
 
+  /**
+   * Update the person's top-level dealCloseDate field (what FUB calls the
+   * Closing date on a person when they're not using Deals). Accepts a JS
+   * Date, sends ISO string.
+   */
+  async updatePersonClosingDate(
+    personId: string,
+    date: Date,
+    opts?: { reason?: string; transactionId?: string | null; previousDate?: Date | null },
+  ): Promise<void> {
+    await this.auditService.logAction({
+      accountId: this.accountId,
+      transactionId: opts?.transactionId ?? null,
+      entityType: "fub_stage",
+      entityId: personId,
+      ruleName: opts?.reason ?? "closing_date_update",
+      actionType: "update",
+      sourceType: "document_extraction",
+      confidenceScore: 1.0,
+      decision: "applied",
+      beforeJson: {
+        dealCloseDate: opts?.previousDate?.toISOString() ?? null,
+      } as Prisma.InputJsonValue,
+      afterJson: {
+        dealCloseDate: date.toISOString(),
+      } as Prisma.InputJsonValue,
+    });
+    await this.apiRequest("PUT", `/people/${personId}`, {
+      dealCloseDate: date.toISOString().slice(0, 10),
+    });
+  }
+
   async updatePersonTags(personId: string, tags: string[]): Promise<void> {
     await this.auditService.logAction({
       accountId: this.accountId,
