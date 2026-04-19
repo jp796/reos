@@ -29,6 +29,11 @@ const schema = z.object({
 
   OPENAI_API_KEY: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
+
+  // Shared secret for scheduled / external scan invocations. If unset,
+  // the scan endpoint rejects external calls entirely (same-origin UI
+  // calls still work).
+  SCAN_SCHEDULE_SECRET: z.string().optional(),
 });
 
 const parsed = schema.safeParse(process.env);

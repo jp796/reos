@@ -299,6 +299,25 @@ export class TitleOrderOrchestrator {
 
     const contact = await this.matchContact(thread, addresses, parties);
     if (!contact) {
+      // Skip threads the user has already dealt with — auto-scans must
+      // not resurrect a manually-resolved or ignored detection.
+      const prior = await this.db.pendingEmailMatch.findFirst({
+        where: { threadId, status: { in: ["ignored", "resolved"] } },
+        select: { id: true, status: true },
+      });
+      if (prior) {
+        return {
+          threadId,
+          subject,
+          fromEmail,
+          action: "no-contact-match",
+          confidence: detection.confidence,
+          matchedDomain: detection.matchedDomain,
+          reasons: [...detection.reasons, `previously-${prior.status}`],
+          address: addresses[0]?.raw,
+        };
+      }
+
       // Persist as pending review so the user can manually assign a contact
       // from the /transactions page. Upsert by threadId so rescanning the
       // same thread doesn't create duplicates.

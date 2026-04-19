@@ -13,16 +13,22 @@ export default function HomePage() {
 
       <nav className="mt-8 flex flex-wrap gap-2">
         <Link
-          href="/contacts"
-          className="rounded-md border border-neutral-200 bg-white px-4 py-2 text-sm font-medium hover:border-neutral-400"
+          href="/today"
+          className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800"
         >
-          Contacts →
+          Today →
         </Link>
         <Link
           href="/transactions"
           className="rounded-md border border-neutral-200 bg-white px-4 py-2 text-sm font-medium hover:border-neutral-400"
         >
           Transactions →
+        </Link>
+        <Link
+          href="/contacts"
+          className="rounded-md border border-neutral-200 bg-white px-4 py-2 text-sm font-medium hover:border-neutral-400"
+        >
+          Contacts →
         </Link>
       </nav>
 

@@ -43,6 +43,20 @@ export async function POST(req: NextRequest) {
   const threshold = clampFloat(p.get("threshold"), 0, 1, undefined);
   const pendingStage = p.get("pendingStage") ?? undefined;
 
+  // Scheduled invocations must carry the secret; browser-initiated calls
+  // (from the in-app button) are allowed. Distinguish by presence of a
+  // same-origin Referer/Origin header matching our own app URL.
+  const scheduledSecret = process.env.SCAN_SCHEDULE_SECRET;
+  const provided = req.headers.get("x-reos-schedule-secret") ?? "";
+  const origin = req.headers.get("origin") ?? req.headers.get("referer") ?? "";
+  const isFromApp = origin.startsWith(env.NEXT_PUBLIC_APP_URL);
+  if (!isFromApp) {
+    // External call — require secret if one is configured.
+    if (!scheduledSecret || provided !== scheduledSecret) {
+      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    }
+  }
+
   if (!env.FUB_API_KEY) {
     return NextResponse.json(
       { error: "FUB_API_KEY not configured" },

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.reos.title-scan</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>/usr/bin/curl -sS -X POST -H "x-reos-schedule-secret: __SCAN_SECRET__" "http://localhost:3000/api/automation/scan-title-orders?days=2&amp;max=200" &gt;&gt; "$HOME/Library/Logs/reos-title-scan.log" 2&gt;&amp;1</string>
+    </array>
+
+    <!-- Every 30 minutes while the Mac is awake. -->
+    <key>StartInterval</key>
+    <integer>1800</integer>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/__USER__/Library/Logs/reos-title-scan.stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/__USER__/Library/Logs/reos-title-scan.stderr.log</string>
+</dict>
+</plist>
