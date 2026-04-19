@@ -13,6 +13,11 @@
 
 import Link from "next/link";
 import { prisma } from "@/lib/db";
+import {
+  RiskScoringService,
+  riskHealth,
+  riskHealthTone,
+} from "@/services/core/RiskScoringService";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +54,7 @@ export default async function TodayPage() {
     closingSoon,
     pendingReviewCount,
     counts,
+    allActive,
   ] = await Promise.all([
     prisma.milestone.findMany({
       where: {
@@ -106,7 +112,27 @@ export default async function TodayPage() {
         (SELECT COUNT(*) FROM transactions WHERE status='closed')::bigint AS closed,
         (SELECT COUNT(*) FROM contacts)::bigint AS total_contacts
     `,
+    prisma.transaction.findMany({
+      where: { status: "active" },
+      include: {
+        contact: true,
+        milestones: true,
+        tasks: true,
+        communicationEvents: { orderBy: { happenedAt: "desc" }, take: 10 },
+      },
+    }),
   ]);
+
+  // Score every active transaction once, keep the top 10 by risk score
+  const risker = new RiskScoringService();
+  const ranked = allActive
+    .map((t) => ({
+      txn: t,
+      risk: risker.compute({ transaction: t }),
+    }))
+    .filter((x) => x.risk.score >= 15)
+    .sort((a, b) => b.risk.score - a.risk.score)
+    .slice(0, 10);
 
   // Silent deals: most recent comm > 7 days ago, or no comms at all
   const silentDeals = silentCandidates
@@ -171,6 +197,53 @@ export default async function TodayPage() {
           href="/transactions"
         />
       </section>
+
+      {/* At risk */}
+      <Section
+        title="At risk"
+        subtitle="Active transactions scored by the risk engine"
+        count={ranked.length}
+      >
+        {ranked.length === 0 ? (
+          <Empty>No active transaction is flagged by the risk engine.</Empty>
+        ) : (
+          <ul className="space-y-2">
+            {ranked.map(({ txn, risk }) => {
+              const h = riskHealth(risk.score);
+              return (
+                <li
+                  key={txn.id}
+                  className={`rounded-md border p-3 ${riskHealthTone(h)}`}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <Link
+                        href={`/transactions/${txn.id}`}
+                        className="font-medium hover:underline"
+                      >
+                        {txn.contact.fullName}
+                      </Link>
+                      <div className="text-xs opacity-80">
+                        {txn.propertyAddress ?? "No address"} · {txn.transactionType}
+                      </div>
+                      <div className="mt-1 text-xs">
+                        {risk.factors[0]?.description ?? "—"}
+                        {risk.factors.length > 1 && (
+                          <span className="opacity-70"> · +{risk.factors.length - 1} more</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg font-semibold">{risk.score}</div>
+                      <div className="text-xs opacity-70">{h}</div>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Section>
 
       {/* Overdue */}
       <Section title="Overdue milestones" count={overdueMilestones.length}>

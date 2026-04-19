@@ -2,6 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { CalendarSyncButton } from "../CalendarSyncButton";
+import {
+  RiskScoringService,
+  riskHealth,
+  riskHealthTone,
+} from "@/services/core/RiskScoringService";
 
 export const dynamic = "force-dynamic";
 
@@ -87,6 +92,9 @@ export default async function TransactionDetailPage({
   const pendingMilestones = txn.milestones.filter((m) => !m.completedAt);
   const completedCount = txn.milestones.length - pendingMilestones.length;
 
+  const risk = new RiskScoringService().compute({ transaction: txn });
+  const health = riskHealth(risk.score);
+
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
       <nav className="mb-6 text-sm text-neutral-500">
@@ -146,6 +154,38 @@ export default async function TransactionDetailPage({
           label="Gross commission"
           value={fmtMoney(txn.financials?.grossCommission)}
         />
+      </section>
+
+      {/* Risk */}
+      <section className="mt-6">
+        <div
+          className={`rounded-lg border p-4 ${riskHealthTone(health)}`}
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-xs uppercase tracking-wide opacity-70">
+                Risk · {health}
+              </div>
+              <div className="mt-0.5 text-2xl font-semibold">
+                {risk.score}
+                <span className="text-sm font-normal opacity-60">/100</span>
+              </div>
+            </div>
+            <div className="text-right text-sm">
+              <div className="font-medium">{risk.recommendation}</div>
+            </div>
+          </div>
+          {risk.factors.length > 0 && (
+            <ul className="mt-3 space-y-1 text-sm">
+              {risk.factors.map((f, i) => (
+                <li key={i} className="flex items-start justify-between gap-3">
+                  <span>{f.description}</span>
+                  <span className="shrink-0 opacity-70">+{f.impact}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </section>
 
       {/* Tags */}
