@@ -39,8 +39,12 @@ export class GmailFilterService {
 
   /**
    * Create a filter that auto-applies labelId to messages matching query.
-   * Returns filter ID. No idempotency check — caller should dedup on
-   * the stored filter ID.
+   * Returns filter ID.
+   *
+   * Idempotent: if Gmail returns "Filter already exists" (409), we fall
+   * back to listing filters and returning the ID of the existing match.
+   * This handles duplicate transactions for the same contact + address
+   * sharing an identical query.
    */
   async createFilter(args: CreateFilterArgs): Promise<string> {
     if (args.query.length > MAX_QUERY_CHARS) {
@@ -48,16 +52,46 @@ export class GmailFilterService {
         `filter query is ${args.query.length} chars; Gmail limit ~${MAX_QUERY_CHARS}`,
       );
     }
-    const res = await this.gmail.users.settings.filters.create({
-      userId: "me",
-      requestBody: {
-        criteria: { query: args.query },
-        action: { addLabelIds: [args.labelId] },
-      },
-    });
-    const id = res.data.id;
-    if (!id) throw new Error("filter created without an ID");
-    return id;
+    try {
+      const res = await this.gmail.users.settings.filters.create({
+        userId: "me",
+        requestBody: {
+          criteria: { query: args.query },
+          action: { addLabelIds: [args.labelId] },
+        },
+      });
+      const id = res.data.id;
+      if (!id) throw new Error("filter created without an ID");
+      return id;
+    } catch (err) {
+      if (this.isAlreadyExists(err)) {
+        const existing = await this.findFilterByQuery(args.query);
+        if (existing) return existing;
+      }
+      throw err;
+    }
+  }
+
+  private isAlreadyExists(err: unknown): boolean {
+    if (typeof err !== "object" || err === null) return false;
+    const e = err as {
+      code?: number;
+      message?: string;
+      response?: { status?: number };
+    };
+    if (e.code === 409 || e.response?.status === 409) return true;
+    if (typeof e.message === "string" && /filter already exists/i.test(e.message))
+      return true;
+    return false;
+  }
+
+  /** Find an existing filter whose criteria.query matches exactly. */
+  private async findFilterByQuery(query: string): Promise<string | null> {
+    const filters = await this.listFilters();
+    for (const f of filters) {
+      if (f.criteria?.query === query && f.id) return f.id;
+    }
+    return null;
   }
 
   async listFilters(): Promise<gmail_v1.Schema$Filter[]> {
