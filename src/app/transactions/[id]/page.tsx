@@ -7,6 +7,7 @@ import { AISummaryPanel } from "./AISummaryPanel";
 import { SmartFolderSection } from "./SmartFolderSection";
 import { ContractUploadPanel } from "./ContractUploadPanel";
 import { ForwardingPanel } from "./ForwardingPanel";
+import { TransactionTimeline } from "./TransactionTimeline";
 import { SMART_FOLDER_CUTOFF } from "@/services/automation/SmartFolderService";
 import {
   RiskScoringService,
@@ -273,58 +274,22 @@ export default async function TransactionDetailPage({
         </section>
       )}
 
-      {/* Milestones */}
-      <section className="mt-8">
-        <div className="mb-2 flex items-end justify-between">
-          <h2 className="text-lg font-medium">Milestones</h2>
-          <span className="text-xs text-neutral-500">
-            {completedCount} complete · {pendingMilestones.length} pending
-          </span>
-        </div>
-        {txn.milestones.length === 0 ? (
-          <p className="text-sm text-neutral-500">
-            No milestones yet. Apply a template by setting a contract date.
-          </p>
-        ) : (
-          <ul className="space-y-2">
-            {txn.milestones.map((m) => {
-              const overdue = !m.completedAt && m.dueAt <= new Date();
-              return (
-                <li
-                  key={m.id}
-                  className={`rounded-md border p-3 ${msStatusTone(m)}`}
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <div className="flex items-center gap-2 text-sm font-medium">
-                        <span>{m.label}</span>
-                        {m.completedAt ? (
-                          <span className="text-xs font-normal text-emerald-700">
-                            ✓ completed {fmtDate(m.completedAt)}
-                          </span>
-                        ) : overdue ? (
-                          <span className="text-xs font-normal text-red-700">
-                            overdue
-                          </span>
-                        ) : null}
-                      </div>
-                      <div className="mt-0.5 text-xs text-neutral-500">
-                        Owner: {m.ownerRole} · Source: {m.source}
-                      </div>
-                    </div>
-                    <div className="text-right text-sm">
-                      <div>{fmtDate(m.dueAt)}</div>
-                      <div className="text-xs text-neutral-500">
-                        {fmtRel(m.dueAt)}
-                      </div>
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+      {/* Timeline (visual milestones) */}
+      <TransactionTimeline
+        transactionId={txn.id}
+        initialMilestones={txn.milestones.map((m) => ({
+          id: m.id,
+          type: m.type,
+          label: m.label,
+          dueAt: m.dueAt.toISOString(),
+          completedAt: m.completedAt?.toISOString() ?? null,
+          status: m.status,
+          ownerRole: m.ownerRole,
+          source: m.source,
+        }))}
+        effectiveDate={txn.contractDate?.toISOString() ?? null}
+        closingDate={txn.closingDate?.toISOString() ?? null}
+      />
 
       {/* Tasks */}
       {txn.tasks.length > 0 && (
