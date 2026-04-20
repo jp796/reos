@@ -121,6 +121,10 @@ export default async function SourcesPage({
         <Link href="/production" className="hover:text-neutral-900">
           Production
         </Link>
+        <span className="text-neutral-300">·</span>
+        <Link href="/marketing" className="hover:text-neutral-900">
+          Marketing
+        </Link>
       </nav>
 
       <header className="flex flex-wrap items-start justify-between gap-4">
@@ -238,8 +242,10 @@ export default async function SourcesPage({
       </section>
 
       <p className="mt-4 text-xs text-neutral-500">
-        CAC and ROI only populate for sources with marketing spend entered.
-        Add entries to the MarketingSpend table to light up those columns.
+        CAC and ROI only populate for sources with marketing spend entered.{" "}
+        <Link href="/marketing" className="underline hover:text-neutral-900">
+          Add a spend entry →
+        </Link>
       </p>
     </main>
   );
