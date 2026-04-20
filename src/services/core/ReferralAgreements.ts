@@ -26,7 +26,7 @@ export interface ReferralAgreement {
 
 /** Fallback list used when settings don't define one. */
 export const DEFAULT_REFERRAL_AGREEMENTS: readonly ReferralAgreement[] = [
-  { sourceMatch: "fastexpert", referralPercent: 0.25 },
+  { sourceMatch: "fastexpert", referralPercent: 0.3 },
   { sourceMatch: "Agent Pronto", referralPercent: 0.3 },
   { sourceMatch: "agentpronto", referralPercent: 0.3 },
   { sourceMatch: "Sold.com", referralPercent: 0.3 },
