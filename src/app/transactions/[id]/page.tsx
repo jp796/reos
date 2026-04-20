@@ -4,6 +4,8 @@ import { prisma } from "@/lib/db";
 import { CalendarSyncButton } from "../CalendarSyncButton";
 import { FinancialsForm } from "./FinancialsForm";
 import { AISummaryPanel } from "./AISummaryPanel";
+import { SmartFolderSection } from "./SmartFolderSection";
+import { SMART_FOLDER_CUTOFF } from "@/services/automation/SmartFolderService";
 import {
   RiskScoringService,
   riskHealth,
@@ -195,6 +197,27 @@ export default async function TransactionDetailPage({
           )}
         </div>
       </section>
+
+      <SmartFolderSection
+        transactionId={txn.id}
+        createdAt={txn.createdAt.toISOString()}
+        labelName={txn.propertyAddress ? `REOS/Transactions/${txn.propertyAddress.replace(/\//g, "—").trim().slice(0, 150)}` : null}
+        filterId={txn.smartFolderFilterId}
+        setupAt={txn.smartFolderSetupAt?.toISOString() ?? null}
+        backfillCount={txn.smartFolderBackfillCount}
+        eligible={
+          txn.createdAt >= SMART_FOLDER_CUTOFF &&
+          !!txn.propertyAddress &&
+          !txn.smartFolderFilterId
+        }
+        eligibilityReason={
+          txn.createdAt < SMART_FOLDER_CUTOFF
+            ? "before_cutoff"
+            : !txn.propertyAddress
+              ? "no_property_address"
+              : null
+        }
+      />
 
       <FinancialsForm
         transactionId={txn.id}

@@ -21,6 +21,8 @@ import {
   DEFAULT_SCOPES,
 } from "@/services/integrations/GoogleOAuthService";
 import { GmailLabelService } from "@/services/integrations/GmailLabelService";
+import { GmailService, EmailTransactionMatchingService } from "@/services/integrations/GmailService";
+import { SmartFolderService } from "@/services/automation/SmartFolderService";
 import {
   FollowUpBossService,
   AutomationAuditService,
@@ -142,8 +144,9 @@ export async function POST(
     fubStageUpdated = true;
   }
 
-  // 3. Gmail label (best-effort — requires Google auth)
+  // 3. Gmail label + SmartFolder setup (best-effort — requires Google auth)
   let labelApplied: string | null = null;
+  let smartFolderResult: unknown = null;
   try {
     const oauth = new GoogleOAuthService(
       {
@@ -161,6 +164,34 @@ export async function POST(
       const labelName = labels.labelNameFor(addressToLabel(addr));
       await labels.applyToThread(pending.threadId, labelName);
       labelApplied = labelName;
+    }
+
+    // SmartFolder setup for newly-created transactions at/after the cutoff.
+    if (txnCreated) {
+      try {
+        const gmail = new GmailService(
+          account.id,
+          gAuth,
+          {
+            labelPrefix: "REOS/",
+            autoOrganizeThreads: false,
+            extractAttachments: false,
+            batchSize: 10,
+            rateLimitDelayMs: 100,
+          },
+          prisma,
+          new EmailTransactionMatchingService(),
+        );
+        const smartFolder = new SmartFolderService({
+          db: prisma,
+          auth: gAuth,
+          gmail,
+          audit,
+        });
+        smartFolderResult = await smartFolder.setupForTransaction(transaction.id);
+      } catch (err) {
+        console.warn("SmartFolder setup failed on manual assign:", err);
+      }
     }
   } catch (err) {
     console.warn("Gmail label apply failed on manual assign:", err);
@@ -207,5 +238,6 @@ export async function POST(
     txnCreated,
     fubStageUpdated,
     labelApplied,
+    smartFolder: smartFolderResult,
   });
 }

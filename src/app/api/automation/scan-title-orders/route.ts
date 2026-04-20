@@ -25,6 +25,7 @@ import {
 } from "@/services/integrations/GoogleOAuthService";
 import { GmailService } from "@/services/integrations/GmailService";
 import { GmailLabelService } from "@/services/integrations/GmailLabelService";
+import { SmartFolderService } from "@/services/automation/SmartFolderService";
 import { EmailTransactionMatchingService } from "@/services/integrations/GmailService";
 import {
   FollowUpBossService,
@@ -144,6 +145,13 @@ export async function POST(req: NextRequest) {
       selfEmails: selfEmailsBase,
     });
 
+    const smartFolder = new SmartFolderService({
+      db: prisma,
+      auth: gAuth,
+      gmail,
+      audit,
+    });
+
     const orchestrator = new TitleOrderOrchestrator(
       account.id,
       prisma,
@@ -153,6 +161,8 @@ export async function POST(req: NextRequest) {
       audit,
       txnSvc,
       config,
+      undefined,
+      smartFolder,
     );
 
     const result = await orchestrator.scan();

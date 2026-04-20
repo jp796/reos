@@ -125,6 +125,11 @@ model Transaction {
   rawSourceJson          Json?     @map("raw_source_json")
   aiSummary              String?   @map("ai_summary")
   aiSummaryUpdatedAt     DateTime? @map("ai_summary_updated_at")
+  // SmartFolder: per-transaction Gmail folder + auto-filter (2026+ txns only)
+  smartFolderLabelId     String?   @map("smart_folder_label_id")
+  smartFolderFilterId    String?   @map("smart_folder_filter_id")
+  smartFolderSetupAt     DateTime? @map("smart_folder_setup_at")
+  smartFolderBackfillCount Int?    @map("smart_folder_backfill_count")
   createdAt              DateTime  @default(now()) @map("created_at")
   updatedAt              DateTime  @updatedAt @map("updated_at")
 

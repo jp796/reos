@@ -22,6 +22,7 @@ import type { PrismaClient, Contact, Transaction } from "@prisma/client";
 import type { gmail_v1 } from "googleapis";
 import type { GmailService } from "@/services/integrations/GmailService";
 import type { GmailLabelService } from "@/services/integrations/GmailLabelService";
+import type { SmartFolderService } from "@/services/automation/SmartFolderService";
 import type {
   FollowUpBossService,
   AutomationAuditService,
@@ -191,6 +192,7 @@ export class TitleOrderOrchestrator {
       labelPrefix?: string;
     },
     private readonly extraction: DocumentExtractionService = new DocumentExtractionService(),
+    private readonly smartFolder: SmartFolderService | null = null,
   ) {
     // normalize once; callers should already have lowercased but be defensive
     this.config.selfEmails = this.config.selfEmails.map((e) =>
@@ -500,6 +502,17 @@ export class TitleOrderOrchestrator {
     // date, and queue a pending closing-date update if it's earlier than
     // the transaction's current closingDate.
     await this.processSettlementAttachments(thread, transaction, detection);
+
+    // 6. SmartFolder: for newly-created transactions at/after the
+    // cutoff, create a Gmail label + auto-filter so future emails
+    // get labeled by address. Best-effort — never blocks disposition.
+    if (txnCreated && this.smartFolder) {
+      try {
+        await this.smartFolder.setupForTransaction(transaction.id);
+      } catch (err) {
+        console.warn("smart folder setup failed:", err);
+      }
+    }
 
     return {
       threadId,
