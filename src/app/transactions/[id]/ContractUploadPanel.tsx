@@ -164,10 +164,10 @@ export function ContractUploadPanel({
   }
 
   return (
-    <section className="mt-6 rounded-lg border border-neutral-200 bg-white p-4">
+    <section className="mt-6 rounded-md border border-border bg-surface p-4">
       <div className="mb-3 flex items-baseline justify-between gap-3">
         <h2 className="text-sm font-medium">Contract extraction</h2>
-        <span className="text-xs text-neutral-500">
+        <span className="text-xs text-text-muted">
           Upload the purchase contract + any compensation rider. AI
           reads them, you review + apply.
         </span>
@@ -188,11 +188,11 @@ export function ContractUploadPanel({
           <button
             type="submit"
             disabled={uploading}
-            className="rounded bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+            className="rounded bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
           >
             {uploading ? "Extracting…" : "Upload + Extract"}
           </button>
-          <span className="text-xs text-neutral-500">
+          <span className="text-xs text-text-muted">
             PDF only · usually 15-40 seconds · cost ~$0.02/doc
           </span>
         </form>
@@ -201,7 +201,7 @@ export function ContractUploadPanel({
       {extraction && (
         <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-            <span className="text-neutral-600">
+            <span className="text-text-muted">
               Extracted via <b>{extraction._path}</b>
               {extraction.compensationOnSeparateRider?.value && (
                 <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-amber-800">
@@ -214,23 +214,23 @@ export function ContractUploadPanel({
                 type="button"
                 onClick={onApply}
                 disabled={applying}
-                className="rounded bg-neutral-900 px-3 py-1 font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+                className="rounded bg-brand-600 px-3 py-1 font-medium text-white hover:bg-brand-500 disabled:opacity-50"
               >
                 {applying ? "Applying…" : "Apply to transaction"}
               </button>
               <button
                 type="button"
                 onClick={onDiscard}
-                className="rounded border border-neutral-300 bg-white px-3 py-1 hover:border-neutral-500"
+                className="rounded border border-border-strong bg-surface px-3 py-1 hover:border-border-strong"
               >
                 Discard
               </button>
             </div>
           </div>
 
-          <div className="overflow-x-auto rounded border border-neutral-200">
+          <div className="overflow-x-auto rounded border border-border">
             <table className="w-full text-xs">
-              <thead className="bg-neutral-50 text-left">
+              <thead className="bg-surface-2 text-left">
                 <tr>
                   <th className="px-3 py-2 font-medium">Field</th>
                   <th className="px-3 py-2 font-medium">Extracted value</th>
@@ -257,13 +257,13 @@ export function ContractUploadPanel({
                             setEdits({ ...edits, [row.key]: e.target.value })
                           }
                           placeholder={placeholderFor(row.kind)}
-                          className="w-full rounded border border-neutral-200 px-1.5 py-0.5"
+                          className="w-full rounded border border-border px-1.5 py-0.5"
                         />
                       </td>
-                      <td className="px-3 py-1.5 text-neutral-500">
+                      <td className="px-3 py-1.5 text-text-muted">
                         {conf > 0 ? `${(conf * 100).toFixed(0)}%` : "—"}
                       </td>
-                      <td className="max-w-[360px] truncate px-3 py-1.5 text-neutral-500">
+                      <td className="max-w-[360px] truncate px-3 py-1.5 text-text-muted">
                         {f?.snippet ?? "—"}
                       </td>
                     </tr>
@@ -273,7 +273,7 @@ export function ContractUploadPanel({
             </table>
           </div>
           {extraction.notes && (
-            <div className="rounded border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs italic text-neutral-700">
+            <div className="rounded border border-border bg-surface-2 px-3 py-2 text-xs italic text-text">
               AI note: {extraction.notes}
             </div>
           )}

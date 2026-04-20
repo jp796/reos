@@ -53,7 +53,7 @@ export function EarnestMoneyScanButton() {
         type="button"
         onClick={run}
         disabled={busy}
-        className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium hover:border-neutral-500 disabled:opacity-50"
+        className="rounded border border-border-strong bg-surface px-3 py-1.5 text-sm font-medium hover:border-border-strong disabled:opacity-50"
       >
         {busy ? "Scanning…" : "Scan earnest money"}
       </button>

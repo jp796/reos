@@ -41,39 +41,26 @@ export default async function MarketingPage() {
     .reduce((sum, s) => sum + s.amount, 0);
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-10">
-      <nav className="mb-6 flex items-center gap-4 text-sm text-neutral-500">
-        <Link href="/" className="hover:text-neutral-900">
-          Home
-        </Link>
-        <span className="text-neutral-300">·</span>
-        <Link href="/today" className="hover:text-neutral-900">
-          Today
-        </Link>
-        <span className="text-neutral-300">·</span>
-        <Link href="/production" className="hover:text-neutral-900">
-          Production
-        </Link>
-        <span className="text-neutral-300">·</span>
-        <Link href="/sources" className="hover:text-neutral-900">
-          Sources
-        </Link>
-      </nav>
-
-      <header className="mb-6">
-        <h1 className="text-3xl font-semibold tracking-tight">
-          Marketing spend
+    <main className="mx-auto max-w-6xl">
+      <header className="mb-8">
+        <div className="reos-label">Marketing · {year}</div>
+        <h1 className="mt-1 font-display text-display-lg font-semibold">
+          Spend by source
         </h1>
-        <p className="mt-1 text-sm text-neutral-600">
-          Track dollars per source channel. YTD {year}:{" "}
-          <span className="font-medium text-neutral-900">
+        <p className="mt-1 text-sm text-text-muted">
+          YTD{" "}
+          <span className="font-medium tabular-nums text-text">
             {new Intl.NumberFormat("en-US", {
               style: "currency",
               currency: "USD",
               maximumFractionDigits: 0,
             }).format(ytdTotal)}
           </span>{" "}
-          across {spends.filter((s) => new Date(s.spendDate).getFullYear() === year).length}{" "}
+          across{" "}
+          <span className="tabular-nums">
+            {spends.filter((s) => new Date(s.spendDate).getFullYear() === year)
+              .length}
+          </span>{" "}
           entries.
         </p>
       </header>

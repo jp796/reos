@@ -69,7 +69,7 @@ export function ScanButton() {
         type="button"
         onClick={handleScan}
         disabled={disabled}
-        className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
+        className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {busy ? "Scanning Gmail…" : "Scan Gmail for title orders"}
       </button>
@@ -88,12 +88,12 @@ export function ScanButton() {
       )}
 
       {result && !error && (
-        <div className="max-w-md rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-700">
-          <div className="font-medium text-neutral-900">
+        <div className="max-w-md rounded-md border border-border bg-surface-2 px-3 py-2 text-xs text-text">
+          <div className="font-medium text-text">
             Scanned {result.scanned} · detected {result.detected} · matched{" "}
             {result.matched} · dispositioned {result.dispositioned}
           </div>
-          <div className="mt-0.5 text-neutral-500">
+          <div className="mt-0.5 text-text-muted">
             {result.transactionsCreated} txn created · {result.labelsApplied}{" "}
             labels applied · last {result.daysBack} days · threshold{" "}
             {result.confidenceThreshold}

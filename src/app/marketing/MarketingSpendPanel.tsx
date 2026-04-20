@@ -192,9 +192,9 @@ export function MarketingSpendPanel({
           {totalByYear.slice(0, 4).map(([yr, tot]) => (
             <div
               key={yr}
-              className="rounded-lg border border-neutral-200 bg-white p-3"
+              className="rounded-md border border-border bg-surface p-3"
             >
-              <div className="text-xs uppercase tracking-wide text-neutral-500">
+              <div className="text-xs uppercase tracking-wide text-text-muted">
                 {yr}
               </div>
               <div className="mt-0.5 text-xl font-semibold">{fmtMoney(tot)}</div>
@@ -204,21 +204,21 @@ export function MarketingSpendPanel({
       )}
 
       {/* Add form */}
-      <section className="mb-8 rounded-lg border border-neutral-200 bg-white p-4">
+      <section className="mb-8 rounded-md border border-border bg-surface p-4">
         <h2 className="mb-3 text-sm font-medium">Add spend entry</h2>
         <form
           onSubmit={addSpend}
           className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_160px_140px_auto]"
         >
           <div>
-            <label className="mb-1 block text-xs text-neutral-500">
+            <label className="mb-1 block text-xs text-text-muted">
               Source
             </label>
             <div className="flex gap-2">
               <select
                 value={sourceId}
                 onChange={(e) => setSourceId(e.target.value)}
-                className="flex-1 rounded border border-neutral-300 bg-white px-2 py-1.5 text-sm"
+                className="flex-1 rounded border border-border-strong bg-surface px-2 py-1.5 text-sm"
                 required
               >
                 {sources.map((s) => (
@@ -230,7 +230,7 @@ export function MarketingSpendPanel({
               <button
                 type="button"
                 onClick={() => setShowNewSource((v) => !v)}
-                className="rounded border border-neutral-300 bg-white px-2 py-1 text-xs hover:border-neutral-500"
+                className="rounded border border-border-strong bg-surface px-2 py-1 text-xs hover:border-border-strong"
                 title="Add a new source channel"
               >
                 + New
@@ -238,17 +238,17 @@ export function MarketingSpendPanel({
             </div>
           </div>
           <div>
-            <label className="mb-1 block text-xs text-neutral-500">Date</label>
+            <label className="mb-1 block text-xs text-text-muted">Date</label>
             <input
               type="date"
               value={spendDate}
               onChange={(e) => setSpendDate(e.target.value)}
-              className="w-full rounded border border-neutral-300 bg-white px-2 py-1.5 text-sm"
+              className="w-full rounded border border-border-strong bg-surface px-2 py-1.5 text-sm"
               required
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-neutral-500">
+            <label className="mb-1 block text-xs text-text-muted">
               Amount ($)
             </label>
             <input
@@ -258,7 +258,7 @@ export function MarketingSpendPanel({
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="250.00"
-              className="w-full rounded border border-neutral-300 bg-white px-2 py-1.5 text-sm"
+              className="w-full rounded border border-border-strong bg-surface px-2 py-1.5 text-sm"
               required
             />
           </div>
@@ -266,13 +266,13 @@ export function MarketingSpendPanel({
             <button
               type="submit"
               disabled={saving}
-              className="w-full rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50 sm:w-auto"
+              className="w-full rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50 sm:w-auto"
             >
               {saving ? "Saving…" : "Add"}
             </button>
           </div>
           <div className="sm:col-span-4">
-            <label className="mb-1 block text-xs text-neutral-500">
+            <label className="mb-1 block text-xs text-text-muted">
               Notes (optional)
             </label>
             <input
@@ -280,7 +280,7 @@ export function MarketingSpendPanel({
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Campaign name, date range, anything useful"
-              className="w-full rounded border border-neutral-300 bg-white px-2 py-1.5 text-sm"
+              className="w-full rounded border border-border-strong bg-surface px-2 py-1.5 text-sm"
             />
           </div>
           {err && (
@@ -291,10 +291,10 @@ export function MarketingSpendPanel({
         {showNewSource && (
           <form
             onSubmit={addSource}
-            className="mt-4 grid grid-cols-1 gap-3 border-t border-neutral-200 pt-4 sm:grid-cols-[1fr_180px_auto]"
+            className="mt-4 grid grid-cols-1 gap-3 border-t border-border pt-4 sm:grid-cols-[1fr_180px_auto]"
           >
             <div>
-              <label className="mb-1 block text-xs text-neutral-500">
+              <label className="mb-1 block text-xs text-text-muted">
                 New source name
               </label>
               <input
@@ -302,18 +302,18 @@ export function MarketingSpendPanel({
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 placeholder='e.g. "Fast Expert" or "Mailchimp Q1"'
-                className="w-full rounded border border-neutral-300 bg-white px-2 py-1.5 text-sm"
+                className="w-full rounded border border-border-strong bg-surface px-2 py-1.5 text-sm"
                 required
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-neutral-500">
+              <label className="mb-1 block text-xs text-text-muted">
                 Category
               </label>
               <select
                 value={newCategory}
                 onChange={(e) => setNewCategory(e.target.value)}
-                className="w-full rounded border border-neutral-300 bg-white px-2 py-1.5 text-sm"
+                className="w-full rounded border border-border-strong bg-surface px-2 py-1.5 text-sm"
               >
                 {CATEGORIES.map((c) => (
                   <option key={c} value={c}>
@@ -326,7 +326,7 @@ export function MarketingSpendPanel({
               <button
                 type="submit"
                 disabled={sourceBusy}
-                className="w-full rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium hover:border-neutral-500 disabled:opacity-50 sm:w-auto"
+                className="w-full rounded-md border border-border-strong bg-surface px-3 py-1.5 text-sm font-medium hover:border-border-strong disabled:opacity-50 sm:w-auto"
               >
                 {sourceBusy ? "Adding…" : "Add source"}
               </button>
@@ -341,9 +341,9 @@ export function MarketingSpendPanel({
       </section>
 
       {/* Entries table */}
-      <section className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
+      <section className="overflow-x-auto rounded-md border border-border bg-surface">
         <table className="w-full text-sm">
-          <thead className="border-b border-neutral-200 bg-neutral-50 text-left">
+          <thead className="border-b border-border bg-surface-2 text-left">
             <tr>
               <th className="px-4 py-2 font-medium">Date</th>
               <th className="px-4 py-2 font-medium">Source</th>
@@ -357,7 +357,7 @@ export function MarketingSpendPanel({
               <tr>
                 <td
                   colSpan={5}
-                  className="px-4 py-8 text-center text-sm text-neutral-500"
+                  className="px-4 py-8 text-center text-sm text-text-muted"
                 >
                   No entries yet. Add your first spend above to light up
                   CAC/ROI on the Sources dashboard.
@@ -374,21 +374,21 @@ export function MarketingSpendPanel({
                 </td>
                 <td className="px-4 py-2">
                   <span className="font-medium">{s.sourceName}</span>
-                  <span className="ml-2 text-xs text-neutral-500">
+                  <span className="ml-2 text-xs text-text-muted">
                     ({s.sourceCategory})
                   </span>
                 </td>
                 <td className="px-4 py-2 text-right font-medium">
                   {fmtMoney(s.amount)}
                 </td>
-                <td className="px-4 py-2 text-neutral-600">
+                <td className="px-4 py-2 text-text-muted">
                   {s.notes ?? "—"}
                 </td>
                 <td className="px-4 py-2 text-right">
                   <button
                     type="button"
                     onClick={() => deleteSpend(s.id)}
-                    className="text-xs text-neutral-500 hover:text-red-600"
+                    className="text-xs text-text-muted hover:text-red-600"
                   >
                     Delete
                   </button>

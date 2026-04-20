@@ -44,14 +44,14 @@ export function ReconcileSSButton() {
         type="button"
         onClick={run}
         disabled={busy || isPending}
-        className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:border-neutral-500 disabled:cursor-not-allowed disabled:opacity-50"
+        className="rounded-md border border-border-strong bg-surface px-3 py-1.5 text-xs font-medium text-text hover:border-border-strong disabled:cursor-not-allowed disabled:opacity-50"
       >
         {busy ? "Reconciling…" : "📑 Reconcile SS (365d)"}
       </button>
       {msg && (
         <span
           className={`max-w-sm text-right text-[11px] ${
-            isError ? "text-red-600" : "text-neutral-600"
+            isError ? "text-red-600" : "text-text-muted"
           }`}
         >
           {msg}

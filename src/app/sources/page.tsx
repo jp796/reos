@@ -108,44 +108,27 @@ export default async function SourcesPage({
     totalSpend > 0 ? (totalNet - totalSpend) / totalSpend : null;
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-10">
-      <nav className="mb-6 flex items-center gap-4 text-sm text-neutral-500">
-        <Link href="/" className="hover:text-neutral-900">
-          Home
-        </Link>
-        <span className="text-neutral-300">·</span>
-        <Link href="/today" className="hover:text-neutral-900">
-          Today
-        </Link>
-        <span className="text-neutral-300">·</span>
-        <Link href="/production" className="hover:text-neutral-900">
-          Production
-        </Link>
-        <span className="text-neutral-300">·</span>
-        <Link href="/marketing" className="hover:text-neutral-900">
-          Marketing
-        </Link>
-      </nav>
-
+    <main className="mx-auto max-w-6xl">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">
-            Source performance · {year}
+          <div className="reos-label">Source performance · {year}</div>
+          <h1 className="mt-1 font-display text-display-lg font-semibold">
+            Where deals come from
           </h1>
-          <p className="mt-1 text-sm text-neutral-600">
-            Leads → closings → dollars → CAC / ROI, per source channel
+          <p className="mt-1 text-sm text-text-muted">
+            Leads → closings → dollars → CAC / ROI, per channel
           </p>
         </div>
         <div className="flex items-center gap-1 text-sm">
           <Link
             href={`/sources?year=${year - 1}`}
-            className="rounded border border-neutral-200 px-2 py-1 hover:border-neutral-400"
+            className="rounded-md border border-border bg-surface px-2.5 py-1 text-text-muted hover:border-border-strong hover:text-text"
           >
             ← {year - 1}
           </Link>
           <Link
             href={`/sources?year=${year + 1}`}
-            className="rounded border border-neutral-200 px-2 py-1 hover:border-neutral-400"
+            className="rounded-md border border-border bg-surface px-2.5 py-1 text-text-muted hover:border-border-strong hover:text-text"
           >
             {year + 1} →
           </Link>
@@ -173,23 +156,23 @@ export default async function SourcesPage({
       </section>
 
       {/* Per-source table */}
-      <section className="mt-8 overflow-x-auto rounded-lg border border-neutral-200 bg-white">
+      <section className="mt-8 overflow-x-auto rounded-md border border-border bg-surface shadow-sm">
         <table className="w-full text-sm">
-          <thead className="border-b border-neutral-200 bg-neutral-50 text-left">
-            <tr>
-              <th className="px-4 py-2 font-medium">Source</th>
-              <th className="px-4 py-2 text-right font-medium">Leads</th>
-              <th className="px-4 py-2 text-right font-medium">Closings</th>
-              <th className="px-4 py-2 text-right font-medium">Conv.</th>
-              <th className="px-4 py-2 text-right font-medium">Volume</th>
-              <th className="px-4 py-2 text-right font-medium">GCI</th>
-              <th className="px-4 py-2 text-right font-medium">Net</th>
-              <th className="px-4 py-2 text-right font-medium">Spend</th>
-              <th className="px-4 py-2 text-right font-medium">CAC</th>
-              <th className="px-4 py-2 text-right font-medium">ROI</th>
+          <thead className="border-b border-border bg-surface-2 text-left">
+            <tr className="text-text-muted">
+              <th className="px-4 py-2.5 font-medium">Source</th>
+              <th className="px-4 py-2.5 text-right font-medium">Leads</th>
+              <th className="px-4 py-2.5 text-right font-medium">Closings</th>
+              <th className="px-4 py-2.5 text-right font-medium">Conv.</th>
+              <th className="px-4 py-2.5 text-right font-medium">Volume</th>
+              <th className="px-4 py-2.5 text-right font-medium">GCI</th>
+              <th className="px-4 py-2.5 text-right font-medium">Net</th>
+              <th className="px-4 py-2.5 text-right font-medium">Spend</th>
+              <th className="px-4 py-2.5 text-right font-medium">CAC</th>
+              <th className="px-4 py-2.5 text-right font-medium">ROI</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="tabular-nums">
             {rows.map((r) => {
               const leads = Number(r.leads);
               const closings = Number(r.closings);
@@ -206,32 +189,36 @@ export default async function SourcesPage({
               return (
                 <tr
                   key={r.source_name ?? "unknown"}
-                  className="border-b border-neutral-100 last:border-0"
+                  className="border-b border-border last:border-0"
                 >
-                  <td className="px-4 py-2 font-medium">{r.source_name}</td>
-                  <td className="px-4 py-2 text-right">{leads.toLocaleString()}</td>
-                  <td className="px-4 py-2 text-right">
+                  <td className="px-4 py-2 font-medium text-text">
+                    {r.source_name}
+                  </td>
+                  <td className="px-4 py-2 text-right text-text">
+                    {leads.toLocaleString()}
+                  </td>
+                  <td className="px-4 py-2 text-right text-text">
                     {closings || "—"}
                   </td>
-                  <td className="px-4 py-2 text-right text-neutral-700">
+                  <td className="px-4 py-2 text-right text-text-muted">
                     {fmtPct(conv)}
                   </td>
-                  <td className="px-4 py-2 text-right text-neutral-700">
+                  <td className="px-4 py-2 text-right text-text-muted">
                     {fmtMoney(volume)}
                   </td>
-                  <td className="px-4 py-2 text-right text-neutral-700">
+                  <td className="px-4 py-2 text-right text-text-muted">
                     {fmtMoney(gci)}
                   </td>
-                  <td className="px-4 py-2 text-right text-neutral-700">
+                  <td className="px-4 py-2 text-right text-text-muted">
                     {fmtMoney(net)}
                   </td>
-                  <td className="px-4 py-2 text-right text-neutral-700">
+                  <td className="px-4 py-2 text-right text-text-muted">
                     {fmtMoney(spend)}
                   </td>
-                  <td className="px-4 py-2 text-right text-neutral-700">
+                  <td className="px-4 py-2 text-right text-text-muted">
                     {fmtMoney(cac)}
                   </td>
-                  <td className="px-4 py-2 text-right text-neutral-700">
+                  <td className="px-4 py-2 text-right text-text-muted">
                     {fmtPct(roi)}
                   </td>
                 </tr>
@@ -241,9 +228,9 @@ export default async function SourcesPage({
         </table>
       </section>
 
-      <p className="mt-4 text-xs text-neutral-500">
+      <p className="mt-4 text-xs text-text-muted">
         CAC and ROI only populate for sources with marketing spend entered.{" "}
-        <Link href="/marketing" className="underline hover:text-neutral-900">
+        <Link href="/marketing" className="text-brand-700 underline">
           Add a spend entry →
         </Link>
       </p>
@@ -253,11 +240,11 @@ export default async function SourcesPage({
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-neutral-200 bg-white p-3">
-      <div className="text-xs uppercase tracking-wide text-neutral-500">
-        {label}
+    <div className="rounded-md border border-border bg-surface p-4 shadow-sm">
+      <div className="reos-label opacity-80">{label}</div>
+      <div className="mt-2 font-display text-display-md font-semibold tabular-nums">
+        {value}
       </div>
-      <div className="mt-0.5 text-xl font-semibold">{value}</div>
     </div>
   );
 }

@@ -236,12 +236,12 @@ export function riskHealth(score: number): RiskHealth {
 export function riskHealthTone(h: RiskHealth): string {
   switch (h) {
     case "critical":
-      return "bg-red-100 text-red-800 border-red-200";
+      return "border-red-200 bg-red-50/60 text-danger dark:bg-red-950/30";
     case "risk":
-      return "bg-amber-100 text-amber-800 border-amber-200";
+      return "border-accent-200 bg-accent-100/40 text-accent-500 dark:bg-accent-100/50";
     case "caution":
-      return "bg-yellow-50 text-yellow-800 border-yellow-200";
+      return "border-accent-200 bg-accent-100/30 text-accent-500 dark:bg-accent-100/40";
     case "good":
-      return "bg-emerald-50 text-emerald-800 border-emerald-200";
+      return "border-brand-200 bg-brand-50 text-brand-700";
   }
 }

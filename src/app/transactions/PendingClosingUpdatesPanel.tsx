@@ -111,7 +111,7 @@ export function PendingClosingUpdatesPanel() {
   if (loading && items === null) return null;
   if (err)
     return (
-      <div className="mt-8 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+      <div className="mt-8 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
         {err}
       </div>
     );
@@ -125,13 +125,13 @@ export function PendingClosingUpdatesPanel() {
           <span className="text-amber-700">{items.length}</span>
         </h2>
         <div className="flex items-center gap-3 text-xs">
-          <span className="text-neutral-500">
+          <span className="text-text-muted">
             From Settlement Statement PDFs
           </span>
           <button
             type="button"
             onClick={cleanupLowConfidence}
-            className="rounded border border-neutral-300 bg-white px-2 py-1 font-medium text-neutral-700 hover:border-neutral-500"
+            className="rounded border border-border-strong bg-surface px-2 py-1 font-medium text-text hover:border-border-strong"
           >
             Ignore low-confidence
           </button>
@@ -243,15 +243,15 @@ function ClosingUpdateRow({
   const disabled = busy || working;
 
   return (
-    <div className="rounded-lg border border-amber-200 bg-amber-50/40 p-4">
-      <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-500">
-        <span className="rounded bg-white px-1.5 py-0.5 font-mono">
+    <div className="rounded-md border border-amber-200 bg-amber-50/40 p-4">
+      <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
+        <span className="rounded bg-surface px-1.5 py-0.5 font-mono">
           {update.documentType}
         </span>
         {update.side && (
           <>
             <span>·</span>
-            <span className="rounded bg-white px-1.5 py-0.5 uppercase">
+            <span className="rounded bg-surface px-1.5 py-0.5 uppercase">
               {update.side === "buy" ? "buyer" : "seller"}
             </span>
           </>
@@ -263,7 +263,7 @@ function ClosingUpdateRow({
         {update.proposedStage && (
           <>
             <span>·</span>
-            <span className="rounded bg-white px-1.5 py-0.5 text-emerald-800">
+            <span className="rounded bg-surface px-1.5 py-0.5 text-emerald-800">
               → stage {update.proposedStage}
             </span>
           </>
@@ -277,24 +277,24 @@ function ClosingUpdateRow({
           {update.contactName}
         </Link>
         {update.propertyAddress && (
-          <span className="text-neutral-500">· {update.propertyAddress}</span>
+          <span className="text-text-muted">· {update.propertyAddress}</span>
         )}
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
         <div>
-          <span className="text-neutral-500">Current: </span>
+          <span className="text-text-muted">Current: </span>
           <span className="font-medium">{fmtDate(update.previousDate)}</span>
         </div>
-        <span className="text-neutral-300">→</span>
+        <span className="text-text-subtle">→</span>
         <div>
-          <span className="text-neutral-500">Proposed: </span>
+          <span className="text-text-muted">Proposed: </span>
           <span className="font-medium text-emerald-800">
             {fmtDate(update.extractedDate)}
           </span>
         </div>
       </div>
       {update.snippet && (
-        <div className="mt-2 rounded border border-neutral-200 bg-white px-2 py-1 text-xs italic text-neutral-600">
+        <div className="mt-2 rounded border border-border bg-surface px-2 py-1 text-xs italic text-text-muted">
           “{update.snippet}”
         </div>
       )}
@@ -303,7 +303,7 @@ function ClosingUpdateRow({
           type="button"
           onClick={apply}
           disabled={disabled}
-          className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+          className="rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
         >
           {working ? "Applying…" : "Apply to FUB"}
         </button>
@@ -311,7 +311,7 @@ function ClosingUpdateRow({
           type="button"
           onClick={ignore}
           disabled={disabled}
-          className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+          className="rounded-md border border-border-strong bg-surface px-3 py-1.5 text-sm text-text hover:bg-surface-2 disabled:opacity-50"
         >
           Ignore
         </button>

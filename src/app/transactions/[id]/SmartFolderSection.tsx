@@ -32,7 +32,7 @@ export function SmartFolderSection(props: Props) {
   // Already configured
   if (props.filterId && props.setupAt) {
     return (
-      <section className="mt-6 rounded-lg border border-emerald-200 bg-emerald-50/40 p-4">
+      <section className="mt-6 rounded-md border border-emerald-200 bg-emerald-50/40 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="text-xs uppercase tracking-wide text-emerald-700">
@@ -41,7 +41,7 @@ export function SmartFolderSection(props: Props) {
             <div className="mt-1 text-sm font-medium">
               {props.labelName ?? "(no label)"}
             </div>
-            <div className="mt-1 text-xs text-neutral-600">
+            <div className="mt-1 text-xs text-text-muted">
               Set up {fmtDate(props.setupAt)} ·{" "}
               {props.backfillCount ?? 0} past thread(s) labeled · future
               matches auto-filed
@@ -97,13 +97,13 @@ export function SmartFolderSection(props: Props) {
   }
 
   return (
-    <section className="mt-6 rounded-lg border border-neutral-200 bg-white p-4">
+    <section className="mt-6 rounded-md border border-border bg-surface p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="text-xs uppercase tracking-wide text-neutral-500">
+          <div className="text-xs uppercase tracking-wide text-text-muted">
             SmartFolder
           </div>
-          <div className="mt-1 text-sm text-neutral-700">
+          <div className="mt-1 text-sm text-text">
             Create a Gmail folder for this address and auto-file every
             future email about it. Past matching threads in the last 365d
             get labeled too.
@@ -113,7 +113,7 @@ export function SmartFolderSection(props: Props) {
           type="button"
           onClick={setup}
           disabled={busy}
-          className="shrink-0 rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+          className="shrink-0 rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
         >
           {busy ? "Setting up…" : "Create SmartFolder"}
         </button>

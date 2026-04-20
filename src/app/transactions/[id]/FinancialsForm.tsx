@@ -111,12 +111,12 @@ export function FinancialsForm({
           <button
             type="button"
             onClick={() => setEditing(true)}
-            className="text-xs text-neutral-500 hover:text-neutral-900"
+            className="text-xs text-text-muted hover:text-text"
           >
             {initial ? "Edit" : "Add"}
           </button>
         </div>
-        <div className="grid grid-cols-2 gap-x-6 gap-y-3 rounded-lg border border-neutral-200 bg-white p-4 md:grid-cols-3">
+        <div className="grid grid-cols-2 gap-x-6 gap-y-3 rounded-md border border-border bg-surface p-4 md:grid-cols-3">
           <Field label="Sale price" value={fmtMoney(initial?.salePrice)} />
           <Field
             label="Gross commission"
@@ -153,7 +153,7 @@ export function FinancialsForm({
       <div className="mb-2 flex items-baseline justify-between">
         <h2 className="text-lg font-medium">Financials · editing</h2>
       </div>
-      <div className="rounded-lg border border-neutral-200 bg-white p-4">
+      <div className="rounded-md border border-border bg-surface p-4">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Input
             label="Sale price"
@@ -187,7 +187,7 @@ export function FinancialsForm({
           />
           <div className="flex items-end">
             <div>
-              <div className="text-xs uppercase tracking-wide text-neutral-500">
+              <div className="text-xs uppercase tracking-wide text-text-muted">
                 Net commission (preview)
               </div>
               <div className="mt-0.5 text-lg font-semibold text-emerald-800">
@@ -201,7 +201,7 @@ export function FinancialsForm({
             type="button"
             onClick={save}
             disabled={disabled}
-            className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+            className="rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
           >
             {busy ? "Saving…" : "Save"}
           </button>
@@ -209,7 +209,7 @@ export function FinancialsForm({
             type="button"
             onClick={() => setEditing(false)}
             disabled={disabled}
-            className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+            className="rounded-md border border-border-strong bg-surface px-3 py-1.5 text-sm text-text hover:bg-surface-2 disabled:opacity-50"
           >
             Cancel
           </button>
@@ -235,7 +235,7 @@ function Field({
 }) {
   return (
     <div>
-      <div className="text-xs uppercase tracking-wide text-neutral-500">
+      <div className="text-xs uppercase tracking-wide text-text-muted">
         {label}
       </div>
       <div
@@ -260,7 +260,7 @@ function Input({
 }) {
   return (
     <label className="block">
-      <span className="text-xs uppercase tracking-wide text-neutral-500">
+      <span className="text-xs uppercase tracking-wide text-text-muted">
         {label}
       </span>
       <input
@@ -270,7 +270,7 @@ function Input({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
-        className="mt-1 w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm disabled:opacity-50"
+        className="mt-1 w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm disabled:opacity-50"
       />
     </label>
   );

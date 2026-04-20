@@ -99,11 +99,11 @@ function toneClasses(t: Tone): {
     case "future":
     default:
       return {
-        dot: "bg-white border-neutral-300",
-        card: "border-neutral-200 bg-white",
-        chip: "bg-neutral-100",
-        chipText: "text-neutral-600",
-        rail: "bg-neutral-200",
+        dot: "bg-surface border-border-strong",
+        card: "border-border bg-surface",
+        chip: "bg-surface-2",
+        chipText: "text-text-muted",
+        rail: "bg-surface-2",
       };
   }
 }
@@ -287,7 +287,7 @@ export function TransactionTimeline(props: Props) {
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3">
         <div className="flex items-baseline gap-3">
           <h2 className="text-lg font-medium">Timeline</h2>
-          <span className="text-xs text-neutral-500">
+          <span className="text-xs text-text-muted">
             {stats.complete} complete
             {stats.overdue > 0 && (
               <>
@@ -313,7 +313,7 @@ export function TransactionTimeline(props: Props) {
           <button
             type="button"
             onClick={() => setAdding((v) => !v)}
-            className="rounded border border-neutral-300 bg-white px-2 py-1 hover:border-neutral-500"
+            className="rounded border border-border-strong bg-surface px-2 py-1 hover:border-border-strong"
           >
             {adding ? "Cancel" : "+ Add milestone"}
           </button>
@@ -323,14 +323,14 @@ export function TransactionTimeline(props: Props) {
       {adding && (
         <form
           onSubmit={addMilestone}
-          className="mb-4 grid grid-cols-1 gap-2 rounded-lg border border-neutral-200 bg-white p-3 sm:grid-cols-[1fr_150px_140px_auto]"
+          className="mb-4 grid grid-cols-1 gap-2 rounded-md border border-border bg-surface p-3 sm:grid-cols-[1fr_150px_140px_auto]"
         >
           <input
             type="text"
             value={newLabel}
             onChange={(e) => setNewLabel(e.target.value)}
             placeholder="Milestone label (e.g. 'HOA docs due')"
-            className="rounded border border-neutral-300 px-2 py-1.5 text-sm"
+            className="rounded border border-border-strong px-2 py-1.5 text-sm"
             required
             autoFocus
           />
@@ -338,13 +338,13 @@ export function TransactionTimeline(props: Props) {
             type="date"
             value={newDate}
             onChange={(e) => setNewDate(e.target.value)}
-            className="rounded border border-neutral-300 px-2 py-1.5 text-sm"
+            className="rounded border border-border-strong px-2 py-1.5 text-sm"
             required
           />
           <select
             value={newOwner}
             onChange={(e) => setNewOwner(e.target.value)}
-            className="rounded border border-neutral-300 bg-white px-2 py-1.5 text-sm"
+            className="rounded border border-border-strong bg-surface px-2 py-1.5 text-sm"
           >
             {OWNER_CHOICES.map((o) => (
               <option key={o} value={o}>
@@ -355,7 +355,7 @@ export function TransactionTimeline(props: Props) {
           <button
             type="submit"
             disabled={savingNew}
-            className="rounded bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+            className="rounded bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
           >
             {savingNew ? "Adding…" : "Add"}
           </button>
@@ -373,7 +373,7 @@ export function TransactionTimeline(props: Props) {
         {/* vertical rail */}
         <div
           aria-hidden="true"
-          className="absolute left-3 top-2 bottom-2 w-px bg-neutral-200"
+          className="absolute left-3 top-2 bottom-2 w-px bg-surface-2"
         />
         <ul className="space-y-2">
           {items.map((item, i) => {
@@ -383,11 +383,11 @@ export function TransactionTimeline(props: Props) {
                   key={`today-${i}`}
                   className="relative flex items-center gap-3 py-1"
                 >
-                  <span className="relative z-10 h-3 w-3 rounded-full border-2 border-neutral-900 bg-neutral-900" />
-                  <span className="text-xs font-medium uppercase tracking-wide text-neutral-900">
+                  <span className="relative z-10 h-3 w-3 rounded-full border-2 border-neutral-900 bg-brand-600" />
+                  <span className="text-xs font-medium uppercase tracking-wide text-text">
                     Today · {fmt(item.at.toISOString())}
                   </span>
-                  <div className="h-px flex-1 bg-neutral-900" />
+                  <div className="h-px flex-1 bg-brand-600" />
                 </li>
               );
             }
@@ -401,12 +401,12 @@ export function TransactionTimeline(props: Props) {
                   className={`relative z-10 mt-2 h-3 w-3 shrink-0 rounded-full border-2 ${tc.dot}`}
                 />
                 <div
-                  className={`flex-1 rounded-lg border px-3 py-2 ${tc.card}`}
+                  className={`flex-1 rounded-md border px-3 py-2 ${tc.card}`}
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium text-neutral-900">
+                        <span className="font-medium text-text">
                           {m.label}
                         </span>
                         <span
@@ -415,7 +415,7 @@ export function TransactionTimeline(props: Props) {
                           {toneLabel(tone)}
                         </span>
                       </div>
-                      <div className="mt-0.5 text-xs text-neutral-500">
+                      <div className="mt-0.5 text-xs text-text-muted">
                         Owner {m.ownerRole} · source {m.source}
                         {m.completedAt && (
                           <>
@@ -427,7 +427,7 @@ export function TransactionTimeline(props: Props) {
                     </div>
                     <div className="flex items-baseline gap-2 text-sm">
                       <span className="font-medium">{fmt(m.dueAt)}</span>
-                      <span className="text-xs text-neutral-500">
+                      <span className="text-xs text-text-muted">
                         {rel(m.dueAt)}
                       </span>
                     </div>
@@ -456,7 +456,7 @@ export function TransactionTimeline(props: Props) {
                               completedAt: new Date().toISOString(),
                             })
                           }
-                          className="rounded border border-neutral-300 bg-white px-1.5 py-0.5 hover:border-emerald-500 hover:text-emerald-700"
+                          className="rounded border border-border-strong bg-surface px-1.5 py-0.5 hover:border-emerald-500 hover:text-emerald-700"
                         >
                           Mark complete
                         </button>
@@ -466,7 +466,7 @@ export function TransactionTimeline(props: Props) {
                           onClick={() =>
                             updateMilestone(m.id, { completedAt: null })
                           }
-                          className="rounded border border-neutral-300 bg-white px-1.5 py-0.5 hover:border-neutral-500"
+                          className="rounded border border-border-strong bg-surface px-1.5 py-0.5 hover:border-border-strong"
                         >
                           Un-complete
                         </button>
@@ -474,7 +474,7 @@ export function TransactionTimeline(props: Props) {
                       <button
                         type="button"
                         onClick={() => setEditId(m.id)}
-                        className="text-neutral-500 hover:text-neutral-900"
+                        className="text-text-muted hover:text-text"
                       >
                         Edit
                       </button>
@@ -486,7 +486,7 @@ export function TransactionTimeline(props: Props) {
           })}
         </ul>
         {items.length === 1 && (
-          <p className="mt-4 text-sm text-neutral-500">
+          <p className="mt-4 text-sm text-text-muted">
             No milestones yet. Add one manually, or apply a contract to
             generate the timeline automatically.
           </p>
@@ -521,18 +521,18 @@ function EditRow({
         type="text"
         value={label}
         onChange={(e) => setLabel(e.target.value)}
-        className="rounded border border-neutral-300 px-2 py-1 text-sm"
+        className="rounded border border-border-strong px-2 py-1 text-sm"
       />
       <input
         type="date"
         value={dueAt}
         onChange={(e) => setDueAt(e.target.value)}
-        className="rounded border border-neutral-300 px-2 py-1 text-sm"
+        className="rounded border border-border-strong px-2 py-1 text-sm"
       />
       <select
         value={ownerRole}
         onChange={(e) => setOwnerRole(e.target.value)}
-        className="rounded border border-neutral-300 bg-white px-2 py-1 text-sm"
+        className="rounded border border-border-strong bg-surface px-2 py-1 text-sm"
       >
         {OWNER_CHOICES.map((o) => (
           <option key={o} value={o}>
@@ -543,7 +543,7 @@ function EditRow({
       <button
         type="button"
         onClick={() => onSave({ label, dueAt, ownerRole })}
-        className="rounded bg-neutral-900 px-2 py-1 text-xs font-medium text-white hover:bg-neutral-800"
+        className="rounded bg-brand-600 px-2 py-1 text-xs font-medium text-white hover:bg-brand-500"
       >
         Save
       </button>
@@ -551,14 +551,14 @@ function EditRow({
         <button
           type="button"
           onClick={onClose}
-          className="text-neutral-500 hover:text-neutral-900"
+          className="text-text-muted hover:text-text"
         >
           Cancel
         </button>
         <button
           type="button"
           onClick={onDelete}
-          className="text-neutral-400 hover:text-red-600"
+          className="text-text-subtle hover:text-red-600"
         >
           Delete
         </button>

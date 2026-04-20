@@ -52,13 +52,13 @@ export function CalendarSyncButton({
         type="button"
         onClick={onClick}
         disabled={disabled}
-        className="rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs font-medium text-neutral-700 transition hover:border-neutral-500 disabled:cursor-not-allowed disabled:opacity-50"
+        className="rounded-md border border-border-strong bg-surface px-2.5 py-1 text-xs font-medium text-text transition hover:border-border-strong disabled:cursor-not-allowed disabled:opacity-50"
       >
         {busy ? "Syncing…" : "📅 Sync to Calendar"}
       </button>
       {msg && (
         <span
-          className={`text-[10px] ${isError ? "text-red-600" : "text-neutral-500"}`}
+          className={`text-[10px] ${isError ? "text-red-600" : "text-text-muted"}`}
         >
           {msg}
         </span>

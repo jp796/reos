@@ -113,10 +113,10 @@ export function ForwardingPanel(props: Props) {
   }
 
   return (
-    <section className="mt-6 rounded-lg border border-neutral-200 bg-white p-4">
+    <section className="mt-6 rounded-md border border-border bg-surface p-4">
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-sm font-medium">Transaction Email Forwarding</h2>
-        <span className="text-xs text-neutral-500">
+        <span className="text-xs text-text-muted">
           Auto-upload PDFs to Dotloop / Rezen / SkySlope via their
           per-deal ingest email
         </span>
@@ -125,13 +125,13 @@ export function ForwardingPanel(props: Props) {
       {editing || !savedEmail ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-[180px_1fr_auto]">
           <div>
-            <label className="mb-1 block text-xs text-neutral-500">
+            <label className="mb-1 block text-xs text-text-muted">
               Platform
             </label>
             <select
               value={provider}
               onChange={(e) => setProvider(e.target.value)}
-              className="w-full rounded border border-neutral-300 bg-white px-2 py-1.5 text-sm"
+              className="w-full rounded border border-border-strong bg-surface px-2 py-1.5 text-sm"
             >
               {PROVIDERS.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -141,7 +141,7 @@ export function ForwardingPanel(props: Props) {
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs text-neutral-500">
+            <label className="mb-1 block text-xs text-text-muted">
               Transaction email
             </label>
             <input
@@ -149,7 +149,7 @@ export function ForwardingPanel(props: Props) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="e.g. 2406e10thst-t@rezenfilecabinet.com"
-              className="w-full rounded border border-neutral-300 bg-white px-2 py-1.5 text-sm"
+              className="w-full rounded border border-border-strong bg-surface px-2 py-1.5 text-sm"
               autoComplete="off"
             />
           </div>
@@ -158,7 +158,7 @@ export function ForwardingPanel(props: Props) {
               type="button"
               onClick={save}
               disabled={saving}
-              className="rounded bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+              className="rounded bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
             >
               {saving ? "Saving…" : "Save"}
             </button>
@@ -169,7 +169,7 @@ export function ForwardingPanel(props: Props) {
                   setEditing(false);
                   setEmail(props.initialEmail ?? "");
                 }}
-                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm"
+                className="rounded border border-border-strong bg-surface px-3 py-1.5 text-sm"
               >
                 Cancel
               </button>
@@ -179,16 +179,16 @@ export function ForwardingPanel(props: Props) {
       ) : (
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-sm">
-            <span className="text-neutral-500">Uploading to </span>
-            <span className="rounded bg-neutral-100 px-1.5 py-0.5 font-mono text-xs">
+            <span className="text-text-muted">Uploading to </span>
+            <span className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-xs">
               {savedEmail}
             </span>
             {props.initialProvider && (
-              <span className="ml-2 text-xs text-neutral-500">
+              <span className="ml-2 text-xs text-text-muted">
                 via {props.initialProvider}
               </span>
             )}
-            <span className="ml-2 text-xs text-neutral-500">
+            <span className="ml-2 text-xs text-text-muted">
               · last run {fmtDate(props.initialLastRunAt)}
             </span>
           </div>
@@ -202,14 +202,14 @@ export function ForwardingPanel(props: Props) {
                   ? "Create a SmartFolder first so we know which emails to forward"
                   : undefined
               }
-              className="rounded bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+              className="rounded bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
             >
               {forwarding ? "Forwarding…" : "Forward new PDFs"}
             </button>
             <button
               type="button"
               onClick={() => setEditing(true)}
-              className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm"
+              className="rounded border border-border-strong bg-surface px-3 py-1.5 text-sm"
             >
               Edit
             </button>

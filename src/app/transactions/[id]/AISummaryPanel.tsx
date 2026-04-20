@@ -57,16 +57,16 @@ export function AISummaryPanel({
   }
 
   return (
-    <section className="mt-8 rounded-lg border border-neutral-200 bg-gradient-to-br from-neutral-50 to-white p-4">
+    <section className="mt-8 rounded-md border border-border bg-gradient-to-br from-neutral-50 to-white p-4">
       <div className="flex items-baseline justify-between">
         <h2 className="text-lg font-medium">AI summary</h2>
-        <div className="flex items-center gap-3 text-xs text-neutral-500">
+        <div className="flex items-center gap-3 text-xs text-text-muted">
           {summary && <span>updated {fmtRelative(updatedAt)}</span>}
           <button
             type="button"
             onClick={regenerate}
             disabled={busy || isPending}
-            className="rounded border border-neutral-300 bg-white px-2 py-1 font-medium text-neutral-700 hover:border-neutral-500 disabled:opacity-50"
+            className="rounded border border-border-strong bg-surface px-2 py-1 font-medium text-text hover:border-border-strong disabled:opacity-50"
           >
             {busy ? "Thinking…" : summary ? "Regenerate" : "Generate"}
           </button>
@@ -80,11 +80,11 @@ export function AISummaryPanel({
       )}
 
       {summary ? (
-        <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-neutral-800">
+        <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-text">
           {summary}
         </p>
       ) : (
-        <p className="mt-3 text-sm text-neutral-500">
+        <p className="mt-3 text-sm text-text-muted">
           No AI summary yet. Click Generate to have Atlas write a status brief
           from this transaction&apos;s milestones, tasks, risk factors, and
           recent Gmail threads.

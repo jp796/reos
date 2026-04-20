@@ -55,14 +55,14 @@ export function PendingMatchesPanel() {
 
   if (loading && items === null) {
     return (
-      <div className="mt-8 rounded-lg border border-neutral-200 bg-white p-4 text-sm text-neutral-500">
+      <div className="mt-8 rounded-md border border-border bg-surface p-4 text-sm text-text-muted">
         Loading pending matches…
       </div>
     );
   }
   if (error) {
     return (
-      <div className="mt-8 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+      <div className="mt-8 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
         {error}
       </div>
     );
@@ -76,7 +76,7 @@ export function PendingMatchesPanel() {
           Needs review ·{" "}
           <span className="text-amber-700">{items.length}</span>
         </h2>
-        <span className="text-xs text-neutral-500">
+        <span className="text-xs text-text-muted">
           Title-company emails with no automatic contact match
         </span>
       </div>
@@ -210,10 +210,10 @@ function PendingMatchRow({
   return (
     <div
       ref={boxRef}
-      className="rounded-lg border border-amber-200 bg-amber-50/40 p-4"
+      className="rounded-md border border-amber-200 bg-amber-50/40 p-4"
     >
-      <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-500">
-        <span className="rounded bg-white px-1.5 py-0.5 font-mono">
+      <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
+        <span className="rounded bg-surface px-1.5 py-0.5 font-mono">
           {match.matchedDomain ?? "?"}
         </span>
         <span>·</span>
@@ -226,28 +226,28 @@ function PendingMatchRow({
         )}
       </div>
       <div className="mt-1 text-sm font-medium">{match.subject}</div>
-      <div className="mt-0.5 text-xs text-neutral-500">
+      <div className="mt-0.5 text-xs text-text-muted">
         From: {match.fromEmail}
       </div>
       {(match.extractedBuyer ||
         match.extractedSeller ||
         match.extractedAddress) && (
-        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-700">
+        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-text">
           {match.extractedBuyer && (
             <span>
-              <span className="text-neutral-500">Buyer:</span>{" "}
+              <span className="text-text-muted">Buyer:</span>{" "}
               <span className="font-medium">{match.extractedBuyer}</span>
             </span>
           )}
           {match.extractedSeller && (
             <span>
-              <span className="text-neutral-500">Seller:</span>{" "}
+              <span className="text-text-muted">Seller:</span>{" "}
               <span className="font-medium">{match.extractedSeller}</span>
             </span>
           )}
           {match.extractedAddress && (
             <span>
-              <span className="text-neutral-500">Address:</span>{" "}
+              <span className="text-text-muted">Address:</span>{" "}
               <span className="font-medium">{match.extractedAddress}</span>
             </span>
           )}
@@ -266,10 +266,10 @@ function PendingMatchRow({
             onFocus={() => setShowHits(true)}
             placeholder="Search contact by name or email…"
             disabled={disabled}
-            className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm disabled:opacity-50"
+            className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm disabled:opacity-50"
           />
           {showHits && hits.length > 0 && (
-            <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-md border border-neutral-200 bg-white shadow-lg">
+            <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-md border border-border bg-surface shadow-lg">
               {hits.map((h) => (
                 <button
                   key={h.id}
@@ -279,10 +279,10 @@ function PendingMatchRow({
                     assign(h);
                   }}
                   disabled={disabled}
-                  className="block w-full px-3 py-2 text-left text-sm hover:bg-neutral-50"
+                  className="block w-full px-3 py-2 text-left text-sm hover:bg-surface-2"
                 >
                   <div className="font-medium">{h.fullName}</div>
-                  <div className="text-xs text-neutral-500">
+                  <div className="text-xs text-text-muted">
                     {h.primaryEmail ?? "no email"}
                     {h.sourceName && ` · ${h.sourceName}`}
                   </div>
@@ -295,7 +295,7 @@ function PendingMatchRow({
           type="button"
           onClick={ignore}
           disabled={disabled}
-          className="rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+          className="rounded-md border border-border-strong bg-surface px-3 py-2 text-sm text-text hover:bg-surface-2 disabled:opacity-50"
         >
           Ignore
         </button>
