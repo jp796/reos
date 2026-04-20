@@ -25,9 +25,15 @@
  */
 
 import { DocumentExtractionService } from "./DocumentExtractionService";
+import { spawn } from "child_process";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "fs/promises";
+import { tmpdir } from "os";
+import path from "path";
 
 const MODEL = "gpt-4o-mini";
+const VISION_MODEL = "gpt-4o"; // vision requires full 4o, not mini
 const MAX_TEXT_CHARS = 24_000; // contracts are usually 10-20 pages / ~20k chars
+const MAX_VISION_PAGES = 12; // cap image uploads per contract to hold cost down
 
 export interface ContractExtractionField<T = string> {
   value: T | null;
@@ -140,10 +146,112 @@ const SCHEMA_HINT = `{
 export class ContractExtractionService {
   constructor(private readonly openaiApiKey: string) {}
 
-  async extract(buffer: Buffer): Promise<ContractExtraction> {
+  /**
+   * Main entry point. Tries text extraction first; if the text layer
+   * looks "thin" (i.e. filled form values weren't baked in — the
+   * Dotloop / DocuSign flattened-to-graphics case), falls back to
+   * GPT-4o Vision on rendered page images.
+   *
+   * Returns the extraction plus which path ran, for audit.
+   */
+  async extract(
+    buffer: Buffer,
+  ): Promise<ContractExtraction & { _path: "text" | "vision" | "merged" }> {
     const text = await new DocumentExtractionService().extractText(buffer);
-    if (!text) throw new Error("contract: empty text layer");
-    return this.extractFromText(text);
+    if (!text) {
+      const v = await this.extractWithVision(buffer);
+      return { ...v, _path: "vision" };
+    }
+
+    const thin = looksThin(text);
+    const textExtraction = await this.extractFromText(text);
+
+    if (!thin) {
+      return { ...textExtraction, _path: "text" };
+    }
+
+    // Thin text → Vision, then merge (prefer Vision values where
+    // confidence is higher).
+    try {
+      const visionExtraction = await this.extractWithVision(buffer);
+      const merged = mergeByConfidence(textExtraction, visionExtraction);
+      return { ...merged, _path: "merged" };
+    } catch (err) {
+      // Vision conversion/call failed — return what we got from text
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`vision fallback failed: ${msg}`);
+      return { ...textExtraction, _path: "text" };
+    }
+  }
+
+  /**
+   * Render the PDF to PNG pages and feed them to GPT-4o Vision
+   * alongside the same schema. Used when the text layer is thin
+   * (e.g. Dotloop / DocuSign-flattened PDFs where filled values
+   * are burned into graphics).
+   */
+  async extractWithVision(buffer: Buffer): Promise<ContractExtraction> {
+    // Shell out to pdftoppm (poppler) to render PNG pages. This
+    // avoids the pdfjs-dist version conflict we'd hit trying to
+    // run pdf-parse and an npm pdf-to-image library in the same
+    // Node process.
+    const pngBuffers = await renderPdfToPngs(buffer, MAX_VISION_PAGES);
+    if (pngBuffers.length === 0) throw new Error("vision: pdf->png yielded 0 pages");
+
+    const imageContent = pngBuffers.map((b) => ({
+      type: "image_url" as const,
+      image_url: {
+        url: `data:image/png;base64,${b.toString("base64")}`,
+        detail: "high" as const,
+      },
+    }));
+
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.openaiApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: VISION_MODEL,
+        temperature: 0,
+        response_format: { type: "json_object" },
+        max_tokens: 2000,
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `This is a signed contract PDF rendered as ${pngBuffers.length} images (pages 1..${pngBuffers.length}). Extract the fields per the schema below. Filled form values may appear as handwritten-style overlays over the underlying template. Read the OVERLAID values (what's filled in), not the template labels.
+
+Return JSON matching this schema:
+${SCHEMA_HINT}`,
+              },
+              ...imageContent,
+            ],
+          },
+        ],
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`OpenAI vision ${res.status}: ${body.slice(0, 300)}`);
+    }
+    const data = (await res.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const raw = data.choices?.[0]?.message?.content?.trim();
+    if (!raw) throw new Error("OpenAI vision returned empty body");
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new Error(`OpenAI vision non-JSON: ${raw.slice(0, 200)}`);
+    }
+    return normalize(parsed);
   }
 
   async extractFromText(text: string): Promise<ContractExtraction> {
@@ -193,6 +301,112 @@ ${SCHEMA_HINT}`;
     }
     return normalize(parsed);
   }
+}
+
+/**
+ * Render a PDF buffer to PNG pages using pdftoppm (poppler). Requires
+ * `pdftoppm` on the PATH -- preinstalled on macOS via Homebrew
+ * (comes with poppler) and present on most Linux distros.
+ *
+ * Dev note: we shell out instead of using an npm pdfjs-wrapper so
+ * we don't collide with the pdfjs-dist bundled inside pdf-parse v2
+ * (global worker-version conflict).
+ */
+async function renderPdfToPngs(
+  buffer: Buffer,
+  maxPages: number,
+): Promise<Buffer[]> {
+  const dir = await mkdtemp(path.join(tmpdir(), "reos-pdf-"));
+  const pdfPath = path.join(dir, "in.pdf");
+  const outPrefix = path.join(dir, "page");
+  try {
+    await writeFile(pdfPath, buffer);
+    await new Promise<void>((resolve, reject) => {
+      const proc = spawn(
+        "pdftoppm",
+        [
+          "-png",
+          "-r",
+          "150",
+          "-l",
+          String(maxPages),
+          pdfPath,
+          outPrefix,
+        ],
+        { stdio: "ignore" },
+      );
+      proc.on("error", reject);
+      proc.on("exit", (code) =>
+        code === 0
+          ? resolve()
+          : reject(new Error(`pdftoppm exited with code ${code}`)),
+      );
+    });
+    const files = (await readdir(dir))
+      .filter((f) => f.startsWith("page-") && f.endsWith(".png"))
+      .sort();
+    const out: Buffer[] = [];
+    for (const f of files.slice(0, maxPages)) {
+      out.push(await readFile(path.join(dir, f)));
+    }
+    return out;
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/**
+ * Heuristic: does the extracted text contain enough filled-in content
+ * to run purely-textual extraction, or should we fall back to Vision?
+ *
+ * A Dotloop/DocuSign-flattened contract will have lots of placeholder
+ * patterns ($________ with nothing filled). A properly baked-in
+ * contract will have dollar amounts like "$317,000.00" present.
+ */
+function looksThin(text: string): boolean {
+  const placeholderCount = (text.match(/[_]{5,}/g) ?? []).length;
+  const dollarFilled = (text.match(/\$[\s]?[\d,]{3,}(?:\.\d{2})?/g) ?? []).length;
+  const longDates = (text.match(/(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4}/g) ?? []).length;
+  const numericDates = (text.match(/\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/g) ?? []).length;
+  const dateHits = longDates + numericDates;
+  const ratio = placeholderCount / Math.max(1, dollarFilled + dateHits);
+
+  // Thresholds tuned against WY WAR (flattened values baked into text,
+  // ratio ~0.5) vs MO RES-2000 (Dotloop-flattened, ratio 10+):
+  // - Very high placeholder-to-filled ratio => Vision
+  // - Very few filled values at all => Vision
+  if (placeholderCount >= 10 && ratio >= 4) return true;
+  if (dollarFilled === 0 && dateHits <= 3 && placeholderCount >= 5) return true;
+  if (dollarFilled === 0 && dateHits === 0) return true;
+  return false;
+}
+
+/**
+ * When both text and vision extractions ran, keep whichever field
+ * value has higher confidence. Ties go to vision (more likely to
+ * have seen actual filled values).
+ */
+function mergeByConfidence(
+  t: ContractExtraction,
+  v: ContractExtraction,
+): ContractExtraction {
+  const keys = Object.keys(t) as Array<keyof ContractExtraction>;
+  const out = {} as ContractExtraction;
+  for (const k of keys) {
+    if (k === "notes") {
+      (out as unknown as { notes: string | null }).notes = v.notes ?? t.notes;
+      continue;
+    }
+    const tf = t[k] as ContractExtractionField<unknown>;
+    const vf = v[k] as ContractExtractionField<unknown>;
+    // prefer non-null; if both present, prefer higher confidence (tie → vision)
+    const pick =
+      vf.value !== null && (tf.value === null || vf.confidence >= tf.confidence)
+        ? vf
+        : tf;
+    (out as unknown as Record<string, unknown>)[k] = pick;
+  }
+  return out;
 }
 
 function asField<T = string>(v: unknown): ContractExtractionField<T> {

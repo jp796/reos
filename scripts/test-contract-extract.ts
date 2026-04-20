@@ -13,10 +13,13 @@ async function main() {
 
   const buf = readFileSync(p);
   const svc = new ContractExtractionService(process.env.OPENAI_API_KEY);
+  const forceVision = process.argv.includes("--vision");
   const started = Date.now();
-  const r = await svc.extract(buf);
+  const r = forceVision
+    ? { ...(await svc.extractWithVision(buf)), _path: "vision" as const }
+    : await svc.extract(buf);
   const ms = Date.now() - started;
-  console.log(`Extracted in ${ms}ms\n`);
+  console.log(`Extracted in ${ms}ms via path=${r._path}\n`);
 
   const rows: Array<[string, string]> = [];
   const fmt = (v: unknown) =>
