@@ -12,10 +12,20 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
+import { getEncryptionService } from "@/lib/encryption";
+import {
+  GoogleOAuthService,
+  DEFAULT_SCOPES,
+} from "@/services/integrations/GoogleOAuthService";
+import {
+  GmailService,
+  EmailTransactionMatchingService,
+} from "@/services/integrations/GmailService";
 import {
   FollowUpBossService,
   AutomationAuditService,
 } from "@/services/integrations/FollowUpBossService";
+import { autoPopulateFinancials } from "@/services/core/FinancialsAutoPopulate";
 
 interface RowResult {
   id: string;
@@ -40,10 +50,55 @@ export async function POST() {
   });
 
   const audit = new AutomationAuditService(prisma);
+
+  // Build a single Gmail client once — shared across all rows for auto-
+  // populating financials from SS attachments. If Google isn't connected,
+  // the helper falls back gracefully.
+  let gmail: GmailService | null = null;
+  const account = await prisma.account.findFirst({
+    select: { id: true, googleOauthTokensEncrypted: true },
+  });
+  if (
+    account?.googleOauthTokensEncrypted &&
+    env.GOOGLE_CLIENT_ID &&
+    env.GOOGLE_CLIENT_SECRET &&
+    env.GOOGLE_REDIRECT_URI
+  ) {
+    try {
+      const oauth = new GoogleOAuthService(
+        {
+          clientId: env.GOOGLE_CLIENT_ID,
+          clientSecret: env.GOOGLE_CLIENT_SECRET,
+          redirectUri: env.GOOGLE_REDIRECT_URI,
+          scopes: DEFAULT_SCOPES,
+        },
+        prisma,
+        getEncryptionService(),
+      );
+      const auth = await oauth.createAuthenticatedClient(account.id);
+      gmail = new GmailService(
+        account.id,
+        auth,
+        {
+          labelPrefix: "REOS/",
+          autoOrganizeThreads: false,
+          extractAttachments: true,
+          batchSize: 10,
+          rateLimitDelayMs: 100,
+        },
+        prisma,
+        new EmailTransactionMatchingService(),
+      );
+    } catch (err) {
+      console.warn("Gmail unavailable for bulk-apply financials:", err);
+    }
+  }
+
   const results: RowResult[] = [];
   let applied = 0;
   let skipped = 0;
   let errored = 0;
+  let financialsPopulated = 0;
 
   for (const row of pending) {
     const txn = await prisma.transaction.findUnique({
@@ -104,15 +159,24 @@ export async function POST() {
     );
 
     try {
-      await fub.updatePersonClosingDate(
-        txn.contact.fubPersonId,
-        row.extractedDate,
-        {
-          reason: "bulk_ss_reconcile_apply",
-          transactionId: txn.id,
-          previousDate: row.previousDate,
-        },
-      );
+      // Closing-date push is best-effort (FUB doesn't accept dealCloseDate
+      // as a writable field on /people for all accounts).
+      try {
+        await fub.updatePersonClosingDate(
+          txn.contact.fubPersonId,
+          row.extractedDate,
+          {
+            reason: "bulk_ss_reconcile_apply",
+            transactionId: txn.id,
+            previousDate: row.previousDate,
+          },
+        );
+      } catch (err) {
+        console.warn(
+          `dealCloseDate push failed for ${contactName} (continuing):`,
+          err instanceof Error ? err.message : String(err),
+        );
+      }
 
       if (row.proposedStage) {
         try {
@@ -146,6 +210,21 @@ export async function POST() {
       });
 
       applied++;
+
+      // Best-effort financials populate — never blocks the core apply.
+      try {
+        const r = await autoPopulateFinancials(prisma, gmail, audit, {
+          accountId: row.accountId,
+          transactionId: row.transactionId,
+          threadId: row.threadId,
+          attachmentId: row.attachmentId,
+          side: (row.side as "buy" | "sell" | null) ?? null,
+        });
+        if (r.populated) financialsPopulated++;
+      } catch (err) {
+        console.warn(`financials auto-populate failed for ${contactName}:`, err);
+      }
+
       results.push({
         id: row.id,
         contactName,
@@ -170,6 +249,7 @@ export async function POST() {
     applied,
     skipped,
     errored,
+    financialsPopulated,
     results,
   });
 }

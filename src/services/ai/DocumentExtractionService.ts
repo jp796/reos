@@ -60,6 +60,16 @@ export interface SettlementParties {
   fileNumber?: string;
 }
 
+export interface FinancialsExtraction {
+  salePrice?: number;
+  grossCommission?: number;
+  commissionInferredHalf?: boolean;
+  /** Stored-referral-on-the-SS signal, e.g. "less Referral $3,750" */
+  referralEmbedded?: number;
+  snippets: string[];
+  anchors: string[];
+}
+
 export interface ClosingDateExtraction {
   date: Date;
   /** 0–1 confidence */
@@ -185,6 +195,123 @@ export class DocumentExtractionService {
       .replace(/\s+/g, " ")
       .trim();
     return { date: parsed, snippet };
+  }
+
+  /**
+   * Pull sale price + gross commission (+ optional embedded-referral
+   * deduction) from a Settlement Statement buffer. Side-aware: tries the
+   * side-specific commission line first, falls back to the combined
+   * line halved.
+   */
+  async extractFinancials(
+    buffer: Buffer,
+    side?: "buy" | "sell" | null,
+  ): Promise<FinancialsExtraction | null> {
+    const text = await this.extractText(buffer);
+    if (!text) return null;
+    return this.financialsFromText(text, side);
+  }
+
+  financialsFromText(
+    text: string,
+    side?: "buy" | "sell" | null,
+  ): FinancialsExtraction {
+    const out: FinancialsExtraction = { snippets: [], anchors: [] };
+
+    const toNum = (s: string): number | undefined => {
+      const cleaned = s.replace(/[,$\s]/g, "");
+      const n = parseFloat(cleaned);
+      return Number.isFinite(n) ? n : undefined;
+    };
+
+    const snippetAround = (idx: number, len: number) => {
+      const start = Math.max(0, idx - 40);
+      const end = Math.min(text.length, idx + len + 60);
+      return text
+        .slice(start, end)
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 240);
+    };
+
+    const first = (res: RegExp[], anchorName: string): number | undefined => {
+      for (const re of res) {
+        const m = re.exec(text);
+        if (!m) continue;
+        const n = toNum(m[1]);
+        if (n && n > 0) {
+          out.anchors.push(anchorName);
+          out.snippets.push(snippetAround(m.index, m[0].length));
+          return n;
+        }
+      }
+      return undefined;
+    };
+
+    // --- Sale price
+    const SALE_PRICE_RES = [
+      /Contract\s+Sales\s+Price[:\s\.]+\$?([\d,]+\.?\d*)/i,
+      /Sales?\s+Price[:\s\.]+\$?([\d,]+\.?\d*)/i,
+      /Purchase\s+Price[:\s\.]+\$?([\d,]+\.?\d*)/i,
+    ];
+    const salePrice = first(SALE_PRICE_RES, "sale_price");
+    if (salePrice) out.salePrice = salePrice;
+
+    // --- Gross commission — side-specific first
+    const BUY_COMM_RES = [
+      /Commission\s+to\s+Selling\s+Agent[:\s\.]+\$?([\d,]+\.?\d*)/i,
+      /Selling\s+Broker['\u2019]?s?\s+Commission[:\s\.]+\$?([\d,]+\.?\d*)/i,
+      /Commission\s+to\s+Buyer['\u2019]?s?\s+Agent[:\s\.]+\$?([\d,]+\.?\d*)/i,
+      /Buyer['\u2019]?s?\s+Agent\s+Commission[:\s\.]+\$?([\d,]+\.?\d*)/i,
+    ];
+    const SELL_COMM_RES = [
+      /Commission\s+to\s+Listing\s+Agent[:\s\.]+\$?([\d,]+\.?\d*)/i,
+      /Listing\s+Broker['\u2019]?s?\s+Commission[:\s\.]+\$?([\d,]+\.?\d*)/i,
+      /Listing\s+Agent\s+Commission[:\s\.]+\$?([\d,]+\.?\d*)/i,
+    ];
+    const COMBINED_COMM_RES = [
+      /Total\s+Real\s+Estate\s+(?:Brokers?\s+)?Commission[:\s\.]+\$?([\d,]+\.?\d*)/i,
+      /Real\s+Estate\s+Commission[:\s\.]+\$?([\d,]+\.?\d*)/i,
+      /Broker['\u2019]?s?\s+Commission[:\s\.]+\$?([\d,]+\.?\d*)/i,
+    ];
+    // ALTA parenthetical note style: "(Note: Commission amount $6747.50.)"
+    // This is the side-specific commission paid to the agent on this SS.
+    const NOTE_COMM_RES = [
+      /Commission\s+amount[:\s\.]*\$?([\d,]+\.?\d*)/i,
+      /Agent\s+Commission[:\s\.]*\$?([\d,]+\.?\d*)/i,
+    ];
+
+    let gross: number | undefined;
+    if (side === "buy") gross = first(BUY_COMM_RES, "commission_buy_side");
+    else if (side === "sell") gross = first(SELL_COMM_RES, "commission_sell_side");
+    if (!gross) {
+      // Try both side-specific, prefer whichever matches
+      gross =
+        first(BUY_COMM_RES, "commission_buy_fallback") ??
+        first(SELL_COMM_RES, "commission_sell_fallback");
+    }
+    if (!gross) {
+      // ALTA parenthetical note — side-specific (this is the agent's commission on this SS)
+      gross = first(NOTE_COMM_RES, "commission_note");
+    }
+    if (!gross) {
+      const combined = first(COMBINED_COMM_RES, "commission_combined");
+      if (combined) {
+        gross = combined / 2;
+        out.commissionInferredHalf = true;
+      }
+    }
+    if (gross) out.grossCommission = gross;
+
+    // --- Embedded referral deduction ("less Referral $3,750")
+    const REF_EMBED_RES = [
+      /less\s+Referral(?:\s+to\s+[A-Za-z0-9\s.&-]+)?[:\s\.]+\$?([\d,]+\.?\d*)/i,
+      /Referral\s+(?:Fee|Paid|Out)[:\s\.]+\$?([\d,]+\.?\d*)/i,
+    ];
+    const embeddedRef = first(REF_EMBED_RES, "referral_embedded");
+    if (embeddedRef) out.referralEmbedded = embeddedRef;
+
+    return out;
   }
 
   /**

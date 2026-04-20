@@ -97,7 +97,7 @@ export function PendingClosingUpdatesPanel() {
         return;
       }
       setBulkMsg(
-        `Bulk apply: ${data.applied} applied · ${data.skipped} local-only · ${data.errored} errored`,
+        `Bulk apply: ${data.applied} applied · ${data.financialsPopulated ?? 0} financials auto-filled · ${data.skipped} local-only · ${data.errored} errored`,
       );
       await load();
       startTransition(() => router.refresh());

@@ -9,10 +9,20 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
+import { getEncryptionService } from "@/lib/encryption";
+import {
+  GoogleOAuthService,
+  DEFAULT_SCOPES,
+} from "@/services/integrations/GoogleOAuthService";
+import {
+  GmailService,
+  EmailTransactionMatchingService,
+} from "@/services/integrations/GmailService";
 import {
   FollowUpBossService,
   AutomationAuditService,
 } from "@/services/integrations/FollowUpBossService";
+import { autoPopulateFinancials } from "@/services/core/FinancialsAutoPopulate";
 
 export async function POST(
   _req: NextRequest,
@@ -59,6 +69,8 @@ export async function POST(
       prisma,
       audit,
     );
+    // FUB doesn't expose dealCloseDate as a writable field on /people —
+    // best-effort push; non-fatal.
     try {
       await fub.updatePersonClosingDate(
         txn.contact.fubPersonId,
@@ -71,12 +83,9 @@ export async function POST(
       );
       fubDateUpdated = true;
     } catch (err) {
-      console.error("FUB closing-date update failed:", err);
-      return NextResponse.json(
-        {
-          error: err instanceof Error ? err.message : "FUB update failed",
-        },
-        { status: 500 },
+      console.warn(
+        "FUB closing-date update failed (continuing with stage + local):",
+        err instanceof Error ? err.message : String(err),
       );
     }
 
@@ -114,11 +123,67 @@ export async function POST(
     data: { status: "applied", appliedAt: new Date() },
   });
 
+  // Auto-populate financials from the SS attachment (best-effort; failures
+  // never block the core Apply).
+  let financialsResult: Awaited<ReturnType<typeof autoPopulateFinancials>> = {
+    attempted: false,
+    populated: false,
+  };
+  try {
+    const account = await prisma.account.findUnique({
+      where: { id: row.accountId },
+      select: { id: true, googleOauthTokensEncrypted: true },
+    });
+    let gmail: GmailService | null = null;
+    if (
+      account?.googleOauthTokensEncrypted &&
+      env.GOOGLE_CLIENT_ID &&
+      env.GOOGLE_CLIENT_SECRET &&
+      env.GOOGLE_REDIRECT_URI
+    ) {
+      const oauth = new GoogleOAuthService(
+        {
+          clientId: env.GOOGLE_CLIENT_ID,
+          clientSecret: env.GOOGLE_CLIENT_SECRET,
+          redirectUri: env.GOOGLE_REDIRECT_URI,
+          scopes: DEFAULT_SCOPES,
+        },
+        prisma,
+        getEncryptionService(),
+      );
+      const auth = await oauth.createAuthenticatedClient(row.accountId);
+      gmail = new GmailService(
+        row.accountId,
+        auth,
+        {
+          labelPrefix: "REOS/",
+          autoOrganizeThreads: false,
+          extractAttachments: true,
+          batchSize: 10,
+          rateLimitDelayMs: 100,
+        },
+        prisma,
+        new EmailTransactionMatchingService(),
+      );
+    }
+    const audit = new AutomationAuditService(prisma);
+    financialsResult = await autoPopulateFinancials(prisma, gmail, audit, {
+      accountId: row.accountId,
+      transactionId: row.transactionId,
+      threadId: row.threadId,
+      attachmentId: row.attachmentId,
+      side: (row.side as "buy" | "sell" | null) ?? null,
+    });
+  } catch (err) {
+    console.warn("Financials auto-populate failed:", err);
+  }
+
   return NextResponse.json({
     ok: true,
     fubDateUpdated,
     fubStageUpdated,
     newClosingDate: row.extractedDate.toISOString(),
     newStage: row.proposedStage ?? null,
+    financials: financialsResult,
   });
 }
