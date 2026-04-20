@@ -5,6 +5,7 @@ import { CalendarSyncButton } from "../CalendarSyncButton";
 import { FinancialsForm } from "./FinancialsForm";
 import { AISummaryPanel } from "./AISummaryPanel";
 import { SmartFolderSection } from "./SmartFolderSection";
+import { ContractUploadPanel } from "./ContractUploadPanel";
 import { SMART_FOLDER_CUTOFF } from "@/services/automation/SmartFolderService";
 import {
   RiskScoringService,
@@ -197,6 +198,15 @@ export default async function TransactionDetailPage({
           )}
         </div>
       </section>
+
+      <ContractUploadPanel
+        transactionId={txn.id}
+        initialExtraction={
+          (txn.pendingContractJson as unknown as
+            | Record<string, unknown>
+            | null) ?? null
+        }
+      />
 
       <SmartFolderSection
         transactionId={txn.id}

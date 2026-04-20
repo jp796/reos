@@ -130,6 +130,10 @@ model Transaction {
   smartFolderFilterId    String?   @map("smart_folder_filter_id")
   smartFolderSetupAt     DateTime? @map("smart_folder_setup_at")
   smartFolderBackfillCount Int?    @map("smart_folder_backfill_count")
+  // Contract extraction: pending review + last applied timestamp
+  pendingContractJson    Json?     @map("pending_contract_json")
+  contractExtractedAt    DateTime? @map("contract_extracted_at")
+  contractAppliedAt      DateTime? @map("contract_applied_at")
   createdAt              DateTime  @default(now()) @map("created_at")
   updatedAt              DateTime  @updatedAt @map("updated_at")
 
