@@ -1,99 +1,93 @@
 import Link from "next/link";
+import {
+  Sparkles,
+  LineChart,
+  Wallet,
+  Receipt,
+  Users,
+  ArrowRight,
+} from "lucide-react";
+
+const TILES: Array<{
+  href: string;
+  label: string;
+  hint: string;
+  icon: typeof Sparkles;
+}> = [
+  {
+    href: "/today",
+    label: "Today",
+    hint: "What needs your attention right now",
+    icon: Sparkles,
+  },
+  {
+    href: "/transactions",
+    label: "Transactions",
+    hint: "Active deals, milestones, timeline",
+    icon: Wallet,
+  },
+  {
+    href: "/production",
+    label: "Production",
+    hint: "YTD closings, volume, GCI, net",
+    icon: LineChart,
+  },
+  {
+    href: "/sources",
+    label: "Sources",
+    hint: "CAC, ROI, conversion per channel",
+    icon: Receipt,
+  },
+  {
+    href: "/marketing",
+    label: "Marketing",
+    hint: "Log spend per source channel",
+    icon: Receipt,
+  },
+  {
+    href: "/contacts",
+    label: "Contacts",
+    hint: "All contacts synced from FUB",
+    icon: Users,
+  },
+];
 
 export default function HomePage() {
   return (
-    <main className="mx-auto max-w-3xl px-6 py-16">
-      <h1 className="text-4xl font-semibold tracking-tight">
-        Real Estate OS
-      </h1>
-      <p className="mt-4 text-neutral-600">
-        Private AI transaction chief of staff. Scaffold running; dashboards
-        ship in Phase 2.
-      </p>
+    <main className="mx-auto max-w-6xl">
+      <header className="mb-10">
+        <div className="reos-label">Welcome back</div>
+        <h1 className="mt-1 font-display text-display-lg font-semibold">
+          Real Estate OS
+        </h1>
+        <p className="mt-2 max-w-2xl text-sm text-text-muted">
+          Your private AI chief of staff. FUB + Gmail + Calendar + document
+          intelligence — one surface, every deal.
+        </p>
+      </header>
 
-      <nav className="mt-8 flex flex-wrap gap-2">
-        <Link
-          href="/today"
-          className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800"
-        >
-          Today →
-        </Link>
-        <Link
-          href="/production"
-          className="rounded-md border border-neutral-200 bg-white px-4 py-2 text-sm font-medium hover:border-neutral-400"
-        >
-          Production →
-        </Link>
-        <Link
-          href="/sources"
-          className="rounded-md border border-neutral-200 bg-white px-4 py-2 text-sm font-medium hover:border-neutral-400"
-        >
-          Sources →
-        </Link>
-        <Link
-          href="/marketing"
-          className="rounded-md border border-neutral-200 bg-white px-4 py-2 text-sm font-medium hover:border-neutral-400"
-        >
-          Marketing →
-        </Link>
-        <Link
-          href="/transactions"
-          className="rounded-md border border-neutral-200 bg-white px-4 py-2 text-sm font-medium hover:border-neutral-400"
-        >
-          Transactions →
-        </Link>
-        <Link
-          href="/contacts"
-          className="rounded-md border border-neutral-200 bg-white px-4 py-2 text-sm font-medium hover:border-neutral-400"
-        >
-          Contacts →
-        </Link>
-      </nav>
-
-      <section className="mt-10 rounded-lg border border-neutral-200 bg-white p-6">
-        <h2 className="text-lg font-medium">Foundation status</h2>
-        <ul className="mt-4 space-y-2 text-sm text-neutral-700">
-          <li>
-            <code className="rounded bg-neutral-100 px-1.5 py-0.5">
-              /api/health
-            </code>{" "}
-            — service liveness
-          </li>
-          <li>
-            <code className="rounded bg-neutral-100 px-1.5 py-0.5">
-              /api/auth/google
-            </code>{" "}
-            — initiate Google OAuth (Gmail + Calendar)
-          </li>
-          <li>
-            <code className="rounded bg-neutral-100 px-1.5 py-0.5">
-              /api/integrations/fub/webhook
-            </code>{" "}
-            — Follow Up Boss webhook receiver
-          </li>
-        </ul>
-      </section>
-
-      <section className="mt-6 rounded-lg border border-neutral-200 bg-white p-6">
-        <h2 className="text-lg font-medium">Next steps</h2>
-        <ol className="mt-4 list-decimal space-y-2 pl-5 text-sm text-neutral-700">
-          <li>
-            <code>cp .env.example .env.local</code> and fill in
-            <code className="mx-1">ENCRYPTION_KEY</code>,
-            <code className="mx-1">GOOGLE_*</code>,
-            <code className="mx-1">FUB_API_KEY</code>.
-          </li>
-          <li>
-            <code>docker compose up -d</code> to start local Postgres.
-          </li>
-          <li>
-            <code>pnpm db:migrate</code> to create the schema.
-          </li>
-          <li>
-            <code>pnpm db:seed</code> to create your account row.
-          </li>
-          <li>Connect Google, then Follow Up Boss, from Settings (Phase 2 UI).</li>
-        </ol>
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {TILES.map(({ href, label, hint, icon: Icon }) => (
+          <Link
+            key={href}
+            href={href}
+            className="group flex items-start justify-between rounded-md border border-border bg-surface p-5 shadow-sm transition-colors hover:border-brand-500"
+          >
+            <div className="flex items-start gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-brand-50 text-brand-700">
+                <Icon className="h-4.5 w-4.5" strokeWidth={1.8} />
+              </span>
+              <div>
+                <div className="font-medium text-text">{label}</div>
+                <div className="mt-0.5 text-xs text-text-muted">{hint}</div>
+              </div>
+            </div>
+            <ArrowRight
+              className="mt-1 h-4 w-4 text-text-subtle transition-transform group-hover:translate-x-0.5 group-hover:text-brand-600"
+              strokeWidth={1.8}
+            />
+          </Link>
+        ))}
       </section>
     </main>
   );

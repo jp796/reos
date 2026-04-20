@@ -46,12 +46,12 @@ function fmtMoney(n: number | null | undefined) {
 
 function statusBadge(status: string) {
   const map: Record<string, string> = {
-    active: "bg-emerald-100 text-emerald-800",
-    pending: "bg-amber-100 text-amber-800",
-    closed: "bg-neutral-200 text-neutral-700",
-    dead: "bg-red-100 text-red-800",
+    active: "bg-brand-50 text-brand-700 ring-brand-200",
+    pending: "bg-accent-100 text-accent-600 ring-accent-200",
+    closed: "bg-surface-2 text-text-muted ring-border",
+    dead: "bg-red-50 text-danger ring-red-200",
   };
-  return `rounded-full px-2 py-0.5 text-xs font-medium ${map[status] ?? "bg-neutral-100 text-neutral-700"}`;
+  return `inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ${map[status] ?? "bg-surface-2 text-text-muted ring-border"}`;
 }
 
 function msStatusTone(ms: {
@@ -103,35 +103,31 @@ export default async function TransactionDetailPage({
   const health = riskHealth(risk.score);
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-10">
-      <nav className="mb-6 text-sm text-neutral-500">
-        <Link href="/" className="hover:text-neutral-900">
-          ← Home
-        </Link>
-        <span className="mx-2 text-neutral-300">·</span>
-        <Link href="/transactions" className="hover:text-neutral-900">
+    <main className="mx-auto max-w-6xl">
+      <nav className="mb-5 text-sm text-text-muted">
+        <Link href="/transactions" className="hover:text-text">
           Transactions
         </Link>
+        <span className="mx-2 text-text-subtle">/</span>
+        <span className="text-text">{contact.fullName}</span>
       </nav>
 
       {/* Header */}
-      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-neutral-200 pb-5">
+      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-6">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className={statusBadge(txn.status)}>{txn.status}</span>
-            <span className="text-xs uppercase tracking-wide text-neutral-500">
-              {txn.transactionType}
-            </span>
+            <span className="reos-label">{txn.transactionType}</span>
             {txn.stageName && (
-              <span className="text-xs text-neutral-500">
+              <span className="text-xs text-text-muted">
                 · FUB: {txn.stageName}
               </span>
             )}
           </div>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">
+          <h1 className="mt-2 font-display text-display-md font-semibold">
             {contact.fullName}
           </h1>
-          <p className="mt-0.5 text-sm text-neutral-600">
+          <p className="mt-0.5 text-sm text-text-muted">
             {txn.propertyAddress ?? "No property address yet"}
             {(txn.city || txn.state) && (
               <>
@@ -172,16 +168,18 @@ export default async function TransactionDetailPage({
       {/* Risk */}
       <section className="mt-6">
         <div
-          className={`rounded-lg border p-4 ${riskHealthTone(health)}`}
+          className={`rounded-md border p-4 ${riskHealthTone(health)}`}
         >
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-xs uppercase tracking-wide opacity-70">
+              <div className="reos-label opacity-80">
                 Risk · {health}
               </div>
-              <div className="mt-0.5 text-2xl font-semibold">
+              <div className="mt-1 font-display text-display-md font-semibold">
                 {risk.score}
-                <span className="text-sm font-normal opacity-60">/100</span>
+                <span className="ml-1 font-sans text-sm font-normal opacity-60">
+                  / 100
+                </span>
               </div>
             </div>
             <div className="text-right text-sm">
@@ -193,7 +191,9 @@ export default async function TransactionDetailPage({
               {risk.factors.map((f, i) => (
                 <li key={i} className="flex items-start justify-between gap-3">
                   <span>{f.description}</span>
-                  <span className="shrink-0 opacity-70">+{f.impact}</span>
+                  <span className="shrink-0 opacity-70 tabular-nums">
+                    +{f.impact}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -402,7 +402,7 @@ export default async function TransactionDetailPage({
       )}
 
       {/* Footer */}
-      <footer className="mt-10 border-t border-neutral-200 pt-4 text-xs text-neutral-500">
+      <footer className="mt-10 border-t border-border pt-4 text-xs text-text-subtle">
         Transaction {txn.id} · Created {fmtDate(txn.createdAt)} · Last synced{" "}
         {fmtDate(txn.lastSyncedAt)}
       </footer>
@@ -413,10 +413,8 @@ export default async function TransactionDetailPage({
 function Fact({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
-      <div className="text-xs uppercase tracking-wide text-neutral-500">
-        {label}
-      </div>
-      <div className="mt-0.5 text-sm text-neutral-900">{value}</div>
+      <div className="reos-label">{label}</div>
+      <div className="mt-1 text-sm text-text">{value}</div>
     </div>
   );
 }

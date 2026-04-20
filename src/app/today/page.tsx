@@ -151,38 +151,25 @@ export default async function TodayPage() {
   const contactCount = Number(counts[0]?.total_contacts ?? 0);
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-10">
-      <nav className="mb-6 flex items-center gap-4 text-sm text-neutral-500">
-        <Link href="/" className="hover:text-neutral-900">
-          Home
-        </Link>
-        <span className="text-neutral-300">·</span>
-        <Link href="/production" className="hover:text-neutral-900">
-          Production
-        </Link>
-        <span className="text-neutral-300">·</span>
-        <Link href="/contacts" className="hover:text-neutral-900">
-          Contacts
-        </Link>
-        <span className="text-neutral-300">·</span>
-        <Link href="/transactions" className="hover:text-neutral-900">
-          Transactions
-        </Link>
-      </nav>
-
+    <main className="mx-auto max-w-6xl">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Today</h1>
-          <p className="mt-1 text-sm text-neutral-600">
-            What needs your attention right now · {activeCount} active ·{" "}
-            {closedCount} closed · {contactCount.toLocaleString()} contacts
+          <h1 className="font-display text-display-lg font-semibold">Today</h1>
+          <p className="mt-1 text-sm text-text-muted">
+            What needs your attention right now ·{" "}
+            <span className="tabular-nums">{activeCount}</span> active ·{" "}
+            <span className="tabular-nums">{closedCount}</span> closed ·{" "}
+            <span className="tabular-nums">
+              {contactCount.toLocaleString()}
+            </span>{" "}
+            contacts
           </p>
         </div>
         <ReconcileSSButton />
       </header>
 
-      {/* Quick-stats strip */}
-      <section className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {/* KPI strip */}
+      <section className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat
           label="Overdue"
           value={overdueMilestones.length}
@@ -374,17 +361,17 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="mt-8">
-      <div className="mb-2 flex items-end justify-between">
+    <section className="mt-10">
+      <div className="mb-3 flex items-end justify-between">
         <div>
-          <h2 className="text-lg font-medium">
+          <h2 className="text-h2 font-semibold">
             {title}
             {typeof count === "number" && count > 0 && (
-              <span className="ml-2 text-neutral-500">· {count}</span>
+              <span className="ml-2 font-normal text-text-muted">· {count}</span>
             )}
           </h2>
           {subtitle && (
-            <p className="mt-0.5 text-xs text-neutral-500">{subtitle}</p>
+            <p className="mt-0.5 text-xs text-text-muted">{subtitle}</p>
           )}
         </div>
       </div>
@@ -395,7 +382,7 @@ function Section({
 
 function Empty({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-md border border-dashed border-neutral-200 p-4 text-center text-sm text-neutral-500">
+    <div className="rounded-md border border-dashed border-border p-4 text-center text-sm text-text-muted">
       {children}
     </div>
   );
@@ -413,14 +400,16 @@ function Stat({
   href?: string;
 }) {
   const toneMap = {
-    red: "text-red-700 border-red-200 bg-red-50",
-    amber: "text-amber-800 border-amber-200 bg-amber-50",
-    neutral: "text-neutral-700 border-neutral-200 bg-white",
+    red: "text-danger border-red-200 bg-red-50/60 dark:bg-red-950/30",
+    amber: "text-accent-500 border-accent-200 bg-accent-100/40 dark:bg-accent-100/50",
+    neutral: "text-text border-border bg-surface",
   };
   const content = (
-    <div className={`rounded-lg border p-3 ${toneMap[tone]}`}>
-      <div className="text-xs uppercase tracking-wide opacity-70">{label}</div>
-      <div className="mt-0.5 text-2xl font-semibold">
+    <div
+      className={`rounded-md border p-4 shadow-sm transition-colors hover:border-border-strong ${toneMap[tone]}`}
+    >
+      <div className="reos-label opacity-80">{label}</div>
+      <div className="mt-2 font-display text-display-md font-semibold tabular-nums">
         {value.toLocaleString()}
       </div>
     </div>

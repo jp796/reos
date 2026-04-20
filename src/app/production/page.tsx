@@ -179,41 +179,29 @@ export default async function ProductionPage({
   });
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-10">
-      <nav className="mb-6 flex items-center gap-4 text-sm text-neutral-500">
-        <Link href="/" className="hover:text-neutral-900">
-          Home
-        </Link>
-        <span className="text-neutral-300">·</span>
-        <Link href="/today" className="hover:text-neutral-900">
-          Today
-        </Link>
-        <span className="text-neutral-300">·</span>
-        <Link href="/transactions" className="hover:text-neutral-900">
-          Transactions
-        </Link>
-      </nav>
-
+    <main className="mx-auto max-w-6xl">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">
-            Production · {year}
+          <div className="reos-label">Production</div>
+          <h1 className="mt-1 font-display text-display-lg font-semibold tabular-nums">
+            {year}
           </h1>
-          <p className="mt-1 text-sm text-neutral-600">
-            YTD closings, volume, GCI, net · {allTimeClosed} closed all-time ·{" "}
-            {pendingActive} open
+          <p className="mt-1 text-sm text-text-muted">
+            YTD closings, volume, GCI, net ·{" "}
+            <span className="tabular-nums">{allTimeClosed}</span> closed all-time
+            · <span className="tabular-nums">{pendingActive}</span> open
           </p>
         </div>
         <div className="flex items-center gap-1 text-sm">
           <Link
             href={`/production?year=${year - 1}`}
-            className="rounded border border-neutral-200 px-2 py-1 hover:border-neutral-400"
+            className="rounded-md border border-border bg-surface px-2.5 py-1 text-text-muted hover:border-border-strong hover:text-text"
           >
             ← {year - 1}
           </Link>
           <Link
             href={`/production?year=${year + 1}`}
-            className="rounded border border-neutral-200 px-2 py-1 hover:border-neutral-400"
+            className="rounded-md border border-border bg-surface px-2.5 py-1 text-text-muted hover:border-border-strong hover:text-text"
           >
             {year + 1} →
           </Link>
@@ -400,12 +388,14 @@ function Stat({
 }) {
   const t =
     tone === "amber"
-      ? "border-amber-200 bg-amber-50 text-amber-900"
-      : "border-neutral-200 bg-white text-neutral-900";
+      ? "border-accent-200 bg-accent-100/40 dark:bg-accent-100/50 text-accent-500"
+      : "border-border bg-surface text-text";
   return (
-    <div className={`rounded-lg border p-3 ${t}`}>
-      <div className="text-xs uppercase tracking-wide opacity-70">{label}</div>
-      <div className="mt-0.5 text-xl font-semibold">{value}</div>
+    <div className={`rounded-md border p-4 shadow-sm ${t}`}>
+      <div className="reos-label opacity-80">{label}</div>
+      <div className="mt-2 font-display text-display-md font-semibold tabular-nums">
+        {value}
+      </div>
     </div>
   );
 }
