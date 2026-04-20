@@ -202,21 +202,143 @@ export class DocumentExtractionService {
    * deduction) from a Settlement Statement buffer. Side-aware: tries the
    * side-specific commission line first, falls back to the combined
    * line halved.
+   *
+   * If the text layer is thin (scanned PDF / image-only), optionally
+   * falls back to GPT-4o Vision for OCR-based extraction.
    */
   async extractFinancials(
     buffer: Buffer,
     side?: "buy" | "sell" | null,
+    visionOpts?: { openaiApiKey?: string },
   ): Promise<FinancialsExtraction | null> {
     const text = await this.extractText(buffer);
-    if (!text) return null;
-    return this.financialsFromText(text, side);
+    const textExtraction = text ? this.financialsFromText(text, side) : null;
+
+    const thin =
+      !text ||
+      text.length < 200 ||
+      (textExtraction &&
+        !textExtraction.salePrice &&
+        !textExtraction.grossCommission);
+
+    if (thin && visionOpts?.openaiApiKey) {
+      try {
+        const v = await this.financialsViaVision(
+          buffer,
+          side,
+          visionOpts.openaiApiKey,
+        );
+        if (v) return mergeFin(textExtraction, v);
+      } catch (err) {
+        console.warn(
+          "SS financials vision fallback failed:",
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+
+    return textExtraction;
+  }
+
+  /**
+   * GPT-4o Vision extraction for scanned SS PDFs. Renders page images
+   * via pdftoppm (reused pattern from ContractExtractionService) and
+   * asks the model for the same fields the regex extractor produces.
+   */
+  async financialsViaVision(
+    buffer: Buffer,
+    side: "buy" | "sell" | null | undefined,
+    openaiApiKey: string,
+  ): Promise<FinancialsExtraction | null> {
+    const { renderPdfForVision } = await import("./PdfRender");
+    const pngBuffers = await renderPdfForVision(buffer, 6);
+    if (pngBuffers.length === 0) return null;
+
+    const sys = `You are a real estate financials extractor. Given a Settlement Statement PDF (ALTA / HUD-1 / Closing Disclosure) rendered as images, return JSON with these fields:
+
+{
+  "salePrice":          number or null,
+  "grossCommission":    number or null (the side-specific commission TO THE AGENT; prefer the line matching the transaction side "${side ?? "unknown"}"),
+  "referralEmbedded":   number or null (any "Referral Fee" or "less Referral" deduction visible on the statement)
+}
+
+Rules:
+- "side=sell" means look for the LISTING-AGENT commission line (the line going to the agent representing the seller).
+- "side=buy" means look for the SELLING-AGENT / BUYER-AGENT commission line (the line going to the agent representing the buyer).
+- When a broker-compensation line and a referral-fee line both appear for the same side, return the BROKER line as grossCommission and the referral amount as referralEmbedded.
+- Numbers are raw (e.g. 317000 not "$317,000.00").
+- Return only JSON. No prose.`;
+
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${openaiApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        temperature: 0,
+        response_format: { type: "json_object" },
+        max_tokens: 400,
+        messages: [
+          { role: "system", content: sys },
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `Settlement Statement rendered as ${pngBuffers.length} page image(s). Extract the financial fields.`,
+              },
+              ...pngBuffers.map((b) => ({
+                type: "image_url" as const,
+                image_url: {
+                  url: `data:image/png;base64,${b.toString("base64")}`,
+                  detail: "high" as const,
+                },
+              })),
+            ],
+          },
+        ],
+      }),
+    });
+    if (!res.ok) {
+      throw new Error(
+        `SS vision ${res.status}: ${(await res.text()).slice(0, 200)}`,
+      );
+    }
+    const data = (await res.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const raw = data.choices?.[0]?.message?.content?.trim();
+    if (!raw) return null;
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+    const num = (v: unknown) => (typeof v === "number" && v > 0 ? v : undefined);
+    return {
+      snippets: ["(vision-extracted)"],
+      anchors: ["vision"],
+      salePrice: num(parsed.salePrice),
+      grossCommission: num(parsed.grossCommission),
+      referralEmbedded: num(parsed.referralEmbedded),
+    };
   }
 
   financialsFromText(
-    text: string,
+    rawText: string,
     side?: "buy" | "sell" | null,
   ): FinancialsExtraction {
     const out: FinancialsExtraction = { snippets: [], anchors: [] };
+
+    // Qualia/Flying S PDFs (and some First American ones) strip
+    // ligatures in their text layer leaving \u0000 nulls mid-word,
+    // e.g. "Lis\u0000ng" for "Listing". Strip those + control chars
+    // and collapse runs of whitespace so anchor regexes match.
+    // eslint-disable-next-line no-control-regex
+    const text = rawText.replace(/\u0000/g, "").replace(/[\u0001-\u001F]/g, " ");
 
     const toNum = (s: string): number | undefined => {
       const cleaned = s.replace(/[,$\s]/g, "");
@@ -248,34 +370,45 @@ export class DocumentExtractionService {
       return undefined;
     };
 
-    // --- Sale price
+    // --- Sale price. Qualia/Flying S uses "Sale Price of Property";
+    // ALTA/First American uses "Sale Price" or "Purchase Price".
+    // Label may be followed by any characters before the amount.
     const SALE_PRICE_RES = [
-      /Contract\s+Sales\s+Price[:\s\.]+\$?([\d,]+\.?\d*)/i,
-      /Sales?\s+Price[:\s\.]+\$?([\d,]+\.?\d*)/i,
-      /Purchase\s+Price[:\s\.]+\$?([\d,]+\.?\d*)/i,
+      /Contract\s+Sales\s+Price[^$\d]{0,40}\$?([\d,]+\.\d{2})/i,
+      /Sale\s+Price\s+of\s+Property[^$\d]{0,40}\$?([\d,]+\.\d{2})/i,
+      /Sales?\s+Price[^$\d]{0,40}\$?([\d,]+\.\d{2})/i,
+      /Purchase\s+Price[^$\d]{0,40}\$?([\d,]+\.\d{2})/i,
     ];
     const salePrice = first(SALE_PRICE_RES, "sale_price");
     if (salePrice) out.salePrice = salePrice;
 
-    // --- Gross commission — side-specific first
+    // --- Gross commission — side-specific first.
+    // Labels vary: "Listing Agent Commission to Real Broker, LLC $X",
+    // "Real Estate Broker Compensation to Real Broker, LLC $X", etc.
+    // The pattern accepts any broker-name text between the label and
+    // the dollar amount.
     const BUY_COMM_RES = [
-      /Commission\s+to\s+Selling\s+Agent[:\s\.]+\$?([\d,]+\.?\d*)/i,
-      /Selling\s+Broker['\u2019]?s?\s+Commission[:\s\.]+\$?([\d,]+\.?\d*)/i,
-      /Commission\s+to\s+Buyer['\u2019]?s?\s+Agent[:\s\.]+\$?([\d,]+\.?\d*)/i,
-      /Buyer['\u2019]?s?\s+Agent\s+Commission[:\s\.]+\$?([\d,]+\.?\d*)/i,
+      /Commission\s+to\s+Selling\s+Agent[^$\d]{0,80}\$?([\d,]+\.\d{2})/i,
+      /Selling\s+Agent\s+Commission\s+to\s+[^\n$]{1,80}?\$?([\d,]+\.\d{2})/i,
+      /Selling\s+Broker['\u2019]?s?\s+Commission[^$\d]{0,80}\$?([\d,]+\.\d{2})/i,
+      /Commission\s+to\s+Buyer['\u2019]?s?\s+Agent[^$\d]{0,80}\$?([\d,]+\.\d{2})/i,
+      /Buyer['\u2019]?s?\s+Agent\s+Commission[^$\d]{0,80}\$?([\d,]+\.\d{2})/i,
     ];
+    // Note on Lis(ti)?ng: Qualia + some Adobe-generated PDFs strip
+    // the "ti" ligature from their text layer, leaving "Listing"
+    // rendered as "Lisng". We accept either form.
     const SELL_COMM_RES = [
-      /Commission\s+to\s+Listing\s+Agent[:\s\.]+\$?([\d,]+\.?\d*)/i,
-      /Listing\s+Broker['\u2019]?s?\s+Commission[:\s\.]+\$?([\d,]+\.?\d*)/i,
-      /Listing\s+Agent\s+Commission[:\s\.]+\$?([\d,]+\.?\d*)/i,
+      /Commission\s+to\s+Lis(?:ti)?ng\s+Agent[^$\d]{0,80}\$?([\d,]+\.\d{2})/i,
+      /Lis(?:ti)?ng\s+Agent\s+Commission\s+to\s+[^\n$]{1,80}?\$?([\d,]+\.\d{2})/i,
+      /Lis(?:ti)?ng\s+Broker['\u2019]?s?\s+Commission[^$\d]{0,80}\$?([\d,]+\.\d{2})/i,
     ];
     const COMBINED_COMM_RES = [
-      /Total\s+Real\s+Estate\s+(?:Brokers?\s+)?Commission[:\s\.]+\$?([\d,]+\.?\d*)/i,
-      /Real\s+Estate\s+Commission[:\s\.]+\$?([\d,]+\.?\d*)/i,
-      /Broker['\u2019]?s?\s+Commission[:\s\.]+\$?([\d,]+\.?\d*)/i,
+      /Total\s+Real\s+Estate\s+(?:Brokers?\s+)?Commission[^$\d]{0,80}\$?([\d,]+\.\d{2})/i,
+      /Real\s+Estate\s+Broker\s+Compensation\s+to\s+[^\n$]{1,80}?\$?([\d,]+\.\d{2})/i,
+      /Real\s+Estate\s+Commission[^$\d]{0,80}\$?([\d,]+\.\d{2})/i,
+      /Broker['\u2019]?s?\s+Commission[^$\d]{0,80}\$?([\d,]+\.\d{2})/i,
     ];
     // ALTA parenthetical note style: "(Note: Commission amount $6747.50.)"
-    // This is the side-specific commission paid to the agent on this SS.
     const NOTE_COMM_RES = [
       /Commission\s+amount[:\s\.]*\$?([\d,]+\.?\d*)/i,
       /Agent\s+Commission[:\s\.]*\$?([\d,]+\.?\d*)/i,
@@ -303,9 +436,13 @@ export class DocumentExtractionService {
     }
     if (gross) out.grossCommission = gross;
 
-    // --- Embedded referral deduction ("less Referral $3,750")
+    // --- Embedded referral ("Referral Fee to FastExpert, Inc. $2,377.50"
+    // or "less Referral $3,750"). When present, this is the authoritative
+    // referral amount — overrides any configured referral-agreement
+    // percentage for this specific deal.
     const REF_EMBED_RES = [
       /less\s+Referral(?:\s+to\s+[A-Za-z0-9\s.&-]+)?[:\s\.]+\$?([\d,]+\.?\d*)/i,
+      /Referral\s+Fee\s+to\s+[A-Za-z0-9\s.,&()'\-]{1,60}?\$?([\d,]+\.\d{2})/i,
       /Referral\s+(?:Fee|Paid|Out)[:\s\.]+\$?([\d,]+\.?\d*)/i,
     ];
     const embeddedRef = first(REF_EMBED_RES, "referral_embedded");
@@ -391,6 +528,24 @@ export class DocumentExtractionService {
     }
     return null;
   }
+}
+
+/** Merge two FinancialsExtractions: non-null fields from the vision
+ * extraction win unless the text extraction already has a number. */
+function mergeFin(
+  t: FinancialsExtraction | null,
+  v: FinancialsExtraction,
+): FinancialsExtraction {
+  if (!t) return v;
+  return {
+    snippets: [...(t.snippets ?? []), ...(v.snippets ?? [])],
+    anchors: [...(t.anchors ?? []), ...(v.anchors ?? [])],
+    salePrice: t.salePrice ?? v.salePrice,
+    grossCommission: t.grossCommission ?? v.grossCommission,
+    commissionInferredHalf:
+      t.commissionInferredHalf ?? v.commissionInferredHalf,
+    referralEmbedded: t.referralEmbedded ?? v.referralEmbedded,
+  };
 }
 
 // ==================================================

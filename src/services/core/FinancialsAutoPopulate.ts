@@ -122,6 +122,7 @@ export async function autoPopulateFinancials(
   const extraction = await new DocumentExtractionService().extractFinancials(
     buffer,
     args.side,
+    { openaiApiKey: process.env.OPENAI_API_KEY },
   );
   if (!extraction || (!extraction.salePrice && !extraction.grossCommission)) {
     await audit.logAction({
@@ -143,24 +144,33 @@ export async function autoPopulateFinancials(
   // Look up referral
   const agreement = lookupReferralForSource(txn.contact.sourceName, agreements);
 
+  // Embedded referral from the SS trumps the agreement default
+  // (deal-specific rate may differ from the universal agreement).
+  // Also, when the SS has BOTH a broker-line AND a separate referral-line,
+  // the true gross-to-brokerage is broker + referral (since the seller
+  // actually paid both from the gross commission pool).
+  let gross = extraction.grossCommission ?? null;
   let referralFeeAmount: number | undefined;
   let referralFeePercent: number | undefined;
-  if (agreement && extraction.grossCommission) {
-    const ref = computeReferral(
-      extraction.grossCommission,
-      agreement.referralPercent,
-    );
+
+  if (extraction.referralEmbedded && gross !== null) {
+    referralFeeAmount = extraction.referralEmbedded;
+    gross = Math.round((gross + extraction.referralEmbedded) * 100) / 100;
+    if (extraction.salePrice && gross > 0) {
+      referralFeePercent =
+        Math.round((extraction.referralEmbedded / gross) * 10000) / 10000;
+    }
+  } else if (agreement && gross !== null) {
+    const ref = computeReferral(gross, agreement.referralPercent);
     referralFeeAmount = ref.amount;
     referralFeePercent = agreement.referralPercent;
   } else if (extraction.referralEmbedded) {
-    // SS itself deducted a referral — honor that number even with no agreement
     referralFeeAmount = extraction.referralEmbedded;
   }
 
   // Compute net (gross − referral − brokerage split − marketing)
   const brokerageSplit = txn.financials?.brokerageSplitAmount ?? 0;
   const marketing = txn.financials?.marketingCostAllocated ?? 0;
-  const gross = extraction.grossCommission ?? null;
   const net =
     gross !== null
       ? Math.round(

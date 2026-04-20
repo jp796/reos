@@ -25,10 +25,7 @@
  */
 
 import { DocumentExtractionService } from "./DocumentExtractionService";
-import { spawn } from "child_process";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "fs/promises";
-import { tmpdir } from "os";
-import path from "path";
+import { renderPdfForVision } from "./PdfRender";
 
 const MODEL = "gpt-4o-mini";
 const VISION_MODEL = "gpt-4o"; // vision requires full 4o, not mini
@@ -191,11 +188,7 @@ export class ContractExtractionService {
    * are burned into graphics).
    */
   async extractWithVision(buffer: Buffer): Promise<ContractExtraction> {
-    // Shell out to pdftoppm (poppler) to render PNG pages. This
-    // avoids the pdfjs-dist version conflict we'd hit trying to
-    // run pdf-parse and an npm pdf-to-image library in the same
-    // Node process.
-    const pngBuffers = await renderPdfToPngs(buffer, MAX_VISION_PAGES);
+    const pngBuffers = await renderPdfForVision(buffer, MAX_VISION_PAGES);
     if (pngBuffers.length === 0) throw new Error("vision: pdf->png yielded 0 pages");
 
     const imageContent = pngBuffers.map((b) => ({
@@ -300,58 +293,6 @@ ${SCHEMA_HINT}`;
       throw new Error(`OpenAI returned non-JSON: ${raw.slice(0, 200)}`);
     }
     return normalize(parsed);
-  }
-}
-
-/**
- * Render a PDF buffer to PNG pages using pdftoppm (poppler). Requires
- * `pdftoppm` on the PATH -- preinstalled on macOS via Homebrew
- * (comes with poppler) and present on most Linux distros.
- *
- * Dev note: we shell out instead of using an npm pdfjs-wrapper so
- * we don't collide with the pdfjs-dist bundled inside pdf-parse v2
- * (global worker-version conflict).
- */
-async function renderPdfToPngs(
-  buffer: Buffer,
-  maxPages: number,
-): Promise<Buffer[]> {
-  const dir = await mkdtemp(path.join(tmpdir(), "reos-pdf-"));
-  const pdfPath = path.join(dir, "in.pdf");
-  const outPrefix = path.join(dir, "page");
-  try {
-    await writeFile(pdfPath, buffer);
-    await new Promise<void>((resolve, reject) => {
-      const proc = spawn(
-        "pdftoppm",
-        [
-          "-png",
-          "-r",
-          "150",
-          "-l",
-          String(maxPages),
-          pdfPath,
-          outPrefix,
-        ],
-        { stdio: "ignore" },
-      );
-      proc.on("error", reject);
-      proc.on("exit", (code) =>
-        code === 0
-          ? resolve()
-          : reject(new Error(`pdftoppm exited with code ${code}`)),
-      );
-    });
-    const files = (await readdir(dir))
-      .filter((f) => f.startsWith("page-") && f.endsWith(".png"))
-      .sort();
-    const out: Buffer[] = [];
-    for (const f of files.slice(0, maxPages)) {
-      out.push(await readFile(path.join(dir, f)));
-    }
-    return out;
-  } finally {
-    await rm(dir, { recursive: true, force: true }).catch(() => {});
   }
 }
 
