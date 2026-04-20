@@ -6,6 +6,7 @@ import { FinancialsForm } from "./FinancialsForm";
 import { AISummaryPanel } from "./AISummaryPanel";
 import { SmartFolderSection } from "./SmartFolderSection";
 import { ContractUploadPanel } from "./ContractUploadPanel";
+import { ForwardingPanel } from "./ForwardingPanel";
 import { SMART_FOLDER_CUTOFF } from "@/services/automation/SmartFolderService";
 import {
   RiskScoringService,
@@ -198,6 +199,14 @@ export default async function TransactionDetailPage({
           )}
         </div>
       </section>
+
+      <ForwardingPanel
+        transactionId={txn.id}
+        initialEmail={txn.forwardingEmail}
+        initialProvider={txn.forwardingEmailProvider}
+        initialLastRunAt={txn.forwardingLastRunAt?.toISOString() ?? null}
+        smartFolderReady={!!txn.smartFolderFilterId}
+      />
 
       <ContractUploadPanel
         transactionId={txn.id}

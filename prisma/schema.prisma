@@ -40,6 +40,7 @@ model Account {
   automationAuditLogs       AutomationAuditLog[]
   pendingEmailMatches       PendingEmailMatch[]
   pendingClosingDateUpdates PendingClosingDateUpdate[]
+  forwardedDocuments        ForwardedDocument[]
 
   @@map("accounts")
 }
@@ -134,6 +135,10 @@ model Transaction {
   pendingContractJson    Json?     @map("pending_contract_json")
   contractExtractedAt    DateTime? @map("contract_extracted_at")
   contractAppliedAt      DateTime? @map("contract_applied_at")
+  // External transaction-management forwarding (Dotloop, Rezen, SkySlope)
+  forwardingEmail        String?   @map("forwarding_email")
+  forwardingEmailProvider String?  @map("forwarding_email_provider") // "dotloop", "rezen", "skyslope", "other"
+  forwardingLastRunAt    DateTime? @map("forwarding_last_run_at")
   createdAt              DateTime  @default(now()) @map("created_at")
   updatedAt              DateTime  @updatedAt @map("updated_at")
 
@@ -148,6 +153,7 @@ model Transaction {
   automationAuditLogs AutomationAuditLog[]
   attributions        TransactionAttribution[]
   financials          TransactionFinancials?
+  forwardedDocuments  ForwardedDocument[]
 
   @@index([accountId])
   @@index([contactId, status], map: "idx_transactions_contact_status")
@@ -475,6 +481,27 @@ model PendingClosingDateUpdate {
   @@index([accountId, status])
   @@index([detectedAt])
   @@map("pending_closing_date_updates")
+}
+
+/// Dedupe table for documents we've already forwarded to an external
+/// transaction-management system (Dotloop, Rezen, etc.), so a re-run
+/// doesn't email the same PDF twice.
+model ForwardedDocument {
+  id            String   @id @default(cuid())
+  accountId     String   @map("account_id")
+  transactionId String   @map("transaction_id")
+  messageId     String   @map("message_id")
+  attachmentId  String   @map("attachment_id")
+  filename      String
+  toEmail       String   @map("to_email")
+  forwardedAt   DateTime @default(now()) @map("forwarded_at")
+
+  account     Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@unique([transactionId, messageId, attachmentId], map: "uniq_forwarded_doc")
+  @@index([accountId, forwardedAt])
+  @@map("forwarded_documents")
 }
 
 model TransactionFinancials {

@@ -20,6 +20,7 @@ export const GOOGLE_SCOPES = {
   GMAIL_READONLY: "https://www.googleapis.com/auth/gmail.readonly",
   GMAIL_MODIFY: "https://www.googleapis.com/auth/gmail.modify",
   GMAIL_COMPOSE: "https://www.googleapis.com/auth/gmail.compose",
+  GMAIL_SEND: "https://www.googleapis.com/auth/gmail.send",
   GMAIL_SETTINGS_BASIC: "https://www.googleapis.com/auth/gmail.settings.basic",
   CALENDAR_READONLY: "https://www.googleapis.com/auth/calendar.readonly",
   CALENDAR_MODIFY: "https://www.googleapis.com/auth/calendar",
@@ -33,6 +34,7 @@ export const DEFAULT_SCOPES: string[] = [
   GOOGLE_SCOPES.GMAIL_READONLY,
   GOOGLE_SCOPES.GMAIL_MODIFY,
   GOOGLE_SCOPES.GMAIL_SETTINGS_BASIC, // SmartFolder — create Gmail filters
+  GOOGLE_SCOPES.GMAIL_SEND, // TxnForwarding — auto-upload docs to Dotloop/Rezen/etc.
   GOOGLE_SCOPES.CALENDAR_MODIFY,
   GOOGLE_SCOPES.USER_INFO_EMAIL,
   GOOGLE_SCOPES.USER_INFO_PROFILE,

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { ScanButton } from "./ScanButton";
+import { EarnestMoneyScanButton } from "./EarnestMoneyScanButton";
 import { PendingMatchesPanel } from "./PendingMatchesPanel";
 import { PendingClosingUpdatesPanel } from "./PendingClosingUpdatesPanel";
 import { CalendarSyncButton } from "./CalendarSyncButton";
@@ -65,7 +66,10 @@ export default async function TransactionsPage() {
             title-company emails during a Gmail scan
           </p>
         </div>
-        <ScanButton />
+        <div className="flex flex-col items-end gap-2">
+          <ScanButton />
+          <EarnestMoneyScanButton />
+        </div>
       </div>
 
       <PendingMatchesPanel />
