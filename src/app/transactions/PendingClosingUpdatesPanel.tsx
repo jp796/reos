@@ -74,6 +74,27 @@ export function PendingClosingUpdatesPanel() {
     }
   }
 
+  async function dedupe() {
+    try {
+      const res = await fetch(
+        "/api/automation/pending-closing-updates/dedupe",
+        { method: "POST" },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setErr(data.error ?? res.statusText);
+        return;
+      }
+      setBulkMsg(
+        `Dedupe: kept ${data.kept} · superseded ${data.superseded}`,
+      );
+      await load();
+      startTransition(() => router.refresh());
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "dedupe failed");
+    }
+  }
+
   async function bulkApplyAll() {
     const count = items?.length ?? 0;
     if (count === 0) return;
@@ -128,6 +149,14 @@ export function PendingClosingUpdatesPanel() {
           <span className="text-text-muted">
             From Settlement Statement PDFs
           </span>
+          <button
+            type="button"
+            onClick={dedupe}
+            className="rounded border border-border-strong bg-surface px-2 py-1 font-medium text-text hover:border-border-strong"
+            title="Keep only the latest SS per transaction; supersede earlier drafts"
+          >
+            Dedupe
+          </button>
           <button
             type="button"
             onClick={cleanupLowConfidence}
