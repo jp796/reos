@@ -4,6 +4,8 @@ import { ScanButton } from "./ScanButton";
 import { EarnestMoneyScanButton } from "./EarnestMoneyScanButton";
 import { InvoiceScanButton } from "./InvoiceScanButton";
 import { StaleContactCheckButton } from "./StaleContactCheckButton";
+import { GmailSearchPanel } from "./GmailSearchPanel";
+import { QuickDeadButton } from "./QuickDeadButton";
 import { PendingMatchesPanel } from "./PendingMatchesPanel";
 import { PendingClosingUpdatesPanel } from "./PendingClosingUpdatesPanel";
 import { CalendarSyncButton } from "./CalendarSyncButton";
@@ -130,6 +132,8 @@ export default async function TransactionsPage({
         })}
       </div>
 
+      <GmailSearchPanel />
+
       <PendingMatchesPanel />
 
       <PendingClosingUpdatesPanel />
@@ -214,9 +218,12 @@ export default async function TransactionsPage({
                         </div>
                       )}
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       {txn.status !== "closed" && txn.status !== "dead" && (
-                        <QuickCloseButton transactionId={txn.id} />
+                        <>
+                          <QuickCloseButton transactionId={txn.id} />
+                          <QuickDeadButton transactionId={txn.id} />
+                        </>
                       )}
                       {txn._count.milestones > 0 && (
                         <CalendarSyncButton
