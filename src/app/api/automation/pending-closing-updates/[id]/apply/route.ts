@@ -118,6 +118,25 @@ export async function POST(
     },
   });
 
+  // If the deal just closed, auto-complete any still-pending milestones
+  // as of the closing date — the deal closing implies those deadlines
+  // resolved (otherwise it couldn't have closed). This clears overdue
+  // flags that would otherwise linger on the timeline + risk engine.
+  let milestonesAutoCompleted = 0;
+  if (localStatus === "closed") {
+    const updated = await prisma.milestone.updateMany({
+      where: {
+        transactionId: txn.id,
+        completedAt: null,
+      },
+      data: {
+        completedAt: row.extractedDate,
+        status: "completed",
+      },
+    });
+    milestonesAutoCompleted = updated.count;
+  }
+
   await prisma.pendingClosingDateUpdate.update({
     where: { id: row.id },
     data: { status: "applied", appliedAt: new Date() },
@@ -184,6 +203,7 @@ export async function POST(
     fubStageUpdated,
     newClosingDate: row.extractedDate.toISOString(),
     newStage: row.proposedStage ?? null,
+    milestonesAutoCompleted,
     financials: financialsResult,
   });
 }

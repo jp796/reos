@@ -204,6 +204,16 @@ export async function POST() {
           ...(localStatus ? { status: localStatus } : {}),
         },
       });
+
+      // Cascade: if the deal is closing, auto-complete still-pending
+      // milestones as of the closing date (clears stale overdue flags).
+      if (localStatus === "closed") {
+        await prisma.milestone.updateMany({
+          where: { transactionId: txn.id, completedAt: null },
+          data: { completedAt: row.extractedDate, status: "completed" },
+        });
+      }
+
       await prisma.pendingClosingDateUpdate.update({
         where: { id: row.id },
         data: { status: "applied", appliedAt: new Date() },

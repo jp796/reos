@@ -5,8 +5,17 @@ import { EarnestMoneyScanButton } from "./EarnestMoneyScanButton";
 import { PendingMatchesPanel } from "./PendingMatchesPanel";
 import { PendingClosingUpdatesPanel } from "./PendingClosingUpdatesPanel";
 import { CalendarSyncButton } from "./CalendarSyncButton";
+import { cn } from "@/lib/cn";
 
 export const dynamic = "force-dynamic";
+
+type StatusFilter = "open" | "closed" | "all";
+
+const FILTER_TABS: Array<{ id: StatusFilter; label: string }> = [
+  { id: "open", label: "Active" },
+  { id: "closed", label: "Closed" },
+  { id: "all", label: "All" },
+];
 
 function formatDate(d: Date | null | undefined) {
   if (!d) return "—";
@@ -29,22 +38,43 @@ function statusBadge(status: string) {
   return `inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ${cls}`;
 }
 
-export default async function TransactionsPage() {
-  const transactions = await prisma.transaction.findMany({
-    orderBy: { updatedAt: "desc" },
-    include: {
-      contact: true,
-      milestones: {
-        orderBy: { dueAt: "asc" },
-      },
-      _count: {
-        select: { milestones: true, tasks: true, documents: true },
-      },
-    },
-    take: 200,
-  });
+export default async function TransactionsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string }>;
+}) {
+  const sp = await searchParams;
+  const filter: StatusFilter =
+    sp.status === "closed" || sp.status === "all" ? sp.status : "open";
 
-  const total = await prisma.transaction.count();
+  const where =
+    filter === "all"
+      ? {}
+      : filter === "closed"
+        ? { status: { in: ["closed", "dead"] } }
+        : { status: { notIn: ["closed", "dead"] } };
+
+  const [transactions, total, closedCount, activeCount] = await Promise.all([
+    prisma.transaction.findMany({
+      where,
+      orderBy: { updatedAt: "desc" },
+      include: {
+        contact: true,
+        milestones: { orderBy: { dueAt: "asc" } },
+        _count: {
+          select: { milestones: true, tasks: true, documents: true },
+        },
+      },
+      take: 200,
+    }),
+    prisma.transaction.count(),
+    prisma.transaction.count({
+      where: { status: { in: ["closed", "dead"] } },
+    }),
+    prisma.transaction.count({
+      where: { status: { notIn: ["closed", "dead"] } },
+    }),
+  ]);
 
   return (
     <main className="mx-auto max-w-6xl">
@@ -65,6 +95,35 @@ export default async function TransactionsPage() {
           <EarnestMoneyScanButton />
         </div>
       </header>
+
+      {/* Status filter chips */}
+      <div className="mt-6 flex items-center gap-1.5">
+        {FILTER_TABS.map((tab) => {
+          const count =
+            tab.id === "open"
+              ? activeCount
+              : tab.id === "closed"
+                ? closedCount
+                : total;
+          const active = filter === tab.id;
+          const href = tab.id === "open" ? "/transactions" : `/transactions?status=${tab.id}`;
+          return (
+            <Link
+              key={tab.id}
+              href={href}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                active
+                  ? "border-brand-500 bg-brand-50 text-brand-700"
+                  : "border-border bg-surface text-text-muted hover:border-border-strong hover:text-text",
+              )}
+            >
+              {tab.label}
+              <span className="tabular-nums opacity-70">{count}</span>
+            </Link>
+          );
+        })}
+      </div>
 
       <PendingMatchesPanel />
 
