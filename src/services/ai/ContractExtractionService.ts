@@ -68,6 +68,17 @@ export interface ContractExtraction {
    * the UI nudges the user to also upload the compensation rider.
    */
   compensationOnSeparateRider: ContractExtractionField<boolean>;
+  /** Contract lifecycle stage based on signatures found in the PDF:
+   *   "offer"    — buyer-only signature, or no signatures yet (draft)
+   *   "counter"  — seller added counter-terms (one-sided counter)
+   *   "executed" — BOTH buyer and seller signed (binding)
+   *   "unknown"  — couldn't determine
+   */
+  contractStage: ContractExtractionField<
+    "offer" | "counter" | "executed" | "unknown"
+  >;
+  buyerSignedAt: ContractExtractionField<string>;
+  sellerSignedAt: ContractExtractionField<string>;
   /** Non-empty only on partial / low-confidence extractions */
   notes: string | null;
 }
@@ -113,7 +124,21 @@ For compensation look for:
   - Phrases like "$10,000 to Buyer Broker" → buyerSideCommissionAmount = 10000
 Both pct AND amount may appear; extract whichever is provided.
 
-On a Rider doc, timeline fields (closingDate, inspectionDeadline, etc.) will mostly be null — that's expected.`;
+On a Rider doc, timeline fields (closingDate, inspectionDeadline, etc.) will mostly be null — that's expected.
+
+CONTRACT STAGE (executed vs. offer vs. counter)
+Check the signature pages at the end of the document:
+  - If BOTH a buyer signature AND a seller signature are present (with
+    dates or signed-at stamps, or Dotloop/DocuSign signer-completed
+    markers) → contractStage="executed"
+  - If only one side has signed (typically buyer) → "offer"
+  - If the document has "Counter" / "Counteroffer" headings or a
+    counter-terms section AND seller signed but buyer has not re-signed
+    → "counter"
+  - If you can't tell → "unknown"
+
+Populate buyerSignedAt and sellerSignedAt with ISO dates from the signature
+blocks when present.`;
 
 const SCHEMA_HINT = `{
   "effectiveDate":         { "value": "YYYY-MM-DD or null", "confidence": 0-1, "snippet": "..." },
@@ -137,6 +162,9 @@ const SCHEMA_HINT = `{
   "buyerSideCommissionPct":     { "value": 0 or null, "confidence": 0-1, "snippet": "..." },
   "buyerSideCommissionAmount":  { "value": 0 or null, "confidence": 0-1, "snippet": "..." },
   "compensationOnSeparateRider":{ "value": true or false, "confidence": 0-1, "snippet": "..." },
+  "contractStage":         { "value": "offer|counter|executed|unknown", "confidence": 0-1, "snippet": "..." },
+  "buyerSignedAt":         { "value": "YYYY-MM-DD or null", "confidence": 0-1, "snippet": "..." },
+  "sellerSignedAt":        { "value": "YYYY-MM-DD or null", "confidence": 0-1, "snippet": "..." },
   "notes":                 "string or null — brief note if anything was ambiguous"
 }`;
 
@@ -394,6 +422,11 @@ function normalize(parsed: unknown): ContractExtraction {
     buyerSideCommissionPct: asField<number>(o.buyerSideCommissionPct),
     buyerSideCommissionAmount: asField<number>(o.buyerSideCommissionAmount),
     compensationOnSeparateRider: asField<boolean>(o.compensationOnSeparateRider),
+    contractStage: asField<"offer" | "counter" | "executed" | "unknown">(
+      o.contractStage,
+    ),
+    buyerSignedAt: asField(o.buyerSignedAt),
+    sellerSignedAt: asField(o.sellerSignedAt),
     notes: typeof o.notes === "string" ? o.notes : null,
   };
 }

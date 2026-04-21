@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { ScanButton } from "./ScanButton";
 import { EarnestMoneyScanButton } from "./EarnestMoneyScanButton";
+import { InvoiceScanButton } from "./InvoiceScanButton";
 import { PendingMatchesPanel } from "./PendingMatchesPanel";
 import { PendingClosingUpdatesPanel } from "./PendingClosingUpdatesPanel";
 import { CalendarSyncButton } from "./CalendarSyncButton";
@@ -94,6 +95,7 @@ export default async function TransactionsPage({
         <div className="flex flex-col items-end gap-2">
           <ScanButton />
           <EarnestMoneyScanButton />
+          <InvoiceScanButton />
         </div>
       </header>
 
@@ -215,7 +217,17 @@ export default async function TransactionsPage({
                         <QuickCloseButton transactionId={txn.id} />
                       )}
                       {txn._count.milestones > 0 && (
-                        <CalendarSyncButton transactionId={txn.id} />
+                        <CalendarSyncButton
+                          transactionId={txn.id}
+                          contractStage={
+                            (txn.contractStage as
+                              | "offer"
+                              | "counter"
+                              | "executed"
+                              | "unknown"
+                              | null) ?? null
+                          }
+                        />
                       )}
                     </div>
                   </div>

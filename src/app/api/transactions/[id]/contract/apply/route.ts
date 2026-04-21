@@ -17,6 +17,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import { addBusinessDays } from "@/lib/business-days";
 
 type Field<T = unknown> = {
   value: T | null;
@@ -93,7 +94,15 @@ export async function POST(
   if (titleDeadline) data.titleDeadline = titleDeadline;
   const effectiveDate = toDate(fieldVal(ext, "effectiveDate"));
   if (effectiveDate) data.contractDate = effectiveDate;
-  const earnestDue = toDate(fieldVal(ext, "earnestMoneyDueDate"));
+  // Earnest money due: prefer the explicit date on the contract; if
+  // absent, most state forms default to "3 business days after mutual
+  // acceptance" — compute from effectiveDate + 3 biz days.
+  let earnestDue = toDate(fieldVal(ext, "earnestMoneyDueDate"));
+  let earnestDueDerived = false;
+  if (!earnestDue && effectiveDate) {
+    earnestDue = addBusinessDays(effectiveDate, 3);
+    earnestDueDerived = true;
+  }
   if (earnestDue) data.earnestMoneyDueDate = earnestDue;
   const walkthrough = toDate(fieldVal(ext, "walkthroughDate"));
   if (walkthrough) data.walkthroughDate = walkthrough;
@@ -103,6 +112,16 @@ export async function POST(
   if (titleCo) data.titleCompanyName = titleCo;
   const lender = toStr(fieldVal(ext, "lenderName"));
   if (lender) data.lenderName = lender;
+
+  // Contract lifecycle stage + signature dates
+  const stage = toStr(fieldVal(ext, "contractStage"));
+  if (stage && ["offer", "counter", "executed", "unknown"].includes(stage)) {
+    data.contractStage = stage;
+  }
+  const buyerSignedAt = toDate(fieldVal(ext, "buyerSignedAt"));
+  if (buyerSignedAt) data.buyerSignedAt = buyerSignedAt;
+  const sellerSignedAt = toDate(fieldVal(ext, "sellerSignedAt"));
+  if (sellerSignedAt) data.sellerSignedAt = sellerSignedAt;
 
   data.contractAppliedAt = new Date();
   data.pendingContractJson = Prisma.DbNull;
@@ -114,7 +133,14 @@ export async function POST(
   // re-apply updates instead of duplicates.
   const mileStoneSpec: Array<{ type: string; label: string; dueAt: Date | null; ownerRole: string }> = [
     { type: "contract_effective", label: "Under contract", dueAt: effectiveDate, ownerRole: "agent" },
-    { type: "earnest_money", label: "Earnest money due", dueAt: earnestDue, ownerRole: "client" },
+    {
+      type: "earnest_money",
+      label: earnestDueDerived
+        ? "Earnest money due (3 biz days rule)"
+        : "Earnest money due",
+      dueAt: earnestDue,
+      ownerRole: "client",
+    },
     { type: "inspection", label: "Inspection objection deadline", dueAt: inspectionDeadline, ownerRole: "inspector" },
     { type: "title_commitment", label: "Title commitment due", dueAt: titleDeadline, ownerRole: "title" },
     { type: "title_objection", label: "Title objection deadline", dueAt: toDate(fieldVal(ext, "titleObjectionDeadline")), ownerRole: "client" },

@@ -41,6 +41,7 @@ model Account {
   pendingEmailMatches       PendingEmailMatch[]
   pendingClosingDateUpdates PendingClosingDateUpdate[]
   forwardedDocuments        ForwardedDocument[]
+  invoiceEntries            InvoiceEntry[]
 
   @@map("accounts")
 }
@@ -135,6 +136,11 @@ model Transaction {
   pendingContractJson    Json?     @map("pending_contract_json")
   contractExtractedAt    DateTime? @map("contract_extracted_at")
   contractAppliedAt      DateTime? @map("contract_applied_at")
+  // Contract lifecycle: offer -> counter -> executed. Calendar sync
+  // gated until stage="executed" since pre-executed dates may shift.
+  contractStage          String?   @map("contract_stage") // offer | counter | executed | unknown
+  buyerSignedAt          DateTime? @map("buyer_signed_at")
+  sellerSignedAt         DateTime? @map("seller_signed_at")
   // External transaction-management forwarding (Dotloop, Rezen, SkySlope)
   forwardingEmail        String?   @map("forwarding_email")
   forwardingEmailProvider String?  @map("forwarding_email_provider") // "dotloop", "rezen", "skyslope", "other"
@@ -154,6 +160,7 @@ model Transaction {
   attributions        TransactionAttribution[]
   financials          TransactionFinancials?
   forwardedDocuments  ForwardedDocument[]
+  invoiceEntries      InvoiceEntry[]
 
   @@index([accountId])
   @@index([contactId, status], map: "idx_transactions_contact_status")
@@ -481,6 +488,37 @@ model PendingClosingDateUpdate {
   @@index([accountId, status])
   @@index([detectedAt])
   @@map("pending_closing_date_updates")
+}
+
+/// Invoices / bills / receipts detected in a transaction's
+/// SmartFolder (inspection fees, HOA docs, home-warranty, utility
+/// transfers, etc.). Feeds deal P&L separately from commission-side
+/// financials.
+model InvoiceEntry {
+  id             String    @id @default(cuid())
+  accountId      String    @map("account_id")
+  transactionId  String?   @map("transaction_id")
+  threadId       String    @map("thread_id")
+  messageId      String    @map("message_id")
+  attachmentId   String?   @map("attachment_id")
+  filename       String?
+  fromEmail      String?   @map("from_email")
+  subject        String?
+  vendorName     String?   @map("vendor_name")
+  amount         Float?
+  invoiceDate    DateTime? @map("invoice_date")
+  category       String?   // inspection | hoa | warranty | utility | repair | title | other
+  snippet        String?
+  status         String    @default("pending") // pending | confirmed | ignored
+  detectedAt     DateTime  @default(now()) @map("detected_at")
+
+  account     Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  transaction Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  @@unique([accountId, messageId, attachmentId], map: "uniq_invoice_msg_att")
+  @@index([accountId, status])
+  @@index([transactionId])
+  @@map("invoice_entries")
 }
 
 /// Dedupe table for documents we've already forwarded to an external

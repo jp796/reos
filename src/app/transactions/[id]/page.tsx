@@ -137,7 +137,19 @@ export default async function TransactionDetailPage({
             )}
           </p>
         </div>
-        {txn.milestones.length > 0 && <CalendarSyncButton transactionId={txn.id} />}
+        {txn.milestones.length > 0 && (
+          <CalendarSyncButton
+            transactionId={txn.id}
+            contractStage={
+              (txn.contractStage as
+                | "offer"
+                | "counter"
+                | "executed"
+                | "unknown"
+                | null) ?? null
+            }
+          />
+        )}
       </header>
 
       {/* Facts grid */}
