@@ -243,12 +243,16 @@ export class AcceptedContractScanService {
         }
       }
 
-      // Score assembly
+      // ──────────────────────────────────────────
+      // CONFIDENCE ASSEMBLY
+      // ──────────────────────────────────────────
       const signals: string[] = [];
       let score = 0;
+
+      // (1) Contract stage
       if (stage === "executed") {
-        score += 0.35;
-        signals.push("fully-executed (+0.35)");
+        score += 0.3;
+        signals.push("fully-executed (+0.30)");
       } else if (stage === "counter") {
         score += 0.15;
         signals.push("counter (+0.15)");
@@ -256,45 +260,119 @@ export class AcceptedContractScanService {
         score += 0.05;
         signals.push("offer only (+0.05)");
       }
+
+      // (2) Future closing
       if (closing && closing > now) {
-        score += 0.25;
-        signals.push("future closing (+0.25)");
+        score += 0.2;
+        signals.push("future closing (+0.20)");
       } else if (!closing) {
         signals.push("no closing date extracted");
       } else {
-        signals.push("closing already past (-)");
+        signals.push("closing already past");
       }
+
+      // (3) Financial details
       if (ex.purchasePrice?.value) {
         score += 0.1;
-        signals.push(`price extracted $${ex.purchasePrice.value} (+0.1)`);
+        signals.push(`price $${ex.purchasePrice.value} (+0.10)`);
       }
       if (ex.titleCompanyName?.value) {
-        score += 0.05;
-        signals.push(`title co: ${ex.titleCompanyName.value} (+0.05)`);
+        score += 0.1;
+        signals.push(`title co: ${ex.titleCompanyName.value} (+0.10)`);
       }
+
+      // (4) Contact match — strongest "yours" signal
       if (matchedContactId) {
         score += 0.2;
-        signals.push(`matched contact: ${matchedContactName} (+0.2)`);
+        signals.push(`matched contact: ${matchedContactName} (+0.20)`);
       } else if ((ex.buyers?.value?.length ?? 0) + (ex.sellers?.value?.length ?? 0) > 0) {
-        score += 0.05;
-        signals.push("parties extracted but no contact match (+0.05)");
+        score += 0.03;
+        signals.push("parties extracted, no REOS contact match (+0.03)");
       }
-      if (isNewConstruction) {
-        signals.push("new-construction (TBD/Lot — flagged)");
-        // no score change; confidence comes from price + parties + stage
+
+      // (5) Email-to-party cross-reference: if the extracted buyer
+      // or seller name shows up in the from/to of ANY message in
+      // this thread, that's evidence the contract is legitimately
+      // tied to the parties (not a blast template).
+      const allNames = [
+        ...(ex.buyers?.value ?? []),
+        ...(ex.sellers?.value ?? []),
+      ].map((s) => (typeof s === "string" ? s.toLowerCase() : ""));
+      let nameInHeaders = false;
+      if (allNames.length > 0 && t.messages) {
+        for (const m of t.messages) {
+          const hdrs = (m.payload?.headers ?? [])
+            .filter((h) =>
+              /^(from|to|cc|bcc)$/i.test(h.name ?? ""),
+            )
+            .map((h) => (h.value ?? "").toLowerCase())
+            .join(" ");
+          if (allNames.some((n) => n && n.length > 4 && hdrs.includes(n))) {
+            nameInHeaders = true;
+            break;
+          }
+        }
       }
-      if (matchedTransactionId) {
-        signals.push("already tracked in REOS");
+      if (nameInHeaders) {
+        score += 0.15;
+        signals.push("party name matches email headers (+0.15)");
       }
+
+      // (6) INVESTOR / WHOLESALER LEAD PENALTY
+      // Unsolicited cash-offer / assignment contracts from wholesalers
+      // look like purchase agreements but aren't Jp's actual deals.
+      // Detect via sender-domain blocklist + subject patterns.
+      const from = (found.from ?? "").toLowerCase();
+      const subjLower = (found.subject ?? "").toLowerCase();
+      const WHOLESALER_DOMAIN_RES = [
+        /cashoffer/i,
+        /we[-_\s]?buy[-_\s]?houses/i,
+        /homevestors/i,
+        /opendoor/i,
+        /offerpad/i,
+        /iwillbuyhouse/i,
+        /investor/i,
+        /wholesal/i,
+      ];
+      const INVESTOR_SUBJECT_RES = [
+        /cash\s+offer/i,
+        /investor\s+offer/i,
+        /assignment\s+(?:of\s+)?contract/i,
+        /wholesal/i,
+      ];
+      if (
+        WHOLESALER_DOMAIN_RES.some((r) => r.test(from)) ||
+        INVESTOR_SUBJECT_RES.some((r) => r.test(subjLower))
+      ) {
+        score -= 0.35;
+        signals.push("looks like wholesaler/investor lead (-0.35)");
+      }
+
+      // (7) Buyer is LLC AND no REOS-contact match → downgrade
+      // (classic pattern of an unsolicited cash offer to a listing)
+      const buyerIsEntity = (ex.buyers?.value ?? []).some(
+        (n) => typeof n === "string" && /\b(LLC|INC|LP|TRUST|LTD)\b/i.test(n),
+      );
+      if (buyerIsEntity && !matchedContactId) {
+        score -= 0.15;
+        signals.push("buyer is LLC + no contact match (-0.15)");
+      }
+
+      if (isNewConstruction) signals.push("new-construction (TBD/Lot)");
+      if (matchedTransactionId) signals.push("already tracked in REOS");
 
       score = Math.max(0, Math.min(1, score));
 
-      // Minimum bar: must have enough evidence to even be interesting.
-      // Also drop if stage unknown AND no price AND no parties.
+      // ──────────────────────────────────────────
+      // GATING
+      // Higher bar for deals with no contact match — those are the
+      // common false-positive surface (blast offers, adjacent deals).
+      // ──────────────────────────────────────────
+      const minScore = matchedContactId ? 0.4 : 0.55;
       const hasEvidence =
         stage === "executed" ||
         (ex.purchasePrice?.value && (closing || matchedContactId));
-      if (!hasEvidence || score < 0.4) {
+      if (!hasEvidence || score < minScore) {
         if (stage !== "executed") out.skippedNoExec++;
         else out.skippedNoFutureClose++;
         continue;
