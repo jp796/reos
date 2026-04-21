@@ -71,14 +71,17 @@ export function PendingMatchesPanel() {
 
   return (
     <section className="mt-8">
-      <div className="mb-3 flex items-baseline justify-between">
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3">
         <h2 className="text-lg font-medium">
           Needs review ·{" "}
           <span className="text-amber-700">{items.length}</span>
         </h2>
-        <span className="text-xs text-text-muted">
-          Title-company emails with no automatic contact match
-        </span>
+        <div className="flex items-center gap-3 text-xs">
+          <span className="text-text-muted">
+            Title-company emails with no automatic contact match
+          </span>
+          <AgentCheckButton onDone={load} />
+        </div>
       </div>
       <div className="space-y-3">
         {items.map((m) => (
@@ -91,6 +94,55 @@ export function PendingMatchesPanel() {
         ))}
       </div>
     </section>
+  );
+}
+
+// --------------------------------------------------
+// "Check agents" button — runs the agent-match endpoint
+// which auto-dismisses pending matches whose PDF listing or
+// selling agent is nobody the user represents.
+// --------------------------------------------------
+
+function AgentCheckButton({ onDone }: { onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  async function run() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch(
+        "/api/automation/pending-matches/agent-check",
+        { method: "POST" },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setMsg(`Error: ${data.error ?? res.statusText}`);
+        return;
+      }
+      setMsg(
+        `Checked ${data.inspected} · dismissed ${data.dismissed} · kept ${data.kept} · unknown ${data.unknown}`,
+      );
+      onDone();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "check failed");
+    } finally {
+      setBusy(false);
+      setTimeout(() => setMsg(null), 4000);
+    }
+  }
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={run}
+        disabled={busy}
+        className="rounded border border-border bg-surface px-2 py-1 font-medium text-text-muted hover:border-brand-500 hover:text-brand-700 disabled:opacity-50"
+        title="Check the attached PDF for listing/selling agent. If neither is you, auto-dismiss."
+      >
+        {busy ? "Checking…" : "Check agents"}
+      </button>
+      {msg && <span className="text-text-muted">{msg}</span>}
+    </div>
   );
 }
 

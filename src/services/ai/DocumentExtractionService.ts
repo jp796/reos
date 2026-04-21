@@ -60,6 +60,17 @@ export interface SettlementParties {
   fileNumber?: string;
 }
 
+/** Agent/brokerage names pulled off a settlement or closing doc, used
+ * to verify whether the logged-in user is actually on the deal. */
+export interface AgentIdentities {
+  listingAgent?: string;
+  listingBroker?: string;
+  sellingAgent?: string; // "selling" = buy-side in real-estate speak
+  sellingBroker?: string;
+  /** Raw lines that matched, for audit / debugging */
+  snippets: string[];
+}
+
 export interface FinancialsExtraction {
   salePrice?: number;
   grossCommission?: number;
@@ -460,6 +471,133 @@ Rules:
     const text = await this.extractText(buffer);
     if (!text) return null;
     return this.partiesFromText(text);
+  }
+
+  /** Parse agent + brokerage names from an SS / contract text layer.
+   * Common label patterns across state forms:
+   *   "Listing Agent Commission to Real Broker, LLC $5,547.50"
+   *   "Selling Agent Commission to #1 Properties $7,325.00"
+   *   "Real Estate Broker Compensation to Coldwell Banker ..."
+   *   "Listed By: John Smith, Acme Realty"
+   *   "Listing Broker: Real Broker LLC"
+   */
+  async extractAgentIdentities(buffer: Buffer): Promise<AgentIdentities> {
+    const text = await this.extractText(buffer);
+    if (!text) return { snippets: [] };
+    return this.agentsFromText(text);
+  }
+
+  agentsFromText(rawText: string): AgentIdentities {
+    // Strip nulls (Qualia "Lis\0ng" ligature artifact — same fix as
+    // financialsFromText).
+    // eslint-disable-next-line no-control-regex
+    const text = rawText.replace(/\u0000/g, "").replace(/[\u0001-\u001F]/g, " ");
+    const out: AgentIdentities = { snippets: [] };
+
+    const captureUntilDollar = (pattern: RegExp): string | undefined => {
+      const m = pattern.exec(text);
+      if (!m) return undefined;
+      const raw = m[1]?.trim();
+      if (!raw) return undefined;
+      const cleaned = raw
+        .replace(/\s+/g, " ")
+        .replace(/[.,;:]+$/, "")
+        .trim();
+      if (!cleaned || cleaned.length < 3 || cleaned.length > 120) return undefined;
+      out.snippets.push(m[0].replace(/\s+/g, " ").trim().slice(0, 180));
+      return cleaned;
+    };
+
+    // Commission-line form: "<Side> Agent Commission to <Broker> $X"
+    // Captures the broker name between "to" and the dollar amount.
+    out.listingBroker = captureUntilDollar(
+      /Lis(?:ti)?ng\s+Agent\s+Commission\s+to\s+([^\n$]{1,80}?)\s*\$?[\d,]+\.\d{2}/i,
+    );
+    out.sellingBroker = captureUntilDollar(
+      /Selling\s+Agent\s+Commission\s+to\s+([^\n$]{1,80}?)\s*\$?[\d,]+\.\d{2}/i,
+    );
+    // ALTA / First American: "Real Estate Broker Compensation to <X> $Y"
+    // When this pattern appears twice, the first is listing / second is selling.
+    if (!out.listingBroker) {
+      out.listingBroker = captureUntilDollar(
+        /Real\s+Estate\s+Broker\s+Compensation\s+to\s+([^\n$]{1,80}?)\s*\$?[\d,]+\.\d{2}/i,
+      );
+    }
+
+    // Direct-label form: "Listing Agent: John Smith" or "Listed By: ..."
+    const listingAgentRe = [
+      /Lis(?:ti)?ng\s+Agent[:\s]+([^\n]{3,80})/i,
+      /Listed\s+By[:\s]+([^\n]{3,80})/i,
+    ];
+    for (const re of listingAgentRe) {
+      const m = re.exec(text);
+      if (m) {
+        const cleaned = m[1]
+          ?.split(/\s{2,}/)[0]
+          ?.replace(/[.,;:]+$/, "")
+          ?.trim();
+        if (cleaned && cleaned.length >= 3 && cleaned.length <= 80) {
+          out.listingAgent = cleaned;
+          out.snippets.push(m[0].replace(/\s+/g, " ").trim().slice(0, 180));
+          break;
+        }
+      }
+    }
+
+    const sellingAgentRe = [
+      /Selling\s+Agent[:\s]+([^\n]{3,80})/i,
+      /Buyer['\u2019]?s?\s+Agent[:\s]+([^\n]{3,80})/i,
+    ];
+    for (const re of sellingAgentRe) {
+      const m = re.exec(text);
+      if (m) {
+        const cleaned = m[1]
+          ?.split(/\s{2,}/)[0]
+          ?.replace(/[.,;:]+$/, "")
+          ?.trim();
+        if (cleaned && cleaned.length >= 3 && cleaned.length <= 80) {
+          out.sellingAgent = cleaned;
+          out.snippets.push(m[0].replace(/\s+/g, " ").trim().slice(0, 180));
+          break;
+        }
+      }
+    }
+
+    return out;
+  }
+
+  /** Return true if any extracted listing/selling agent or broker text
+   * matches any of the identity strings (name or brokerage). Case-
+   * insensitive substring match; normalizes whitespace + punctuation. */
+  static agentMatchesAny(
+    identities: AgentIdentities,
+    matchAgainst: string[],
+  ): "match" | "no_match" | "unknown" {
+    const haystack = [
+      identities.listingAgent,
+      identities.listingBroker,
+      identities.sellingAgent,
+      identities.sellingBroker,
+    ]
+      .filter(Boolean)
+      .join(" | ")
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    // No agent data at all — we can't decide
+    if (!haystack) return "unknown";
+
+    for (const needle of matchAgainst) {
+      const n = needle
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (n && haystack.includes(n)) return "match";
+    }
+    return "no_match";
   }
 
   partiesFromText(text: string): SettlementParties {
