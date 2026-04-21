@@ -5,6 +5,7 @@ import { EarnestMoneyScanButton } from "./EarnestMoneyScanButton";
 import { InvoiceScanButton } from "./InvoiceScanButton";
 import { StaleContactCheckButton } from "./StaleContactCheckButton";
 import { GmailSearchPanel } from "./GmailSearchPanel";
+import { AcceptedContractScanPanel } from "./AcceptedContractScanPanel";
 import { QuickDeadButton } from "./QuickDeadButton";
 import { PendingMatchesPanel } from "./PendingMatchesPanel";
 import { PendingClosingUpdatesPanel } from "./PendingClosingUpdatesPanel";
@@ -133,6 +134,8 @@ export default async function TransactionsPage({
       </div>
 
       <GmailSearchPanel />
+
+      <AcceptedContractScanPanel />
 
       <PendingMatchesPanel />
 
