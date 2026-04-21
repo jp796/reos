@@ -141,6 +141,10 @@ model Transaction {
   contractStage          String?   @map("contract_stage") // offer | counter | executed | unknown
   buyerSignedAt          DateTime? @map("buyer_signed_at")
   sellerSignedAt         DateTime? @map("seller_signed_at")
+  // Public share link for the read-only timeline view
+  shareToken             String?   @unique @map("share_token")
+  shareCreatedAt         DateTime? @map("share_created_at")
+  shareExpiresAt         DateTime? @map("share_expires_at")
   // External transaction-management forwarding (Dotloop, Rezen, SkySlope)
   forwardingEmail        String?   @map("forwarding_email")
   forwardingEmailProvider String?  @map("forwarding_email_provider") // "dotloop", "rezen", "skyslope", "other"

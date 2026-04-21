@@ -8,6 +8,7 @@ import { SmartFolderSection } from "./SmartFolderSection";
 import { ContractUploadPanel } from "./ContractUploadPanel";
 import { ForwardingPanel } from "./ForwardingPanel";
 import { TransactionTimeline } from "./TransactionTimeline";
+import { SharePanel } from "./SharePanel";
 import { SMART_FOLDER_CUTOFF } from "@/services/automation/SmartFolderService";
 import {
   RiskScoringService,
@@ -212,6 +213,12 @@ export default async function TransactionDetailPage({
           )}
         </div>
       </section>
+
+      <SharePanel
+        transactionId={txn.id}
+        initialToken={txn.shareToken}
+        initialExpiresAt={txn.shareExpiresAt?.toISOString() ?? null}
+      />
 
       <ForwardingPanel
         transactionId={txn.id}

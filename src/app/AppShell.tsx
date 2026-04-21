@@ -39,6 +39,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { mode, setMode, clearOverride, override } = useTheme();
 
+  // Public share routes get no chrome (no nav, no greeting, no theme
+  // toggle). Let the page render its own minimal presentation.
+  if (pathname?.startsWith("/share/")) {
+    return <>{children}</>;
+  }
+
   const now = new Date();
   const dateStr = now.toLocaleDateString("en-US", {
     weekday: "long",
