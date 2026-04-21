@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { ScanButton } from "./ScanButton";
 import { EarnestMoneyScanButton } from "./EarnestMoneyScanButton";
 import { InvoiceScanButton } from "./InvoiceScanButton";
+import { StaleContactCheckButton } from "./StaleContactCheckButton";
 import { PendingMatchesPanel } from "./PendingMatchesPanel";
 import { PendingClosingUpdatesPanel } from "./PendingClosingUpdatesPanel";
 import { CalendarSyncButton } from "./CalendarSyncButton";
@@ -96,6 +97,7 @@ export default async function TransactionsPage({
           <ScanButton />
           <EarnestMoneyScanButton />
           <InvoiceScanButton />
+          <StaleContactCheckButton />
         </div>
       </header>
 
