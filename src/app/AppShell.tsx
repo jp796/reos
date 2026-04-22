@@ -13,6 +13,7 @@ import {
   Moon,
   SunMoon,
   LogOut,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import { cn } from "@/lib/cn";
@@ -26,6 +27,7 @@ const NAV = [
   { href: "/sources", label: "Sources", icon: Receipt },
   { href: "/marketing", label: "Marketing", icon: Receipt },
   { href: "/contacts", label: "Contacts", icon: Users },
+  { href: "/settings", label: "Settings", icon: SettingsIcon },
 ];
 
 function greet(now = new Date()): string {
