@@ -17,7 +17,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
-import { addBusinessDays } from "@/lib/business-days";
+import {
+  addBusinessDays,
+  defaultWalkthroughForState,
+} from "@/lib/business-days";
 import { env } from "@/lib/env";
 import { getEncryptionService } from "@/lib/encryption";
 import {
@@ -116,7 +119,21 @@ export async function POST(
     earnestDueDerived = true;
   }
   if (earnestDue) data.earnestMoneyDueDate = earnestDue;
-  const walkthrough = toDate(fieldVal(ext, "walkthroughDate"));
+  // Walkthrough: prefer the explicit date on the contract. If absent,
+  // apply state-default rules (e.g. Wyoming = closing − 1 calendar
+  // day). State is sourced from the existing txn or from the extracted
+  // property-address trailing "... WY 82009".
+  let walkthrough = toDate(fieldVal(ext, "walkthroughDate"));
+  let walkthroughDerived = false;
+  if (!walkthrough && closingDate) {
+    const stateSource =
+      txn.state ?? (fieldVal(ext, "propertyAddress") as string | null);
+    const derived = defaultWalkthroughForState(closingDate, stateSource);
+    if (derived) {
+      walkthrough = derived;
+      walkthroughDerived = true;
+    }
+  }
   if (walkthrough) data.walkthroughDate = walkthrough;
   const propertyAddress = toStr(fieldVal(ext, "propertyAddress"));
   if (propertyAddress && !txn.propertyAddress) data.propertyAddress = propertyAddress;
@@ -157,7 +174,14 @@ export async function POST(
     { type: "title_commitment", label: "Title commitment due", dueAt: titleDeadline, ownerRole: "title" },
     { type: "title_objection", label: "Title objection deadline", dueAt: toDate(fieldVal(ext, "titleObjectionDeadline")), ownerRole: "client" },
     { type: "financing_approval", label: "Financing approval deadline", dueAt: financingDeadline, ownerRole: "lender" },
-    { type: "walkthrough", label: "Final walkthrough", dueAt: walkthrough, ownerRole: "agent" },
+    {
+      type: "walkthrough",
+      label: walkthroughDerived
+        ? "Final walkthrough (WY rule: close - 1d)"
+        : "Final walkthrough",
+      dueAt: walkthrough,
+      ownerRole: "agent",
+    },
     { type: "closing", label: "Closing", dueAt: closingDate, ownerRole: "title" },
     { type: "possession", label: "Possession", dueAt: possessionDate, ownerRole: "client" },
   ];

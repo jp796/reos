@@ -16,7 +16,10 @@ import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { env } from "@/lib/env";
 import { getEncryptionService } from "@/lib/encryption";
-import { addBusinessDays } from "@/lib/business-days";
+import {
+  addBusinessDays,
+  defaultWalkthroughForState,
+} from "@/lib/business-days";
 import {
   GoogleOAuthService,
   DEFAULT_SCOPES,
@@ -88,7 +91,18 @@ export async function POST(req: NextRequest) {
   const titleCommitmentDeadline = toDate(body.titleCommitmentDeadline);
   const titleObjectionDeadline = toDate(body.titleObjectionDeadline);
   const financingDeadline = toDate(body.financingDeadline);
-  const walkthroughDate = toDate(body.walkthroughDate);
+  // Walkthrough: prefer user-supplied date; else apply state-default
+  // (e.g. Wyoming = closing - 1 calendar day). State is inferred from
+  // the ", XX" trailing the address.
+  let walkthroughDate = toDate(body.walkthroughDate);
+  let walkthroughDerived = false;
+  if (!walkthroughDate && closingDate) {
+    const derived = defaultWalkthroughForState(closingDate, body.address);
+    if (derived) {
+      walkthroughDate = derived;
+      walkthroughDerived = true;
+    }
+  }
   let earnestMoneyDueDate = toDate(body.earnestMoneyDueDate);
   let earnestDueDerived = false;
   if (!earnestMoneyDueDate && effectiveDate) {
@@ -209,7 +223,14 @@ export async function POST(req: NextRequest) {
     { type: "title_commitment", label: "Title commitment due", dueAt: titleCommitmentDeadline, ownerRole: "title" },
     { type: "title_objection", label: "Title objection deadline", dueAt: titleObjectionDeadline, ownerRole: "client" },
     { type: "financing_approval", label: "Financing approval deadline", dueAt: financingDeadline, ownerRole: "lender" },
-    { type: "walkthrough", label: "Final walkthrough", dueAt: walkthroughDate, ownerRole: "agent" },
+    {
+      type: "walkthrough",
+      label: walkthroughDerived
+        ? "Final walkthrough (WY rule: close - 1d)"
+        : "Final walkthrough",
+      dueAt: walkthroughDate,
+      ownerRole: "agent",
+    },
     { type: "closing", label: "Closing", dueAt: closingDate, ownerRole: "title" },
     { type: "possession", label: "Possession", dueAt: possessionDate, ownerRole: "client" },
   ];
