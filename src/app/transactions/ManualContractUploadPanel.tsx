@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Upload, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
+import { DropZone } from "@/app/components/DropZone";
 
 interface Field<T = unknown> {
   value: T | null;
@@ -33,10 +34,10 @@ function fmtIsoDate(s: string | null | undefined): string {
  */
 export function ManualContractUploadPanel() {
   const router = useRouter();
-  const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [, startTransition] = useTransition();
 
   const [extraction, setExtraction] = useState<Extraction | null>(null);
@@ -50,10 +51,8 @@ export function ManualContractUploadPanel() {
     titleCompany: "",
   });
 
-  async function onUpload(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const f = fileRef.current?.files?.[0];
-    if (!f) return;
+  async function uploadFile(f: File) {
+    setPendingFile(f);
     setUploading(true);
     setErr(null);
     try {
@@ -85,7 +84,6 @@ export function ManualContractUploadPanel() {
           : "",
         titleCompany: (ex.titleCompanyName?.value as string) ?? "",
       });
-      if (fileRef.current) fileRef.current.value = "";
     } catch (e) {
       setErr(e instanceof Error ? e.message : "upload failed");
     } finally {
@@ -132,6 +130,7 @@ export function ManualContractUploadPanel() {
 
   function cancel() {
     setExtraction(null);
+    setPendingFile(null);
     setForm({
       address: "",
       buyerName: "",
@@ -155,29 +154,19 @@ export function ManualContractUploadPanel() {
       </div>
 
       {!extraction ? (
-        <form
-          onSubmit={onUpload}
-          className="flex flex-wrap items-center gap-3"
-        >
-          <input
-            ref={fileRef}
-            type="file"
-            accept="application/pdf,.pdf"
-            className="text-sm"
-            required
-          />
-          <button
-            type="submit"
+        <div className="space-y-2">
+          <DropZone
+            onFile={uploadFile}
             disabled={uploading}
-            className="inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
-          >
-            <Upload className="h-4 w-4" strokeWidth={1.8} />
-            {uploading ? "Extracting…" : "Upload + Extract"}
-          </button>
-          <span className="text-xs text-text-muted">
-            PDF only · ~15-40s · cost ~$0.02
-          </span>
-        </form>
+            selectedName={pendingFile?.name ?? null}
+            kind="contract PDF"
+          />
+          {uploading && (
+            <div className="text-center text-xs text-text-muted">
+              Extracting with AI · ~15-40 seconds · cost ~$0.02
+            </div>
+          )}
+        </div>
       ) : (
         <div className="space-y-3">
           <div className="rounded border border-border bg-surface-2 px-3 py-2 text-xs text-text-muted">

@@ -1,7 +1,8 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { DropZone } from "@/app/components/DropZone";
 
 interface Field<T = unknown> {
   value: T | null;
@@ -70,7 +71,6 @@ export function ContractUploadPanel({
   initialExtraction: Extraction | null;
 }) {
   const router = useRouter();
-  const fileRef = useRef<HTMLInputElement>(null);
   const [, startTransition] = useTransition();
   const [extraction, setExtraction] = useState<Extraction | null>(
     initialExtraction,
@@ -82,11 +82,10 @@ export function ContractUploadPanel({
   const [applying, setApplying] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
 
-  async function onUpload(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const f = fileRef.current?.files?.[0];
-    if (!f) return;
+  async function uploadFile(f: File) {
+    setPendingFile(f);
     setUploading(true);
     setErr(null);
     setMsg(null);
@@ -107,7 +106,6 @@ export function ContractUploadPanel({
       setMsg(
         `Extracted via ${data.extraction._path ?? "?"}. Review below, then Apply.`,
       );
-      if (fileRef.current) fileRef.current.value = "";
     } catch (e) {
       setErr(e instanceof Error ? e.message : "upload failed");
     } finally {
@@ -174,28 +172,19 @@ export function ContractUploadPanel({
       </div>
 
       {!extraction && (
-        <form
-          onSubmit={onUpload}
-          className="flex flex-wrap items-center gap-3"
-        >
-          <input
-            ref={fileRef}
-            type="file"
-            accept="application/pdf,.pdf"
-            className="text-sm"
-            required
-          />
-          <button
-            type="submit"
+        <div className="space-y-2">
+          <DropZone
+            onFile={uploadFile}
             disabled={uploading}
-            className="rounded bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
-          >
-            {uploading ? "Extracting…" : "Upload + Extract"}
-          </button>
-          <span className="text-xs text-text-muted">
-            PDF only · usually 15-40 seconds · cost ~$0.02/doc
-          </span>
-        </form>
+            selectedName={pendingFile?.name ?? null}
+            kind="contract PDF"
+          />
+          {uploading && (
+            <div className="text-center text-xs text-text-muted">
+              Extracting with AI · ~15-40 seconds · cost ~$0.02/doc
+            </div>
+          )}
+        </div>
       )}
 
       {extraction && (
