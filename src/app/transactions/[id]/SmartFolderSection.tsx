@@ -47,15 +47,26 @@ export function SmartFolderSection(props: Props) {
               matches auto-filed
             </div>
           </div>
-          <button
-            type="button"
-            onClick={rebackfill}
-            disabled={busy}
-            className="rounded border border-border bg-surface px-2.5 py-1 text-xs font-medium text-text-muted hover:border-brand-500 hover:text-brand-700 disabled:opacity-50"
-            title="Re-scan Gmail with current address + contact emails and label any new matches"
-          >
-            {busy ? "Rescanning…" : "Rescan Gmail"}
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={rebackfill}
+              disabled={busy}
+              className="rounded border border-border bg-surface px-2.5 py-1 text-xs font-medium text-text-muted hover:border-brand-500 hover:text-brand-700 disabled:opacity-50"
+              title="Re-scan Gmail with current address + contact emails and label any new matches"
+            >
+              {busy ? "Working…" : "Rescan Gmail"}
+            </button>
+            <button
+              type="button"
+              onClick={learn}
+              disabled={busy}
+              className="rounded border border-border bg-surface px-2.5 py-1 text-xs font-medium text-text-muted hover:border-brand-500 hover:text-brand-700 disabled:opacity-50"
+              title="Scan threads already in the folder, extract patterns (senders, subject tokens), and expand the Gmail filter so future similar emails auto-file"
+            >
+              {busy ? "Working…" : "Learn from folder"}
+            </button>
+          </div>
         </div>
         {msg && (
           <div
@@ -100,6 +111,40 @@ export function SmartFolderSection(props: Props) {
     } catch (e) {
       setIsError(true);
       setMsg(e instanceof Error ? e.message : "rescan failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function learn() {
+    setBusy(true);
+    setMsg(null);
+    setIsError(false);
+    try {
+      const res = await fetch(
+        `/api/transactions/${props.transactionId}/smart-folder/learn`,
+        { method: "POST" },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setIsError(true);
+        setMsg(data.error ?? res.statusText);
+        return;
+      }
+      if (data.ok) {
+        const emails = (data.learnedEmails ?? []).length;
+        const tokens = (data.learnedTokens ?? []).length;
+        setMsg(
+          `Learned · ${data.threadsScanned} threads scanned · ${emails} email(s) + ${tokens} subject token(s) added to filter${data.newFilterId ? "" : " (no filter update)"}`,
+        );
+        startTransition(() => router.refresh());
+      } else {
+        setIsError(true);
+        setMsg(`Learn failed: ${data.reason ?? "unknown"}`);
+      }
+    } catch (e) {
+      setIsError(true);
+      setMsg(e instanceof Error ? e.message : "learn failed");
     } finally {
       setBusy(false);
     }
