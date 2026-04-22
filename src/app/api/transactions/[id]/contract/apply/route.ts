@@ -18,6 +18,18 @@ import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { addBusinessDays } from "@/lib/business-days";
+import { env } from "@/lib/env";
+import { getEncryptionService } from "@/lib/encryption";
+import {
+  GoogleOAuthService,
+  DEFAULT_SCOPES,
+} from "@/services/integrations/GoogleOAuthService";
+import {
+  GmailService,
+  EmailTransactionMatchingService,
+} from "@/services/integrations/GmailService";
+import { AutomationAuditService } from "@/services/integrations/FollowUpBossService";
+import { SmartFolderService } from "@/services/automation/SmartFolderService";
 
 type Field<T = unknown> = {
   value: T | null;
@@ -226,6 +238,64 @@ export async function POST(
     });
   }
 
+  // SKILL: Contract = Folder
+  // Any time a contract is applied to a transaction (manual upload,
+  // accepted-contract scan create, title-order orchestrator, etc.),
+  // auto-create a SmartFolder. SmartFolderService.setupForTransaction
+  // is idempotent + gated — safe to call even if one already exists.
+  let smartFolder: unknown = null;
+  if (
+    env.GOOGLE_CLIENT_ID &&
+    env.GOOGLE_CLIENT_SECRET &&
+    env.GOOGLE_REDIRECT_URI
+  ) {
+    try {
+      const acct = await prisma.account.findUnique({
+        where: { id: txn.accountId },
+        select: { id: true, googleOauthTokensEncrypted: true },
+      });
+      if (acct?.googleOauthTokensEncrypted) {
+        const oauth = new GoogleOAuthService(
+          {
+            clientId: env.GOOGLE_CLIENT_ID,
+            clientSecret: env.GOOGLE_CLIENT_SECRET,
+            redirectUri: env.GOOGLE_REDIRECT_URI,
+            scopes: DEFAULT_SCOPES,
+          },
+          prisma,
+          getEncryptionService(),
+        );
+        const gAuth = await oauth.createAuthenticatedClient(acct.id);
+        const gmail = new GmailService(
+          acct.id,
+          gAuth,
+          {
+            labelPrefix: "REOS/",
+            autoOrganizeThreads: false,
+            extractAttachments: false,
+            batchSize: 10,
+            rateLimitDelayMs: 100,
+          },
+          prisma,
+          new EmailTransactionMatchingService(),
+        );
+        const audit = new AutomationAuditService(prisma);
+        const svc = new SmartFolderService({
+          db: prisma,
+          auth: gAuth,
+          gmail,
+          audit,
+        });
+        smartFolder = await svc.setupForTransaction(txn.id);
+      }
+    } catch (err) {
+      console.warn(
+        "SmartFolder setup on contract apply failed (non-blocking):",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     milestonesUpserted,
@@ -236,5 +306,6 @@ export async function POST(
       salePrice: purchasePrice,
       grossCommission: computedGross,
     },
+    smartFolder,
   });
 }
