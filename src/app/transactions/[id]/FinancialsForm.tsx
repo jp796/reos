@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { MoneyInput } from "@/app/components/MoneyInput";
 
 interface Financials {
   salePrice?: number | null;
@@ -155,31 +156,31 @@ export function FinancialsForm({
       </div>
       <div className="rounded-md border border-border bg-surface p-4">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <Input
+          <MoneyInput
             label="Sale price"
             value={salePrice}
             onChange={setSalePrice}
             disabled={disabled}
           />
-          <Input
+          <MoneyInput
             label="Gross commission"
             value={grossCommission}
             onChange={setGrossCommission}
             disabled={disabled}
           />
-          <Input
+          <MoneyInput
             label="Referral fee"
             value={referralFeeAmount}
             onChange={setReferralFeeAmount}
             disabled={disabled}
           />
-          <Input
+          <MoneyInput
             label="Brokerage split"
             value={brokerageSplitAmount}
             onChange={setBrokerageSplitAmount}
             disabled={disabled}
           />
-          <Input
+          <MoneyInput
             label="Marketing cost allocated"
             value={marketingCostAllocated}
             onChange={setMarketingCostAllocated}

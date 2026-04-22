@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { DropZone } from "@/app/components/DropZone";
+import { MoneyInput } from "@/app/components/MoneyInput";
 
 interface Field<T = unknown> {
   value: T | null;
@@ -207,11 +208,11 @@ export function ManualContractUploadPanel() {
               value={form.closingDate}
               onChange={(v) => setForm({ ...form, closingDate: v })}
             />
-            <Field
+            <MoneyInput
               label="Purchase price"
-              type="number"
               value={form.purchasePrice}
               onChange={(v) => setForm({ ...form, purchasePrice: v })}
+              placeholder="0.00"
             />
           </div>
           <div className="flex items-center gap-2">
