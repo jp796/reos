@@ -69,16 +69,132 @@ function addressLabelSegment(address: string): string {
 }
 
 function subjectPhrasesFromAddress(addr: string): string[] {
-  // Primary: the address up to the comma ("4567 Oak Dr" from "4567 Oak Dr, Nixa MO").
+  // Primary: address up to the comma ("4567 Oak Dr" from "4567 Oak Dr, Nixa MO").
   const parts = addr.split(",");
   const street = parts[0]?.trim();
   const out: string[] = [];
-  if (street && street.length >= 4) out.push(street);
-  return out;
+  if (!street || street.length < 3) return out;
+
+  // Always include the full street
+  out.push(street);
+
+  // Strip TBD / TBD- / Lot #N / Parcel prefixes on new-construction addresses:
+  //   "TBD-12107 JK Trail"   → "12107 JK Trail"
+  //   "Lot 50 JK Trail"      → "JK Trail"
+  //   "Parcel A, Burns Rd"   → "Burns Rd" (main path already handles)
+  const stripped = street
+    .replace(/^\s*(tbd|parcel|lot|new\s+construction)\s*[#-]?\s*\d*\s*[-\s]*/i, "")
+    .trim();
+  if (stripped && stripped !== street && stripped.length >= 4) {
+    out.push(stripped);
+  }
+
+  // Extract the first numeric token (street number) if present — huge
+  // win on new-construction where subjects often vary between
+  // "TBD 12107 JK Trail", "12107 JK Trail", and "12107 Jk  Trail"
+  const numMatch = street.match(/\b(\d{3,6})\b/);
+  if (numMatch) {
+    const num = numMatch[1];
+    // Try: "<num> <rest-after-num>"
+    const after = street.slice(street.indexOf(num) + num.length).trim();
+    if (after.length >= 3) {
+      const numAndName = `${num} ${after}`;
+      if (!out.includes(numAndName)) out.push(numAndName);
+    }
+  }
+
+  // Dedupe + cap length
+  return [...new Set(out)].slice(0, 4);
 }
 
 export class SmartFolderService {
   constructor(private readonly deps: SmartFolderDeps) {}
+
+  /**
+   * Force a re-backfill: scan Gmail with CURRENT address phrases +
+   * contact emails, apply the label to any matching threads. Use this
+   * when a folder was created early (minimal data) and missed
+   * threads because the address was "TBD-xxx" or the contact didn't
+   * have an email yet. Idempotent — Gmail label application is safe
+   * to re-run on threads already labeled.
+   */
+  async rebackfill(transactionId: string): Promise<{
+    ok: boolean;
+    reason?: string;
+    labelName?: string;
+    newlyLabeled?: number;
+    query?: string;
+  }> {
+    const { db, auth, gmail } = this.deps;
+    const txn = await db.transaction.findUnique({
+      where: { id: transactionId },
+      include: { contact: true },
+    });
+    if (!txn) return { ok: false, reason: "txn_not_found" };
+    if (!txn.propertyAddress) {
+      return { ok: false, reason: "no_property_address" };
+    }
+
+    const labels = new GmailLabelService(auth, {
+      labelPrefix: "REOS/Transactions",
+    });
+    const labelName = labels.labelNameFor(
+      addressLabelSegment(txn.propertyAddress),
+    );
+    const labelId = await labels.ensureLabel(labelName);
+
+    const emails: string[] = [];
+    if (txn.contact.primaryEmail) emails.push(txn.contact.primaryEmail);
+    const phrases = subjectPhrasesFromAddress(txn.propertyAddress);
+    const query = GmailFilterService.buildQuery({
+      emails,
+      subjectPhrases: phrases,
+    });
+    if (!query) return { ok: false, reason: "no_search_criteria", labelName };
+
+    const since = new Date(Date.now() - BACKFILL_DAYS * 24 * 60 * 60 * 1000);
+    const y = since.getUTCFullYear();
+    const m = String(since.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(since.getUTCDate()).padStart(2, "0");
+    const backfillQuery = `${query} after:${y}/${m}/${d}`;
+
+    let newlyLabeled = 0;
+    try {
+      const { threads } = await gmail.searchThreadsPaged({
+        q: backfillQuery,
+        maxTotal: BACKFILL_MAX_THREADS,
+      });
+      for (const t of threads) {
+        if (!t.id) continue;
+        try {
+          await labels.applyToThread(t.id, labelName);
+          newlyLabeled++;
+        } catch (err) {
+          console.warn(`rebackfill label failed for ${t.id}:`, err);
+        }
+      }
+    } catch (err) {
+      return {
+        ok: false,
+        reason: err instanceof Error ? err.message : String(err),
+        labelName,
+        query: backfillQuery,
+      };
+    }
+
+    await db.transaction.update({
+      where: { id: txn.id },
+      data: {
+        smartFolderLabelId: labelId,
+        smartFolderBackfillCount: Math.max(
+          txn.smartFolderBackfillCount ?? 0,
+          newlyLabeled,
+        ),
+      },
+    });
+
+    return { ok: true, labelName, newlyLabeled, query: backfillQuery };
+  }
 
   /**
    * Set up the smart folder for one transaction. Returns a result

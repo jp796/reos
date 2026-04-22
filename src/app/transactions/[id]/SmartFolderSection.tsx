@@ -47,7 +47,23 @@ export function SmartFolderSection(props: Props) {
               matches auto-filed
             </div>
           </div>
+          <button
+            type="button"
+            onClick={rebackfill}
+            disabled={busy}
+            className="rounded border border-border bg-surface px-2.5 py-1 text-xs font-medium text-text-muted hover:border-brand-500 hover:text-brand-700 disabled:opacity-50"
+            title="Re-scan Gmail with current address + contact emails and label any new matches"
+          >
+            {busy ? "Rescanning…" : "Rescan Gmail"}
+          </button>
         </div>
+        {msg && (
+          <div
+            className={`mt-3 rounded border px-3 py-2 text-xs ${isError ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}
+          >
+            {msg}
+          </div>
+        )}
       </section>
     );
   }
@@ -55,6 +71,38 @@ export function SmartFolderSection(props: Props) {
   // Not eligible (pre-cutoff, etc.)
   if (!props.eligible) {
     return null;
+  }
+
+  async function rebackfill() {
+    setBusy(true);
+    setMsg(null);
+    setIsError(false);
+    try {
+      const res = await fetch(
+        `/api/transactions/${props.transactionId}/smart-folder/rebackfill`,
+        { method: "POST" },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setIsError(true);
+        setMsg(data.error ?? res.statusText);
+        return;
+      }
+      if (data.ok) {
+        setMsg(
+          `Rescan complete · ${data.newlyLabeled ?? 0} thread(s) labeled · query: ${data.query?.slice(0, 120) ?? ""}`,
+        );
+        startTransition(() => router.refresh());
+      } else {
+        setIsError(true);
+        setMsg(`Rescan failed: ${data.reason ?? "unknown"}`);
+      }
+    } catch (e) {
+      setIsError(true);
+      setMsg(e instanceof Error ? e.message : "rescan failed");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function setup() {

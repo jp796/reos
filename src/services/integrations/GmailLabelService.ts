@@ -88,12 +88,25 @@ export class GmailLabelService {
       this.idCache.set(name, id);
       return id;
     } catch (err: unknown) {
-      // 409 = label already exists (race); fall back to a list lookup.
+      // 409 = label already exists OR name conflicts with an existing label
+      // via case/whitespace normalization. Do a case-insensitive rescan
+      // and use the existing label's id if we can find a match.
       if (this.isConflict(err)) {
         const res = await this.gmail.users.labels.list({ userId: "me" });
+        const wanted = normalizeLabelName(name);
+        let fallback: string | undefined;
         for (const l of res.data.labels ?? []) {
-          if (l.name && l.id) this.idCache.set(l.name, l.id);
+          if (l.name && l.id) {
+            this.idCache.set(l.name, l.id);
+            if (!fallback && normalizeLabelName(l.name) === wanted) {
+              fallback = l.id;
+              // Also cache under our exact requested name so future
+              // ensureLabel calls skip the list roundtrip.
+              this.idCache.set(name, l.id);
+            }
+          }
         }
+        if (fallback) return fallback;
         const hit = this.idCache.get(name);
         if (hit) return hit;
       }
@@ -112,7 +125,21 @@ export class GmailLabelService {
 
   private isConflict(err: unknown): boolean {
     if (typeof err !== "object" || err === null) return false;
-    const e = err as { code?: number; response?: { status?: number } };
-    return e.code === 409 || e.response?.status === 409;
+    const e = err as {
+      code?: number;
+      status?: number;
+      response?: { status?: number };
+      message?: string;
+    };
+    if (e.code === 409 || e.status === 409 || e.response?.status === 409)
+      return true;
+    if (typeof e.message === "string" && /exists|conflict/i.test(e.message))
+      return true;
+    return false;
   }
+}
+
+/** Normalize a label name for case/whitespace-insensitive comparison. */
+function normalizeLabelName(s: string): string {
+  return s.replace(/\s+/g, " ").trim().toLowerCase();
 }
