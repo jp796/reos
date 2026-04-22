@@ -100,9 +100,10 @@ model User {
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
-  account      Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account      Account             @relation(fields: [accountId], references: [id], onDelete: Cascade)
   authAccounts AuthAccount[]
   sessions     Session[]
+  auditLogs    AutomationAuditLog[]
 
   @@index([accountId])
   @@map("users")
@@ -405,10 +406,12 @@ model AutomationAuditLog {
   decision        String   // applied, suggested, rejected, failed
   beforeJson      Json?    @map("before_json")
   afterJson       Json?    @map("after_json")
+  actorUserId     String?  @map("actor_user_id") // null = system / cron / webhook
   createdAt       DateTime @default(now()) @map("created_at")
 
   account     Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
   transaction Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  actor       User?        @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
 
   @@index([accountId, createdAt])
   @@index([transactionId])

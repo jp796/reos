@@ -11,6 +11,8 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
+import { requireSession, assertSameAccount } from "@/lib/require-session";
+import { AutomationAuditService } from "@/services/integrations/FollowUpBossService";
 
 interface Body {
   salePrice?: number | null;
@@ -34,10 +36,19 @@ export async function POST(
   req: NextRequest,
   ctx: { params: Promise<{ id: string }> },
 ) {
+  const actor = await requireSession();
+  if (actor instanceof NextResponse) return actor;
+
   const { id } = await ctx.params;
 
   const txn = await prisma.transaction.findUnique({ where: { id } });
   if (!txn) return NextResponse.json({ error: "not found" }, { status: 404 });
+  const acctGuard = assertSameAccount(actor, txn.accountId);
+  if (acctGuard) return acctGuard;
+
+  const previous = await prisma.transactionFinancials.findUnique({
+    where: { transactionId: id },
+  });
 
   let body: Body;
   try {
@@ -86,6 +97,36 @@ export async function POST(
       netCommission,
     },
   });
+
+  try {
+    const audit = new AutomationAuditService(prisma);
+    await audit.logAction({
+      accountId: actor.accountId,
+      transactionId: id,
+      entityType: "transaction_financials",
+      entityId: row.id,
+      ruleName: "manual_financials_edit",
+      actionType: previous ? "update" : "create",
+      sourceType: "manual",
+      confidenceScore: 1.0,
+      decision: "applied",
+      beforeJson: previous
+        ? {
+            salePrice: previous.salePrice,
+            grossCommission: previous.grossCommission,
+            netCommission: previous.netCommission,
+          }
+        : null,
+      afterJson: {
+        salePrice: row.salePrice,
+        grossCommission: row.grossCommission,
+        netCommission: row.netCommission,
+      },
+      actorUserId: actor.userId,
+    });
+  } catch {
+    // never block the save on audit failure
+  }
 
   return NextResponse.json({ ok: true, financials: row });
 }

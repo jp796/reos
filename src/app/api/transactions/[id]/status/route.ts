@@ -11,6 +11,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
+import { requireSession, assertSameAccount } from "@/lib/require-session";
+import { AutomationAuditService } from "@/services/integrations/FollowUpBossService";
 
 const STATUSES = new Set(["active", "pending", "closed", "dead"]);
 
@@ -18,9 +20,14 @@ export async function PATCH(
   req: NextRequest,
   ctx: { params: Promise<{ id: string }> },
 ) {
+  const actor = await requireSession();
+  if (actor instanceof NextResponse) return actor;
+
   const { id } = await ctx.params;
   const txn = await prisma.transaction.findUnique({ where: { id } });
   if (!txn) return NextResponse.json({ error: "not found" }, { status: 404 });
+  const acctGuard = assertSameAccount(actor, txn.accountId);
+  if (acctGuard) return acctGuard;
 
   const body = (await req.json().catch(() => null)) as {
     status?: string;
@@ -63,6 +70,30 @@ export async function PATCH(
       data: { completedAt: stamp, status: "completed" },
     });
     milestonesAutoCompleted = updated.count;
+  }
+
+  try {
+    const audit = new AutomationAuditService(prisma);
+    await audit.logAction({
+      accountId: actor.accountId,
+      transactionId: id,
+      entityType: "transaction",
+      entityId: id,
+      ruleName: "manual_status_change",
+      actionType: "update",
+      sourceType: "manual",
+      confidenceScore: 1.0,
+      decision: "applied",
+      beforeJson: { status: txn.status, closingDate: txn.closingDate },
+      afterJson: {
+        status: body.status,
+        closingDate: data.closingDate ?? txn.closingDate,
+        milestonesAutoCompleted,
+      },
+      actorUserId: actor.userId,
+    });
+  } catch {
+    // never block the status change on audit failure
   }
 
   return NextResponse.json({ ok: true, milestonesAutoCompleted });

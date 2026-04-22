@@ -30,6 +30,11 @@ const WEBHOOK_PATTERNS: RegExp[] = [
   /^\/api\/integrations\/gmail\/push(\/|$)/,
 ];
 
+// Routes intentionally callable without a session — e.g. Cloud Run
+// health probes. Deliberately exact-match so we don't expose anything
+// under /api/health/*.
+const PUBLIC_EXACT = new Set<string>(["/api/health"]);
+
 // NextAuth v5 session cookie names (dev vs prod secure variant).
 const SESSION_COOKIES = [
   "authjs.session-token",
@@ -40,6 +45,7 @@ const SESSION_COOKIES = [
 ];
 
 function isPublic(pathname: string): boolean {
+  if (PUBLIC_EXACT.has(pathname)) return true;
   if (PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
     return true;
   }
@@ -58,7 +64,17 @@ export function middleware(req: NextRequest) {
 
   if (hasSession) return NextResponse.next();
 
-  // Unauthenticated — bounce to /login with callbackUrl preserved.
+  // Unauthenticated:
+  //   - API routes → JSON 401 (the client handles it, we don't want
+  //     a 307 redirect masquerading as an API response)
+  //   - everything else → bounce to /login with callbackUrl preserved
+  if (pathname.startsWith("/api/")) {
+    return NextResponse.json(
+      { error: "unauthenticated" },
+      { status: 401 },
+    );
+  }
+
   const loginUrl = new URL("/login", req.url);
   loginUrl.searchParams.set("callbackUrl", pathname + (search ?? ""));
   return NextResponse.redirect(loginUrl);

@@ -71,6 +71,8 @@ export interface AuditLogInput {
   decision: "applied" | "suggested" | "rejected" | "failed";
   beforeJson: Prisma.InputJsonValue | null;
   afterJson: Prisma.InputJsonValue | null;
+  /** Who performed the action. null = system / cron / webhook. */
+  actorUserId?: string | null;
 }
 
 export class AutomationAuditService {
@@ -90,6 +92,7 @@ export class AutomationAuditService {
         decision: log.decision,
         beforeJson: log.beforeJson ?? Prisma.JsonNull,
         afterJson: log.afterJson ?? Prisma.JsonNull,
+        actorUserId: log.actorUserId ?? null,
       },
     });
   }

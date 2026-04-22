@@ -9,6 +9,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
+import { requireSession, assertSameAccount } from "@/lib/require-session";
+import { AutomationAuditService } from "@/services/integrations/FollowUpBossService";
 
 const VALID_SIDES = new Set(["buy", "sell"]);
 const VALID_TYPES = new Set(["buyer", "seller", "investor", "wholesale", "other"]);
@@ -27,9 +29,14 @@ export async function PATCH(
   req: NextRequest,
   ctx: { params: Promise<{ id: string }> },
 ) {
+  const actor = await requireSession();
+  if (actor instanceof NextResponse) return actor;
+
   const { id } = await ctx.params;
   const txn = await prisma.transaction.findUnique({ where: { id } });
   if (!txn) return NextResponse.json({ error: "not found" }, { status: 404 });
+  const acctGuard = assertSameAccount(actor, txn.accountId);
+  if (acctGuard) return acctGuard;
 
   const body = (await req.json().catch(() => null)) as Body | null;
   if (!body) return NextResponse.json({ error: "bad JSON" }, { status: 400 });
@@ -78,6 +85,41 @@ export async function PATCH(
     where: { id },
     data,
   });
+
+  // Audit: who edited what
+  try {
+    const audit = new AutomationAuditService(prisma);
+    await audit.logAction({
+      accountId: actor.accountId,
+      transactionId: id,
+      entityType: "transaction",
+      entityId: id,
+      ruleName: "manual_edit",
+      actionType: "update",
+      sourceType: "manual",
+      confidenceScore: 1.0,
+      decision: "applied",
+      beforeJson: {
+        propertyAddress: txn.propertyAddress,
+        city: txn.city,
+        state: txn.state,
+        zip: txn.zip,
+        side: txn.side,
+        transactionType: txn.transactionType,
+      },
+      afterJson: {
+        propertyAddress: updated.propertyAddress,
+        city: updated.city,
+        state: updated.state,
+        zip: updated.zip,
+        side: updated.side,
+        transactionType: updated.transactionType,
+      },
+      actorUserId: actor.userId,
+    });
+  } catch {
+    // never block the edit on audit failure
+  }
 
   return NextResponse.json({ ok: true, transaction: updated });
 }
