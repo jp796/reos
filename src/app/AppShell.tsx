@@ -56,9 +56,10 @@ export function AppShell({
   const pathname = usePathname();
   const { mode, setMode, clearOverride, override } = useTheme();
 
-  // Public share routes get no chrome (no nav, no greeting, no theme
-  // toggle). Let the page render its own minimal presentation.
-  if (pathname?.startsWith("/share/")) {
+  // Public share routes + the sign-in page get no chrome (no nav, no
+  // greeting, no theme toggle). Let the page render its own minimal
+  // presentation.
+  if (pathname?.startsWith("/share/") || pathname === "/login") {
     return <>{children}</>;
   }
 
