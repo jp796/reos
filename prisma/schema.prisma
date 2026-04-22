@@ -81,6 +81,7 @@ model Contact {
 
   account      Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
   transactions Transaction[]
+  participantRoles TransactionParticipant[]
 
   @@index([accountId])
   @@index([fubPersonId], map: "idx_contacts_fub_person")
@@ -165,6 +166,7 @@ model Transaction {
   financials          TransactionFinancials?
   forwardedDocuments  ForwardedDocument[]
   invoiceEntries      InvoiceEntry[]
+  participants        TransactionParticipant[]
 
   @@index([accountId])
   @@index([contactId, status], map: "idx_transactions_contact_status")
@@ -523,6 +525,27 @@ model InvoiceEntry {
   @@index([accountId, status])
   @@index([transactionId])
   @@map("invoice_entries")
+}
+
+/// Co-buyers, co-sellers, and other secondary parties on a transaction.
+/// The primary contact stays on Transaction.contactId; this table is
+/// for EVERY OTHER human tied to the deal — spouses, LLC members,
+/// co-signers, lenders (as contacts), attorneys, inspectors, etc.
+model TransactionParticipant {
+  id            String   @id @default(cuid())
+  transactionId String   @map("transaction_id")
+  contactId     String   @map("contact_id")
+  role          String   // co_buyer | co_seller | lender | attorney | inspector | coordinator | other
+  notes         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  contact     Contact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([transactionId, contactId, role], map: "uniq_txn_participant")
+  @@index([transactionId])
+  @@index([contactId])
+  @@map("transaction_participants")
 }
 
 /// Dedupe table for documents we've already forwarded to an external

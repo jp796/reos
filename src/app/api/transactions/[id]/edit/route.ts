@@ -1,0 +1,83 @@
+/**
+ * PATCH /api/transactions/:id/edit
+ *
+ * Edit top-level transaction metadata: property address, city, state,
+ * zip, side (buy/sell), transaction type, display-name contact swap.
+ * Lighter than status/financials edits — no cascades, no milestones.
+ */
+
+import { NextResponse, type NextRequest } from "next/server";
+import { prisma } from "@/lib/db";
+import type { Prisma } from "@prisma/client";
+
+const VALID_SIDES = new Set(["buy", "sell"]);
+const VALID_TYPES = new Set(["buyer", "seller", "investor", "wholesale", "other"]);
+
+interface Body {
+  propertyAddress?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+  side?: string | null;
+  transactionType?: string;
+  primaryContactId?: string; // swap the lead contact
+}
+
+export async function PATCH(
+  req: NextRequest,
+  ctx: { params: Promise<{ id: string }> },
+) {
+  const { id } = await ctx.params;
+  const txn = await prisma.transaction.findUnique({ where: { id } });
+  if (!txn) return NextResponse.json({ error: "not found" }, { status: 404 });
+
+  const body = (await req.json().catch(() => null)) as Body | null;
+  if (!body) return NextResponse.json({ error: "bad JSON" }, { status: 400 });
+
+  const data: Prisma.TransactionUpdateInput = {};
+
+  if (body.propertyAddress !== undefined) {
+    const v = body.propertyAddress?.trim();
+    data.propertyAddress = v && v.length > 0 ? v.slice(0, 240) : null;
+  }
+  if (body.city !== undefined) {
+    data.city = body.city?.trim()?.slice(0, 80) || null;
+  }
+  if (body.state !== undefined) {
+    data.state = body.state?.trim()?.slice(0, 8) || null;
+  }
+  if (body.zip !== undefined) {
+    data.zip = body.zip?.trim()?.slice(0, 12) || null;
+  }
+  if (body.side !== undefined) {
+    if (body.side !== null && !VALID_SIDES.has(body.side)) {
+      return NextResponse.json({ error: "invalid side" }, { status: 400 });
+    }
+    data.side = body.side || null;
+  }
+  if (body.transactionType !== undefined) {
+    if (!VALID_TYPES.has(body.transactionType)) {
+      return NextResponse.json(
+        { error: `transactionType must be one of: ${[...VALID_TYPES].join(", ")}` },
+        { status: 400 },
+      );
+    }
+    data.transactionType = body.transactionType;
+  }
+  if (body.primaryContactId !== undefined) {
+    const contact = await prisma.contact.findUnique({
+      where: { id: body.primaryContactId },
+    });
+    if (!contact) {
+      return NextResponse.json({ error: "contact not found" }, { status: 404 });
+    }
+    data.contact = { connect: { id: contact.id } };
+  }
+
+  const updated = await prisma.transaction.update({
+    where: { id },
+    data,
+  });
+
+  return NextResponse.json({ ok: true, transaction: updated });
+}

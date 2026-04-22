@@ -9,6 +9,8 @@ import { ContractUploadPanel } from "./ContractUploadPanel";
 import { ForwardingPanel } from "./ForwardingPanel";
 import { TransactionTimeline } from "./TransactionTimeline";
 import { SharePanel } from "./SharePanel";
+import { EditableHeader } from "./EditableHeader";
+import { ParticipantsPanel } from "./ParticipantsPanel";
 import { SMART_FOLDER_CUTOFF } from "@/services/automation/SmartFolderService";
 import {
   RiskScoringService,
@@ -87,6 +89,19 @@ export default async function TransactionDetailPage({
       },
       financials: true,
       attributions: { include: { sourceChannel: true } },
+      participants: {
+        orderBy: { createdAt: "asc" },
+        include: {
+          contact: {
+            select: {
+              id: true,
+              fullName: true,
+              primaryEmail: true,
+              primaryPhone: true,
+            },
+          },
+        },
+      },
     },
   });
 
@@ -115,29 +130,18 @@ export default async function TransactionDetailPage({
 
       {/* Header */}
       <header className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-6">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className={statusBadge(txn.status)}>{txn.status}</span>
-            <span className="reos-label">{txn.transactionType}</span>
-            {txn.stageName && (
-              <span className="text-xs text-text-muted">
-                · FUB: {txn.stageName}
-              </span>
-            )}
-          </div>
-          <h1 className="mt-2 font-display text-display-md font-semibold">
-            {contact.fullName}
-          </h1>
-          <p className="mt-0.5 text-sm text-text-muted">
-            {txn.propertyAddress ?? "No property address yet"}
-            {(txn.city || txn.state) && (
-              <>
-                {" · "}
-                {[txn.city, txn.state, txn.zip].filter(Boolean).join(" ")}
-              </>
-            )}
-          </p>
-        </div>
+        <EditableHeader
+          transactionId={txn.id}
+          status={txn.status}
+          transactionType={txn.transactionType}
+          stageName={txn.stageName}
+          contactName={contact.fullName}
+          propertyAddress={txn.propertyAddress}
+          city={txn.city}
+          state={txn.state}
+          zip={txn.zip}
+          side={txn.side}
+        />
         {txn.milestones.length > 0 && (
           <CalendarSyncButton
             transactionId={txn.id}
@@ -171,6 +175,19 @@ export default async function TransactionDetailPage({
           value={fmtMoney(txn.financials?.grossCommission)}
         />
       </section>
+
+      <ParticipantsPanel
+        transactionId={txn.id}
+        primaryContactName={contact.fullName}
+        primarySide={txn.side}
+        initial={txn.participants.map((p) => ({
+          id: p.id,
+          role: p.role,
+          notes: p.notes,
+          createdAt: p.createdAt.toISOString(),
+          contact: p.contact,
+        }))}
+      />
 
       <AISummaryPanel
         transactionId={txn.id}

@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import { cn } from "@/lib/cn";
+import { GlobalSearch } from "./components/GlobalSearch";
 
 const NAV = [
   { href: "/", label: "Home", icon: HomeIcon },
@@ -99,13 +100,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="flex min-w-0 flex-1 flex-col">
           {/* Top bar */}
           <header className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-border bg-bg/95 px-5 py-3 backdrop-blur">
-            <div className="min-w-0">
+            <div className="min-w-0 shrink-0">
               <div className="text-xs text-text-muted">{dateStr}</div>
               <div className="text-h1 font-semibold tracking-tight">
                 {greet(now)}, Jp
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-1 items-center justify-end gap-3">
+              <GlobalSearch />
               <ThemeToggle
                 mode={mode}
                 override={!!override}
