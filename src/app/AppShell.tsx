@@ -12,6 +12,7 @@ import {
   Sun,
   Moon,
   SunMoon,
+  LogOut,
 } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import { cn } from "@/lib/cn";
@@ -36,7 +37,22 @@ function greet(now = new Date()): string {
   return "Still at it";
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+interface ShellUser {
+  name: string | null;
+  email: string | null;
+  image: string | null;
+  role: string | null;
+}
+
+export function AppShell({
+  children,
+  user,
+  signOutAction,
+}: {
+  children: React.ReactNode;
+  user: ShellUser | null;
+  signOutAction: () => Promise<void>;
+}) {
   const pathname = usePathname();
   const { mode, setMode, clearOverride, override } = useTheme();
 
@@ -91,8 +107,50 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             })}
           </nav>
           <div className="mt-auto rounded-md bg-surface-2 p-2.5 text-xs text-text-muted">
-            <div className="font-medium text-text">Jp Fluellen</div>
-            <div>Real Broker LLC · Cheyenne, WY</div>
+            {user ? (
+              <>
+                <div className="flex items-center gap-2">
+                  {user.image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={user.image}
+                      alt=""
+                      className="h-7 w-7 shrink-0 rounded-full border border-border"
+                    />
+                  ) : (
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-500 text-[11px] font-semibold text-white">
+                      {(user.name ?? user.email ?? "?")
+                        .slice(0, 1)
+                        .toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium text-text">
+                      {user.name ?? user.email ?? "Signed in"}
+                    </div>
+                    <div className="truncate">
+                      {user.role
+                        ? user.role.charAt(0).toUpperCase() + user.role.slice(1)
+                        : "Team member"}
+                    </div>
+                  </div>
+                </div>
+                <form action={signOutAction} className="mt-2">
+                  <button
+                    type="submit"
+                    className="flex w-full items-center justify-center gap-1.5 rounded border border-border bg-surface px-2 py-1.5 text-[11px] font-medium text-text-muted transition-colors hover:border-brand-500 hover:text-text"
+                  >
+                    <LogOut className="h-3 w-3" strokeWidth={2} />
+                    Sign out
+                  </button>
+                </form>
+              </>
+            ) : (
+              <>
+                <div className="font-medium text-text">Jp Fluellen</div>
+                <div>Real Broker LLC · Cheyenne, WY</div>
+              </>
+            )}
           </div>
         </aside>
 
@@ -103,7 +161,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="min-w-0 shrink-0">
               <div className="text-xs text-text-muted">{dateStr}</div>
               <div className="text-h1 font-semibold tracking-tight">
-                {greet(now)}, Jp
+                {greet(now)}, {user?.name?.split(" ")[0] ?? "Jp"}
               </div>
             </div>
             <div className="flex flex-1 items-center justify-end gap-3">
