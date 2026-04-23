@@ -277,10 +277,12 @@ export default async function TransactionDetailPage({
 
       <FinancialsForm
         transactionId={txn.id}
+        side={txn.side}
         initial={
           txn.financials
             ? {
                 salePrice: txn.financials.salePrice,
+                commissionPercent: txn.financials.commissionPercent,
                 grossCommission: txn.financials.grossCommission,
                 referralFeeAmount: txn.financials.referralFeeAmount,
                 brokerageSplitAmount: txn.financials.brokerageSplitAmount,

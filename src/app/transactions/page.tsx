@@ -17,12 +17,28 @@ import { cn } from "@/lib/cn";
 export const dynamic = "force-dynamic";
 
 type StatusFilter = "open" | "closed" | "all";
+type RepFilter = "any" | "buy" | "sell" | "both";
 
 const FILTER_TABS: Array<{ id: StatusFilter; label: string }> = [
   { id: "open", label: "Active" },
   { id: "closed", label: "Closed" },
   { id: "all", label: "All" },
 ];
+
+const REP_TABS: Array<{ id: RepFilter; label: string; dbValue?: string }> = [
+  { id: "any", label: "All sides" },
+  { id: "buy", label: "Buyer", dbValue: "buy" },
+  { id: "sell", label: "Seller", dbValue: "sell" },
+  { id: "both", label: "Dual", dbValue: "both" },
+];
+
+function buildHref(status: StatusFilter, rep: RepFilter): string {
+  const params = new URLSearchParams();
+  if (status !== "open") params.set("status", status);
+  if (rep !== "any") params.set("rep", rep);
+  const qs = params.toString();
+  return qs ? `/transactions?${qs}` : "/transactions";
+}
 
 function formatDate(d: Date | null | undefined) {
   if (!d) return "—";
@@ -48,20 +64,34 @@ function statusBadge(status: string) {
 export default async function TransactionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{ status?: string; rep?: string }>;
 }) {
   const sp = await searchParams;
   const filter: StatusFilter =
     sp.status === "closed" || sp.status === "all" ? sp.status : "open";
+  const rep: RepFilter =
+    sp.rep === "buy" || sp.rep === "sell" || sp.rep === "both" ? sp.rep : "any";
 
-  const where =
+  const statusWhere =
     filter === "all"
       ? {}
       : filter === "closed"
         ? { status: { in: ["closed", "dead"] } }
         : { status: { notIn: ["closed", "dead"] } };
 
-  const [transactions, total, closedCount, activeCount] = await Promise.all([
+  const repWhere = rep === "any" ? {} : { side: rep };
+
+  const where = { ...statusWhere, ...repWhere };
+
+  const [
+    transactions,
+    total,
+    closedCount,
+    activeCount,
+    buyCount,
+    sellCount,
+    bothCount,
+  ] = await Promise.all([
     prisma.transaction.findMany({
       where,
       orderBy: { updatedAt: "desc" },
@@ -81,6 +111,11 @@ export default async function TransactionsPage({
     prisma.transaction.count({
       where: { status: { notIn: ["closed", "dead"] } },
     }),
+    // Rep-side counts, scoped to the currently-active status filter so
+    // the numbers reflect what the user is looking at.
+    prisma.transaction.count({ where: { ...statusWhere, side: "buy" } }),
+    prisma.transaction.count({ where: { ...statusWhere, side: "sell" } }),
+    prisma.transaction.count({ where: { ...statusWhere, side: "both" } }),
   ]);
 
   return (
@@ -106,7 +141,7 @@ export default async function TransactionsPage({
       </header>
 
       {/* Status filter chips */}
-      <div className="mt-6 flex items-center gap-1.5">
+      <div className="mt-6 flex flex-wrap items-center gap-1.5">
         {FILTER_TABS.map((tab) => {
           const count =
             tab.id === "open"
@@ -115,15 +150,49 @@ export default async function TransactionsPage({
                 ? closedCount
                 : total;
           const active = filter === tab.id;
-          const href = tab.id === "open" ? "/transactions" : `/transactions?status=${tab.id}`;
           return (
             <Link
               key={tab.id}
-              href={href}
+              href={buildHref(tab.id, rep)}
               className={cn(
                 "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
                 active
                   ? "border-brand-500 bg-brand-50 text-brand-700"
+                  : "border-border bg-surface text-text-muted hover:border-border-strong hover:text-text",
+              )}
+            >
+              {tab.label}
+              <span className="tabular-nums opacity-70">{count}</span>
+            </Link>
+          );
+        })}
+      </div>
+
+      {/* Representation filter — Buyer / Seller / Dual (scoped to the
+          active status filter) */}
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        {REP_TABS.map((tab) => {
+          const count =
+            tab.id === "any"
+              ? filter === "open"
+                ? activeCount
+                : filter === "closed"
+                  ? closedCount
+                  : total
+              : tab.id === "buy"
+                ? buyCount
+                : tab.id === "sell"
+                  ? sellCount
+                  : bothCount;
+          const active = rep === tab.id;
+          return (
+            <Link
+              key={tab.id}
+              href={buildHref(filter, tab.id)}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                active
+                  ? "border-accent-400 bg-accent-100 text-accent-600"
                   : "border-border bg-surface text-text-muted hover:border-border-strong hover:text-text",
               )}
             >
@@ -191,6 +260,18 @@ export default async function TransactionsPage({
                         {txn.status}
                       </span>
                       <span className="reos-label">{txn.transactionType}</span>
+                      {txn.side && (
+                        <span
+                          className="inline-flex items-center rounded-full bg-accent-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-accent-600 ring-1 ring-accent-200"
+                          title="Representation"
+                        >
+                          {txn.side === "buy"
+                            ? "Buyer"
+                            : txn.side === "sell"
+                              ? "Seller"
+                              : "Dual"}
+                        </span>
+                      )}
                       <span className="text-sm font-medium text-text group-hover/link:text-brand-700">
                         {txn.contact.fullName}
                       </span>

@@ -2,8 +2,14 @@
  * PATCH /api/transactions/:id/edit
  *
  * Edit top-level transaction metadata: property address, city, state,
- * zip, side (buy/sell), transaction type, display-name contact swap.
+ * zip, side (buy/sell/both — aka Representation), transaction type,
+ * display-name contact swap.
  * Lighter than status/financials edits — no cascades, no milestones.
+ *
+ * `side` = representation. "buy" = we represent the buyer, "sell" =
+ * we represent the seller, "both" = dual agency (we represent both
+ * parties). The financials form uses this to interpret the commission
+ * % — under dual, it's the combined buy + sell side rate.
  */
 
 import { NextResponse, type NextRequest } from "next/server";
@@ -12,7 +18,7 @@ import type { Prisma } from "@prisma/client";
 import { requireSession, assertSameAccount } from "@/lib/require-session";
 import { AutomationAuditService } from "@/services/integrations/FollowUpBossService";
 
-const VALID_SIDES = new Set(["buy", "sell"]);
+const VALID_SIDES = new Set(["buy", "sell", "both"]);
 const VALID_TYPES = new Set(["buyer", "seller", "investor", "wholesale", "other"]);
 
 interface Body {

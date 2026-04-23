@@ -26,9 +26,16 @@ function fmtMoney(n: number | null | undefined) {
 export function FinancialsForm({
   transactionId,
   initial,
+  side,
 }: {
   transactionId: string;
   initial: Financials | null;
+  /** Representation — "buy" | "sell" | "both" | null. Drives how the
+   * commission % is interpreted:
+   *   - buy/sell  → the single-side rate we collect (e.g. 2.5%)
+   *   - both      → the combined rate for dual agency (e.g. 5-6%)
+   *   - null      → unset; behave like a single side for now */
+  side?: string | null;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -140,10 +147,26 @@ export function FinancialsForm({
   const disabled = busy || isPending;
 
   if (!editing) {
+    const sideLabel =
+      side === "buy"
+        ? "Buyer"
+        : side === "sell"
+          ? "Seller"
+          : side === "both"
+            ? "Dual"
+            : null;
     return (
       <section className="mt-8">
-        <div className="mb-2 flex items-baseline justify-between">
-          <h2 className="text-lg font-medium">Financials</h2>
+        <div className="mb-2 flex items-baseline justify-between gap-3">
+          <div className="flex items-baseline gap-3">
+            <h2 className="text-lg font-medium">Financials</h2>
+            {sideLabel && (
+              <span className="text-xs text-text-muted">
+                Representation:{" "}
+                <span className="font-medium text-text">{sideLabel}</span>
+              </span>
+            )}
+          </div>
           <button
             type="button"
             onClick={() => setEditing(true)}
@@ -192,12 +215,35 @@ export function FinancialsForm({
     );
   }
 
+  const isDual = side === "both";
+  const repLabel =
+    side === "buy"
+      ? "Buyer"
+      : side === "sell"
+        ? "Seller"
+        : side === "both"
+          ? "Dual"
+          : null;
+
   return (
     <section className="mt-8">
       <div className="mb-2 flex items-baseline justify-between">
         <h2 className="text-lg font-medium">Financials · editing</h2>
+        {repLabel && (
+          <span className="text-xs text-text-muted">
+            Representation:{" "}
+            <span className="font-medium text-text">{repLabel}</span>
+          </span>
+        )}
       </div>
       <div className="rounded-md border border-border bg-surface p-4">
+        {isDual && (
+          <div className="mb-3 rounded-md border border-accent-200 bg-accent-50 px-3 py-2 text-xs text-accent-700">
+            <strong>Dual agency.</strong> Enter the COMBINED commission %
+            (buy side + sell side) since we&rsquo;re earning both halves.
+            GCI auto-computes as <span className="tabular-nums">sale price × combined %</span>.
+          </div>
+        )}
         {/* Row 1: Sale Price · Commission % · GCI (auto) */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <MoneyInput
