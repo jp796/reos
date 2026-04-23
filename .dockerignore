@@ -1,0 +1,39 @@
+# VCS
+.git
+.gitignore
+.github
+
+# Builds / caches
+node_modules
+.next
+out
+dist
+
+# Env + local secrets (runtime injects from Secret Manager instead)
+.env
+.env.local
+.env.*.local
+
+# Test / scratch
+coverage
+*.log
+.DS_Store
+*.tsbuildinfo
+
+# Editor
+.vscode
+.idea
+.claude
+
+# Ops artifacts
+Dockerfile
+.dockerignore
+.cloudbuild.yaml
+cloudbuild.yaml
+deploy
+*.md
+!prisma/schema.prisma
+
+# Sample data dumps, screenshots, etc
+tmp
+uploads
