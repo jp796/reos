@@ -235,7 +235,13 @@ model Milestone {
   transactionId   String    @map("transaction_id")
   type            String    // contract, inspection, appraisal, financing, title, closing, etc.
   label           String
-  dueAt           DateTime  @map("due_at")
+  /// NULL means "tracked as a checklist item without a scheduled date".
+  /// The timeline renders these as "needs date", calendar sync skips
+  /// them, and the user can fill a real date later from the timeline UI.
+  /// Template-seeded milestones (appraisal, financing-approved, etc.)
+  /// default to null — we never fabricate offset-from-contract dates
+  /// that weren't actually in the contract.
+  dueAt           DateTime? @map("due_at")
   completedAt     DateTime? @map("completed_at")
   status          String    @default("pending") // pending, completed, overdue, cancelled
   ownerRole       String    @default("agent") @map("owner_role") // agent, lender, title, inspector, client

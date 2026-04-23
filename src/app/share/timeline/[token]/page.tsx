@@ -27,8 +27,9 @@ function daysBetween(a: Date, b: Date): number {
 }
 
 type Tone = "complete" | "overdue" | "today" | "soon" | "future";
-function toneFor(due: Date, completedAt: Date | null): Tone {
+function toneFor(due: Date | null, completedAt: Date | null): Tone {
   if (completedAt) return "complete";
+  if (!due) return "future"; // date-less items render as future/planned
   const now = new Date();
   const d = Math.floor(daysBetween(now, due));
   if (d < 0) return "overdue";
@@ -202,7 +203,9 @@ export default async function PublicTimelinePage({
                             </div>
                           </div>
                           <div className="text-right text-sm text-stone-700 tabular-nums">
-                            {fmtDate(m.dueAt)}
+                            {m.dueAt ? fmtDate(m.dueAt) : (
+                              <span className="italic text-stone-400">no date yet</span>
+                            )}
                           </div>
                         </div>
                       </div>

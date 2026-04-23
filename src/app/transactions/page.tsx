@@ -240,10 +240,12 @@ export default async function TransactionsPage({
         <div className="mt-8 space-y-2">
           {transactions.map((txn) => {
             const nextMs = txn.milestones.find(
-              (m) => m.status === "pending" && m.dueAt > new Date(),
+              (m) =>
+                m.status === "pending" && m.dueAt != null && m.dueAt > new Date(),
             );
             const overdue = txn.milestones.filter(
-              (m) => m.status === "pending" && m.dueAt <= new Date(),
+              (m) =>
+                m.status === "pending" && m.dueAt != null && m.dueAt <= new Date(),
             );
             return (
               <div

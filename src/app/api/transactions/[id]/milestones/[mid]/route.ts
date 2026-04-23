@@ -40,12 +40,18 @@ export async function PATCH(
   if (!body) return NextResponse.json({ error: "bad JSON" }, { status: 400 });
 
   const data: Prisma.MilestoneUpdateInput = {};
-  if (body.dueAt !== undefined && body.dueAt !== null) {
-    const d = new Date(body.dueAt);
-    if (Number.isNaN(d.getTime())) {
-      return NextResponse.json({ error: "invalid dueAt" }, { status: 400 });
+  if (body.dueAt !== undefined) {
+    // null = explicitly drop the date (milestone becomes a date-less
+    // checklist item). Empty string also clears.
+    if (body.dueAt === null || body.dueAt === "") {
+      data.dueAt = null;
+    } else {
+      const d = new Date(body.dueAt);
+      if (Number.isNaN(d.getTime())) {
+        return NextResponse.json({ error: "invalid dueAt" }, { status: 400 });
+      }
+      data.dueAt = d;
     }
-    data.dueAt = d;
   }
   if (body.label !== undefined) data.label = body.label.slice(0, 120);
   if (body.completedAt !== undefined) {

@@ -40,18 +40,21 @@ export async function POST(
   const body = (await req.json().catch(() => null)) as {
     type?: string;
     label?: string;
-    dueAt?: string;
+    dueAt?: string | null;
     ownerRole?: string;
   } | null;
-  if (!body?.label || !body.dueAt) {
-    return NextResponse.json(
-      { error: "label + dueAt required" },
-      { status: 400 },
-    );
+  if (!body?.label) {
+    return NextResponse.json({ error: "label required" }, { status: 400 });
   }
-  const due = new Date(body.dueAt);
-  if (Number.isNaN(due.getTime())) {
-    return NextResponse.json({ error: "invalid dueAt" }, { status: 400 });
+  // dueAt is optional — null/empty creates a date-less checklist
+  // milestone. Validate only when a value is provided.
+  let due: Date | null = null;
+  if (body.dueAt !== undefined && body.dueAt !== null && body.dueAt !== "") {
+    const parsed = new Date(body.dueAt);
+    if (Number.isNaN(parsed.getTime())) {
+      return NextResponse.json({ error: "invalid dueAt" }, { status: 400 });
+    }
+    due = parsed;
   }
   const ownerRole =
     body.ownerRole && OWNER_ROLES.has(body.ownerRole) ? body.ownerRole : "agent";

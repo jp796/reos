@@ -7,14 +7,23 @@ interface Milestone {
   id: string;
   type: string;
   label: string;
-  dueAt: string;
+  /** null = date-less checklist item. Timeline renders as "needs date",
+   * calendar sync skips, tone is "undated". */
+  dueAt: string | null;
   completedAt: string | null;
   status: string;
   ownerRole: string;
   source: string;
 }
 
-type Tone = "past" | "today" | "soon" | "overdue" | "future" | "complete";
+type Tone =
+  | "past"
+  | "today"
+  | "soon"
+  | "overdue"
+  | "future"
+  | "complete"
+  | "undated";
 
 interface Props {
   transactionId: string;
@@ -45,8 +54,18 @@ function rel(iso: string): string {
 function dayStart(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
+/** Sort key for milestones. Date-less (null dueAt) sort to the END,
+ * so the timeline shows real deadlines first and undated checklist
+ * items pool at the bottom. */
+function dueAtKey(m: { dueAt: string | null }): number {
+  if (!m.dueAt) return Number.MAX_SAFE_INTEGER;
+  const t = new Date(m.dueAt).getTime();
+  return Number.isNaN(t) ? Number.MAX_SAFE_INTEGER : t;
+}
+
 function toneFor(m: Milestone): Tone {
   if (m.completedAt) return "complete";
+  if (!m.dueAt) return "undated";
   const now = dayStart(new Date());
   const due = dayStart(new Date(m.dueAt));
   const days = (due.getTime() - now.getTime()) / (86400_000);
@@ -96,6 +115,14 @@ function toneClasses(t: Tone): {
         chipText: "text-amber-700",
         rail: "bg-amber-200",
       };
+    case "undated":
+      return {
+        dot: "bg-surface-2 border-border",
+        card: "border-dashed border-border bg-surface-2/40",
+        chip: "bg-surface-2",
+        chipText: "text-text-subtle",
+        rail: "bg-surface-2",
+      };
     case "future":
     default:
       return {
@@ -120,6 +147,8 @@ function toneLabel(t: Tone): string {
       return "Due soon";
     case "future":
       return "Upcoming";
+    case "undated":
+      return "No date yet";
     default:
       return "";
   }
@@ -136,7 +165,7 @@ export function TransactionTimeline(props: Props) {
   const [, startTransition] = useTransition();
   const [milestones, setMilestones] = useState(
     [...props.initialMilestones].sort(
-      (a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime(),
+      (a, b) => dueAtKey(a) - dueAtKey(b),
     ),
   );
   const [editId, setEditId] = useState<string | null>(null);
@@ -156,18 +185,20 @@ export function TransactionTimeline(props: Props) {
     return { total: milestones.length, complete, overdue, upcoming };
   }, [milestones]);
 
-  // Inject "TODAY" divider into the sorted list
+  // Inject "TODAY" divider into the sorted list. Date-less
+  // milestones sort last (via dueAtKey) — rendered after everything
+  // else with "at" pinned to now so the layout doesn't break.
   const items: TimelineItem[] = useMemo(() => {
     const now = new Date();
     const out: TimelineItem[] = [];
     let inserted = false;
     for (const m of milestones) {
-      const d = new Date(m.dueAt);
-      if (!inserted && d >= now) {
+      const d = m.dueAt ? new Date(m.dueAt) : null;
+      if (!inserted && d && d >= now) {
         out.push({ kind: "today", at: now });
         inserted = true;
       }
-      out.push({ kind: "milestone", at: d, milestone: m });
+      out.push({ kind: "milestone", at: d ?? now, milestone: m });
     }
     if (!inserted) out.push({ kind: "today", at: now });
     return out;
@@ -176,7 +207,7 @@ export function TransactionTimeline(props: Props) {
   async function updateMilestone(
     mid: string,
     patch: {
-      dueAt?: string;
+      dueAt?: string | null;
       label?: string;
       completedAt?: string | null;
       ownerRole?: string;
@@ -201,10 +232,7 @@ export function TransactionTimeline(props: Props) {
       setMilestones((prev) =>
         prev
           .map((m) => (m.id === mid ? updated : m))
-          .sort(
-            (a, b) =>
-              new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime(),
-          ),
+          .sort((a, b) => dueAtKey(a) - dueAtKey(b)),
       );
       startTransition(() => router.refresh());
     } catch (e) {
@@ -235,15 +263,14 @@ export function TransactionTimeline(props: Props) {
   // Add-milestone form
   const [adding, setAdding] = useState(false);
   const [newLabel, setNewLabel] = useState("");
-  const [newDate, setNewDate] = useState(
-    new Date().toISOString().slice(0, 10),
-  );
+  // Start empty so blank = date-less checklist item by default.
+  const [newDate, setNewDate] = useState("");
   const [newOwner, setNewOwner] = useState("agent");
   const [savingNew, setSavingNew] = useState(false);
 
   async function addMilestone(e: React.FormEvent) {
     e.preventDefault();
-    if (!newLabel.trim() || !newDate) return;
+    if (!newLabel.trim()) return;
     setSavingNew(true);
     setErr(null);
     try {
@@ -254,7 +281,8 @@ export function TransactionTimeline(props: Props) {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             label: newLabel.trim(),
-            dueAt: newDate,
+            // Empty date → date-less checklist item
+            dueAt: newDate || null,
             ownerRole: newOwner,
           }),
         },
@@ -265,13 +293,10 @@ export function TransactionTimeline(props: Props) {
         return;
       }
       setMilestones((prev) =>
-        [...prev, data.milestone].sort(
-          (a, b) =>
-            new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime(),
-        ),
+        [...prev, data.milestone].sort((a, b) => dueAtKey(a) - dueAtKey(b)),
       );
       setNewLabel("");
-      setNewDate(new Date().toISOString().slice(0, 10));
+      setNewDate("");
       setNewOwner("agent");
       setAdding(false);
       startTransition(() => router.refresh());
@@ -339,7 +364,8 @@ export function TransactionTimeline(props: Props) {
             value={newDate}
             onChange={(e) => setNewDate(e.target.value)}
             className="rounded border border-border-strong px-2 py-1.5 text-sm"
-            required
+            placeholder="Optional"
+            title="Leave blank for a date-less checklist item"
           />
           <select
             value={newOwner}
@@ -426,10 +452,18 @@ export function TransactionTimeline(props: Props) {
                       </div>
                     </div>
                     <div className="flex items-baseline gap-2 text-sm">
-                      <span className="font-medium">{fmt(m.dueAt)}</span>
-                      <span className="text-xs text-text-muted">
-                        {rel(m.dueAt)}
-                      </span>
+                      {m.dueAt ? (
+                        <>
+                          <span className="font-medium">{fmt(m.dueAt)}</span>
+                          <span className="text-xs text-text-muted">
+                            {rel(m.dueAt)}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-xs italic text-text-subtle">
+                          no date
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -505,18 +539,18 @@ function EditRow({
   milestone: Milestone;
   onClose: () => void;
   onSave: (patch: {
-    dueAt: string;
+    dueAt: string | null;
     label: string;
     ownerRole: string;
   }) => void;
   onDelete: () => void;
 }) {
   const [label, setLabel] = useState(milestone.label);
-  const [dueAt, setDueAt] = useState(milestone.dueAt.slice(0, 10));
+  const [dueAt, setDueAt] = useState(milestone.dueAt?.slice(0, 10) ?? "");
   const [ownerRole, setOwnerRole] = useState(milestone.ownerRole);
 
   return (
-    <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_140px_130px_auto_auto]">
+    <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_140px_auto_130px_auto_auto]">
       <input
         type="text"
         value={label}
@@ -529,6 +563,18 @@ function EditRow({
         onChange={(e) => setDueAt(e.target.value)}
         className="rounded border border-border-strong px-2 py-1 text-sm"
       />
+      {/* Clear-date quick action — turns the milestone into a date-less
+          checklist item. Calendar sync will skip it; timeline shows
+          "no date" in italic. */}
+      <button
+        type="button"
+        onClick={() => setDueAt("")}
+        disabled={dueAt === ""}
+        className="rounded border border-border bg-surface px-2 py-1 text-[11px] text-text-muted hover:border-border-strong hover:text-text disabled:opacity-50"
+        title="Remove the scheduled date — becomes a date-less checklist item"
+      >
+        No date
+      </button>
       <select
         value={ownerRole}
         onChange={(e) => setOwnerRole(e.target.value)}
@@ -542,7 +588,9 @@ function EditRow({
       </select>
       <button
         type="button"
-        onClick={() => onSave({ label, dueAt, ownerRole })}
+        onClick={() =>
+          onSave({ label, dueAt: dueAt === "" ? null : dueAt, ownerRole })
+        }
         className="rounded bg-brand-600 px-2 py-1 text-xs font-medium text-white hover:bg-brand-500"
       >
         Save

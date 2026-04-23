@@ -60,11 +60,11 @@ function statusBadge(status: string) {
 
 function msStatusTone(ms: {
   status: string;
-  dueAt: Date;
+  dueAt: Date | null;
   completedAt: Date | null;
 }) {
   if (ms.completedAt) return "border-emerald-200 bg-emerald-50";
-  const overdue = ms.status === "pending" && ms.dueAt <= new Date();
+  const overdue = ms.status === "pending" && ms.dueAt && ms.dueAt <= new Date();
   if (overdue) return "border-red-200 bg-red-50";
   return "border-neutral-200 bg-white";
 }
@@ -347,7 +347,7 @@ export default async function TransactionDetailPage({
           id: m.id,
           type: m.type,
           label: m.label,
-          dueAt: m.dueAt.toISOString(),
+          dueAt: m.dueAt?.toISOString() ?? null,
           completedAt: m.completedAt?.toISOString() ?? null,
           status: m.status,
           ownerRole: m.ownerRole,

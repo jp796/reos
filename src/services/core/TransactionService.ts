@@ -141,16 +141,10 @@ export class TransactionService {
         skipped++;
         continue;
       }
-      // When no contract date is known, skip pre-contract milestones
-      // (offsetDays < 0) — they'd otherwise default to new Date() + (-n)
-      // and show as instantly overdue. The rest (contract-day and
-      // forward-looking) still land with reasonable `now + offset` dates.
-      // When contract_date is set later, applyMilestoneTemplate can be
-      // re-run and it'll fill in the skipped pre-contract items.
-      if (contractDate === null && t.offsetDays < 0) {
-        skipped++;
-        continue;
-      }
+      // All template milestones now land with dueAt=null unless
+      // computeDueAt opts in (currently only `closing`). No more
+      // "instantly overdue" negative-offset rows, no more "skip
+      // pre-contract" pruning needed. Calendar sync filters null.
       await this.createMilestoneFromTemplate(transactionId, t, contractDate, source);
       created++;
     }

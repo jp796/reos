@@ -430,7 +430,7 @@ function MilestoneRow({
   m: {
     id: string;
     label: string;
-    dueAt: Date;
+    dueAt: Date | null;
     ownerRole: string;
     transaction: {
       id: string;
@@ -465,8 +465,14 @@ function MilestoneRow({
         </div>
       </div>
       <div className="text-right text-sm">
-        <div>{fmtDate(m.dueAt)}</div>
-        <div className="text-xs text-neutral-500">{fmtRel(m.dueAt)}</div>
+        {m.dueAt ? (
+          <>
+            <div>{fmtDate(m.dueAt)}</div>
+            <div className="text-xs text-neutral-500">{fmtRel(m.dueAt)}</div>
+          </>
+        ) : (
+          <div className="text-xs italic text-neutral-400">no date</div>
+        )}
       </div>
     </li>
   );

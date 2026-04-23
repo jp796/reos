@@ -75,12 +75,33 @@ export const MILESTONE_TEMPLATES: Record<TransactionType, MilestoneTemplate[]> =
  * Compute a milestone's dueAt given a transaction's contract date.
  * Falls back to "today" if no contract date is set yet.
  */
+/**
+ * Compute a due date for a template milestone, or return null if
+ * we can't confidently pin one.
+ *
+ * IMPORTANT behavior change (2026-04-23): we NO LONGER fabricate
+ * a date by offsetting from the contract date for speculative
+ * milestones. Real contract deadlines (earnest money due, inspection,
+ * title commitment, closing) land via the contract-extraction
+ * pipeline, which writes a real `dueAt`. Template milestones exist
+ * to seed the checklist shape — they default to `null` so the
+ * timeline shows them as "needs date" instead of a hallucinated
+ * offset. The ONLY exception is `closing`, because the closing date
+ * is known at transaction creation for FUB-sourced and auto-created
+ * transactions.
+ *
+ * When the user wants a date on a template-seeded milestone, they
+ * either wait for contract extraction to fill it, or set it manually
+ * from the timeline.
+ */
 export function computeDueAt(
   template: MilestoneTemplate,
   contractDate: Date | null | undefined,
-): Date {
-  const base = contractDate ?? new Date();
-  const d = new Date(base);
-  d.setDate(d.getDate() + template.offsetDays);
-  return d;
+): Date | null {
+  if (template.type === "closing" && contractDate) {
+    const d = new Date(contractDate);
+    d.setDate(d.getDate() + template.offsetDays);
+    return d;
+  }
+  return null;
 }

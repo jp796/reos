@@ -169,7 +169,7 @@ function buildPrompt(
     closingDate: Date | null;
     milestones: Array<{
       label: string;
-      dueAt: Date;
+      dueAt: Date | null;
       completedAt: Date | null;
       status: string;
     }>;
@@ -195,7 +195,7 @@ function buildPrompt(
     .slice(0, 10)
     .map(
       (m) =>
-        `- ${m.label} (due ${fmt(m.dueAt)}) ${m.completedAt ? "✓ done" : m.status}`,
+        `- ${m.label} (due ${m.dueAt ? fmt(m.dueAt) : "no date yet"}) ${m.completedAt ? "✓ done" : m.status}`,
     )
     .join("\n");
   const ts = txn.tasks

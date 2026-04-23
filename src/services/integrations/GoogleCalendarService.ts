@@ -52,7 +52,7 @@ export interface MilestoneSyncResult {
   details: Array<{
     milestoneId: string;
     milestoneLabel: string;
-    dueAt: string;
+    dueAt: string | null;
     status: "created" | "already-linked" | "skipped" | "error";
     googleEventId?: string;
   }>;
@@ -188,9 +188,11 @@ export class GoogleCalendarService {
     if (unlinkedLegacy.length > 0) {
       for (const ms of transaction.milestones) {
         if (linkedMilestoneIds.has(ms.id)) continue;
+        if (!ms.dueAt) continue; // undated milestones have no calendar row to match
+        const msDueIso = ms.dueAt.toISOString();
         const candidate = unlinkedLegacy.find(
           (e) =>
-            e.startAt.toISOString() === ms.dueAt.toISOString() &&
+            e.startAt.toISOString() === msDueIso &&
             e.title.includes(ms.label),
         );
         if (candidate) {
@@ -205,6 +207,20 @@ export class GoogleCalendarService {
 
     for (const ms of transaction.milestones) {
       result.attempted++;
+
+      // Skip milestones with no scheduled date — they're checklist
+      // placeholders that shouldn't create calendar entries until a
+      // real date is set.
+      if (!ms.dueAt) {
+        result.skipped++;
+        result.details.push({
+          milestoneId: ms.id,
+          milestoneLabel: ms.label,
+          dueAt: null,
+          status: "skipped",
+        });
+        continue;
+      }
 
       if (linkedMilestoneIds.has(ms.id)) {
         result.alreadyLinked++;

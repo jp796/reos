@@ -47,8 +47,14 @@ export class RiskScoringService {
     const factors: TransactionRisk["factors"] = [];
 
     // --- Rule 1: overdue pending milestones (+5 each, cap 25, severity by count)
+    // Date-less checklist items don't count as overdue — they have
+    // no deadline yet.
     const overdueMs = t.milestones.filter(
-      (m) => !m.completedAt && m.dueAt <= now && m.status === "pending",
+      (m) =>
+        !m.completedAt &&
+        m.dueAt != null &&
+        m.dueAt <= now &&
+        m.status === "pending",
     );
     if (overdueMs.length > 0) {
       const impact = Math.min(overdueMs.length * 5, 25);
@@ -99,7 +105,11 @@ export class RiskScoringService {
     // --- Rule 4: deadline coming up this week with missing prep
     const weekFromNow = new Date(now.getTime() + 7 * DAY_MS);
     const imminent = t.milestones.filter(
-      (m) => !m.completedAt && m.dueAt > now && m.dueAt <= weekFromNow,
+      (m) =>
+        !m.completedAt &&
+        m.dueAt != null &&
+        m.dueAt > now &&
+        m.dueAt <= weekFromNow,
     );
     if (imminent.length >= 2) {
       factors.push({
