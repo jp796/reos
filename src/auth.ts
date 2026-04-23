@@ -16,6 +16,25 @@ import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/db";
 
+/**
+ * Naming-collision shim for @auth/prisma-adapter.
+ *
+ * The adapter hardcodes `p.account.*` when it stores OAuth credentials.
+ * REOS already has a top-level `Account` model (the tenant — "Real
+ * Broker LLC"), so we added a separate `AuthAccount` model to hold
+ * OAuth rows. This proxy exposes `authAccount` under the alias
+ * `account` ONLY to the adapter, so the rest of the codebase keeps
+ * using `prisma.account` for the tenant without collision.
+ */
+const adapterPrisma = new Proxy(prisma, {
+  get(target, prop: string | symbol, receiver) {
+    if (prop === "account") {
+      return (target as unknown as { authAccount: unknown }).authAccount;
+    }
+    return Reflect.get(target, prop, receiver);
+  },
+}) as typeof prisma;
+
 function allowedEmails(): string[] {
   return (process.env.AUTH_ALLOWED_EMAILS ?? "")
     .split(",")
@@ -53,7 +72,7 @@ function checkAuthConfig() {
 checkAuthConfig();
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  adapter: PrismaAdapter(prisma),
+  adapter: PrismaAdapter(adapterPrisma),
   session: { strategy: "database", maxAge: 30 * 24 * 60 * 60 },
   secret: process.env.AUTH_SECRET,
   trustHost: true,
