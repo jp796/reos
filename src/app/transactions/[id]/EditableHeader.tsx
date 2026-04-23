@@ -145,10 +145,9 @@ export function EditableHeader(props: Props) {
             <Pencil className="h-3.5 w-3.5" strokeWidth={1.8} />
           </button>
         </div>
-        <h1 className="mt-2 font-display text-display-md font-semibold">
-          {props.contactName}
-        </h1>
-        <p className="mt-0.5 text-sm text-text-muted">
+        {/* h1 + contact edit now lives in <EditablePrimaryContact>,
+            rendered by the page alongside this component. */}
+        <p className="mt-2 text-sm text-text-muted">
           {props.propertyAddress ?? "No property address yet"}
           {(props.city || props.state) && (
             <>

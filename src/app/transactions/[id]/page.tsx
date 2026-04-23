@@ -10,6 +10,7 @@ import { ForwardingPanel } from "./ForwardingPanel";
 import { TransactionTimeline } from "./TransactionTimeline";
 import { SharePanel } from "./SharePanel";
 import { EditableHeader } from "./EditableHeader";
+import { EditablePrimaryContact } from "./EditablePrimaryContact";
 import { ParticipantsPanel } from "./ParticipantsPanel";
 import { SMART_FOLDER_CUTOFF } from "@/services/automation/SmartFolderService";
 import {
@@ -108,6 +109,12 @@ export default async function TransactionDetailPage({
   if (!txn) return notFound();
 
   const contact = txn.contact;
+
+  // Is this primary contact referenced on any OTHER transaction?
+  // Drives the "renaming propagates" warning in <EditablePrimaryContact>.
+  const otherUses = await prisma.transaction.count({
+    where: { contactId: contact.id, NOT: { id: txn.id } },
+  });
   const tags: string[] = Array.isArray(contact?.tagsJson)
     ? (contact.tagsJson as string[])
     : [];
@@ -130,18 +137,28 @@ export default async function TransactionDetailPage({
 
       {/* Header */}
       <header className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-6">
-        <EditableHeader
-          transactionId={txn.id}
-          status={txn.status}
-          transactionType={txn.transactionType}
-          stageName={txn.stageName}
-          contactName={contact.fullName}
-          propertyAddress={txn.propertyAddress}
-          city={txn.city}
-          state={txn.state}
-          zip={txn.zip}
-          side={txn.side}
-        />
+        <div className="min-w-0 flex-1">
+          <EditableHeader
+            transactionId={txn.id}
+            status={txn.status}
+            transactionType={txn.transactionType}
+            stageName={txn.stageName}
+            contactName={contact.fullName}
+            propertyAddress={txn.propertyAddress}
+            city={txn.city}
+            state={txn.state}
+            zip={txn.zip}
+            side={txn.side}
+          />
+          <EditablePrimaryContact
+            contactId={contact.id}
+            fullName={contact.fullName}
+            primaryEmail={contact.primaryEmail}
+            primaryPhone={contact.primaryPhone}
+            referencedElsewhere={otherUses > 0}
+            side={txn.side}
+          />
+        </div>
         {txn.milestones.length > 0 && (
           <CalendarSyncButton
             transactionId={txn.id}
