@@ -247,6 +247,8 @@ export default async function TransactionDetailPage({
 
       <ContractUploadPanel
         transactionId={txn.id}
+        side={txn.side}
+        hasSmartFolder={!!txn.smartFolderLabelId}
         initialExtraction={
           (txn.pendingContractJson as unknown as
             | Record<string, unknown>

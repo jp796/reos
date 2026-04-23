@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { DropZone } from "@/app/components/DropZone";
+import { useToast } from "@/app/ToastProvider";
 
 interface Field<T = unknown> {
   value: T | null;
@@ -66,11 +67,19 @@ const FIELD_ROWS: Array<{
 export function ContractUploadPanel({
   transactionId,
   initialExtraction,
+  side,
+  hasSmartFolder,
 }: {
   transactionId: string;
   initialExtraction: Extraction | null;
+  /** Transaction representation, drives the default "Rescan doc" side */
+  side?: string | null;
+  /** Whether a SmartFolder is configured — controls whether the
+   * Rescan buttons warn about broad scope. */
+  hasSmartFolder?: boolean;
 }) {
   const router = useRouter();
+  const toast = useToast();
   const [, startTransition] = useTransition();
   const [extraction, setExtraction] = useState<Extraction | null>(
     initialExtraction,
@@ -80,9 +89,65 @@ export function ContractUploadPanel({
   );
   const [uploading, setUploading] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [rescanning, setRescanning] = useState<"buy" | "sell" | "both" | null>(
+    null,
+  );
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+
+  /**
+   * Rescan the transaction's Gmail SmartFolder for the newest
+   * contract-like PDF on the given side and re-run extraction.
+   * Replaces the pending extraction on success.
+   */
+  async function rescan(rescanSide: "buy" | "sell" | "both") {
+    setRescanning(rescanSide);
+    setErr(null);
+    setMsg(null);
+    try {
+      const res = await fetch(
+        `/api/transactions/${transactionId}/contract/rescan`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ side: rescanSide }),
+        },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setErr(data.error ?? res.statusText);
+        toast.error("Rescan failed", data.error ?? res.statusText);
+        return;
+      }
+      if (!data.ok) {
+        const reason =
+          data.reason === "no_matching_pdfs_found"
+            ? data.hint ?? "No matching contract PDFs found."
+            : data.reason ?? "rescan failed";
+        setErr(reason);
+        toast.error("No matching docs", reason);
+        return;
+      }
+      setExtraction(data.extraction);
+      setEdits(editsFromExtraction(data.extraction));
+      const label =
+        rescanSide === "buy"
+          ? "buyer"
+          : rescanSide === "sell"
+            ? "seller"
+            : "dual";
+      const note = `Rescanned ${label} side · ${data.pickedFilename} (out of ${data.candidatesConsidered} candidates). Review and Apply.`;
+      setMsg(note);
+      toast.success("Contract rescanned", data.pickedFilename);
+    } catch (e) {
+      const m = e instanceof Error ? e.message : "rescan failed";
+      setErr(m);
+      toast.error("Rescan failed", m);
+    } finally {
+      setRescanning(null);
+    }
+  }
 
   async function uploadFile(f: File) {
     setPendingFile(f);
@@ -161,6 +226,11 @@ export function ContractUploadPanel({
     }
   }
 
+  const defaultRescanSide: "buy" | "sell" | "both" =
+    side === "buy" || side === "sell" || side === "both"
+      ? side
+      : "both";
+
   return (
     <section className="mt-6 rounded-md border border-border bg-surface p-4">
       <div className="mb-3 flex items-baseline justify-between gap-3">
@@ -169,6 +239,56 @@ export function ContractUploadPanel({
           Upload the purchase contract + any compensation rider. AI
           reads them, you review + apply.
         </span>
+      </div>
+
+      {/* Rescan row — always visible. Pulls the newest contract-like
+          PDF from the transaction's SmartFolder for the chosen side,
+          re-runs extraction. */}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded border border-border bg-surface-2 px-3 py-2">
+        <div className="min-w-0 text-xs text-text-muted">
+          <span className="font-medium text-text">Rescan from Gmail</span>
+          {" — "}
+          pulls the newest contract-like PDF from{" "}
+          {hasSmartFolder ? (
+            <span>this transaction&rsquo;s SmartFolder</span>
+          ) : (
+            <span className="text-amber-700">
+              Gmail (no SmartFolder — scope is broader, consider creating one first)
+            </span>
+          )}{" "}
+          and re-runs extraction.
+        </div>
+        <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => rescan("buy")}
+            disabled={rescanning !== null || uploading || applying}
+            className="rounded border border-border bg-surface px-2.5 py-1 text-xs font-medium text-text-muted transition-colors hover:border-brand-500 hover:text-brand-700 disabled:opacity-50"
+            title="Find the newest PDF where a buyer party is on the thread"
+          >
+            {rescanning === "buy" ? "Scanning…" : "Rescan · Buyer"}
+          </button>
+          <button
+            type="button"
+            onClick={() => rescan("sell")}
+            disabled={rescanning !== null || uploading || applying}
+            className="rounded border border-border bg-surface px-2.5 py-1 text-xs font-medium text-text-muted transition-colors hover:border-brand-500 hover:text-brand-700 disabled:opacity-50"
+            title="Find the newest PDF where a seller party is on the thread"
+          >
+            {rescanning === "sell" ? "Scanning…" : "Rescan · Seller"}
+          </button>
+          {defaultRescanSide === "both" && (
+            <button
+              type="button"
+              onClick={() => rescan("both")}
+              disabled={rescanning !== null || uploading || applying}
+              className="rounded border border-border bg-surface px-2.5 py-1 text-xs font-medium text-text-muted transition-colors hover:border-brand-500 hover:text-brand-700 disabled:opacity-50"
+              title="Either side — dual agency"
+            >
+              {rescanning === "both" ? "Scanning…" : "Rescan · Dual"}
+            </button>
+          )}
+        </div>
       </div>
 
       {!extraction && (
