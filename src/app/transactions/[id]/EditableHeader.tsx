@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Pencil, Check, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useToast } from "@/app/ToastProvider";
+import { RepresentationToggle } from "./RepresentationToggle";
 
 interface Props {
   transactionId: string;
@@ -117,27 +118,19 @@ export function EditableHeader(props: Props) {
   }
 
   if (!editing) {
-    const repLabel =
-      props.side === "buy"
-        ? "Buyer"
-        : props.side === "sell"
-          ? "Seller"
-          : props.side === "both"
-            ? "Dual"
-            : null;
     return (
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className={statusBadge(props.status)}>{props.status}</span>
           <span className="reos-label">{props.transactionType}</span>
-          {repLabel && (
-            <span
-              className="inline-flex items-center rounded-full bg-accent-100 px-2 py-0.5 text-xs font-medium text-accent-600 ring-1 ring-accent-200"
-              title="Representation — which side of the deal we're on"
-            >
-              {repLabel}
-            </span>
-          )}
+          {/* Inline 1-click Representation toggle — flipping this
+              updates side (+ transactionType when it was buyer/seller/
+              empty) and fires downstream through Financials + filters. */}
+          <RepresentationToggle
+            transactionId={props.transactionId}
+            side={props.side}
+            transactionType={props.transactionType}
+          />
           {props.stageName && (
             <span className="text-xs text-text-muted">
               · FUB: {props.stageName}
@@ -235,21 +228,7 @@ export function EditableHeader(props: Props) {
             className="mt-1 w-full rounded border border-border bg-surface-2 px-2 py-1.5 text-sm"
           />
         </label>
-        <label className="block sm:col-span-2">
-          <span className="reos-label">Representation</span>
-          <select
-            value={side}
-            onChange={(e) => setSide(e.target.value)}
-            className="mt-1 w-full rounded border border-border bg-surface-2 px-2 py-1.5 text-sm"
-            title="Which side of the deal you're representing. Drives how the commission % is interpreted."
-          >
-            <option value="">—</option>
-            <option value="buy">Buyer</option>
-            <option value="sell">Seller</option>
-            <option value="both">Dual (both)</option>
-          </select>
-        </label>
-        <label className="block sm:col-span-2">
+        <label className="block sm:col-span-4">
           <span className="reos-label">Type</span>
           <select
             value={type}

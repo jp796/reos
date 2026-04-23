@@ -23,6 +23,23 @@ function fmtMoney(n: number | null | undefined) {
   }).format(n);
 }
 
+/** Label the commission % field based on the transaction's
+ * representation. Seller-only deals collect the seller-side rate
+ * (typically 2.5-3%). Buyer-only collect the buyer-side rate.
+ * Dual agency collects the COMBINED rate (buy + sell, typically 5-6%). */
+function commissionLabel(side?: string | null): string {
+  switch (side) {
+    case "buy":
+      return "Buyer-side %";
+    case "sell":
+      return "Seller-side %";
+    case "both":
+      return "Combined % (dual)";
+    default:
+      return "Commission %";
+  }
+}
+
 export function FinancialsForm({
   transactionId,
   initial,
@@ -178,7 +195,7 @@ export function FinancialsForm({
         <div className="grid grid-cols-2 gap-x-6 gap-y-3 rounded-md border border-border bg-surface p-4 md:grid-cols-4">
           <Field label="Sale price" value={fmtMoney(initial?.salePrice)} />
           <Field
-            label="Commission %"
+            label={commissionLabel(side)}
             value={
               initial?.commissionPercent != null
                 ? `${initial.commissionPercent}%`
@@ -253,7 +270,7 @@ export function FinancialsForm({
             disabled={disabled}
           />
           <label className="block">
-            <span className="reos-label">Commission %</span>
+            <span className="reos-label">{commissionLabel(side)}</span>
             <div className="relative mt-1">
               <input
                 type="number"
