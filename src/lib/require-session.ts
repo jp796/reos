@@ -59,6 +59,18 @@ export async function requireSession(): Promise<ActingUser | NextResponse> {
     );
   }
 
+  // accountId is nullable at the DB level to let NextAuth's adapter
+  // create the User row (it only passes name/email/emailVerified).
+  // Our createUser event fills this in immediately after, so in
+  // steady state it's always populated. If we see null here, the
+  // user is in a half-provisioned state — reject cleanly.
+  if (!user.accountId) {
+    return NextResponse.json(
+      { error: "user not linked to an account" },
+      { status: 401 },
+    );
+  }
+
   return {
     userId: user.id,
     accountId: user.accountId,

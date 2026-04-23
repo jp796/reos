@@ -91,7 +91,12 @@ model VerificationToken {
 
 model User {
   id            String    @id @default(cuid())
-  accountId     String    @map("account_id")
+  // Nullable because NextAuth's PrismaAdapter.createUser() only
+  // provides {name, email, emailVerified}. Our events.createUser
+  // callback fills accountId + role immediately after, so in practice
+  // the null window lasts a single await. Queries should treat this
+  // as "expect populated" and assert on it where that matters.
+  accountId     String?   @map("account_id")
   name          String?
   email         String    @unique
   emailVerified DateTime? @map("email_verified")
@@ -101,7 +106,7 @@ model User {
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
-  account      Account             @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account      Account?            @relation(fields: [accountId], references: [id], onDelete: Cascade)
   authAccounts AuthAccount[]
   sessions     Session[]
   auditLogs    AutomationAuditLog[]

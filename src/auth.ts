@@ -105,11 +105,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (u) {
           (session.user as typeof session.user & {
             role: string;
-            accountId: string;
+            accountId: string | null;
           }).role = u.role;
           (session.user as typeof session.user & {
             role: string;
-            accountId: string;
+            accountId: string | null;
           }).accountId = u.accountId;
         }
       }

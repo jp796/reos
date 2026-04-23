@@ -62,7 +62,14 @@ export default async function RootLayout({
 
   return (
     <html lang="en" className={`${inter.variable} ${spaceGrotesk.variable}`}>
-      <body className="min-h-screen bg-bg text-text antialiased">
+      {/* suppressHydrationWarning: password manager / grammar extensions
+          inject attrs like `bis_register` / `__processed_*` on <body>
+          before React hydrates. Only ignores body-level mismatches,
+          not anything deeper. */}
+      <body
+        className="min-h-screen bg-bg text-text antialiased"
+        suppressHydrationWarning
+      >
         <ThemeProvider>
           <ToastProvider>
             <AppShell user={user} signOutAction={doSignOut}>
