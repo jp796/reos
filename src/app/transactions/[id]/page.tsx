@@ -11,6 +11,7 @@ import { TransactionTimeline } from "./TransactionTimeline";
 import { SharePanel } from "./SharePanel";
 import { EditableHeader } from "./EditableHeader";
 import { EditablePrimaryContact } from "./EditablePrimaryContact";
+import { TaskPanel } from "./TaskPanel";
 import { ParticipantsPanel } from "./ParticipantsPanel";
 import { SMART_FOLDER_CUTOFF } from "@/services/automation/SmartFolderService";
 import {
@@ -357,34 +358,20 @@ export default async function TransactionDetailPage({
         closingDate={txn.closingDate?.toISOString() ?? null}
       />
 
-      {/* Tasks */}
-      {txn.tasks.length > 0 && (
-        <section className="mt-8">
-          <h2 className="mb-2 text-lg font-medium">Tasks</h2>
-          <ul className="space-y-2">
-            {txn.tasks.map((t) => (
-              <li
-                key={t.id}
-                className="rounded-md border border-neutral-200 bg-white p-3 text-sm"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="font-medium">{t.title}</div>
-                    {t.description && (
-                      <div className="mt-0.5 text-xs text-neutral-600">
-                        {t.description}
-                      </div>
-                    )}
-                  </div>
-                  <div className="text-xs text-neutral-500">
-                    {t.completedAt ? "✓ done" : fmtDate(t.dueAt)}
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      {/* Tasks — TC work queue, separate from milestones which track dates */}
+      <TaskPanel
+        transactionId={txn.id}
+        initial={txn.tasks.map((t) => ({
+          id: t.id,
+          title: t.title,
+          description: t.description,
+          dueAt: t.dueAt?.toISOString() ?? null,
+          completedAt: t.completedAt?.toISOString() ?? null,
+          assignedTo: t.assignedTo,
+          priority: t.priority,
+          milestoneId: t.milestoneId,
+        }))}
+      />
 
       {/* Communication events */}
       {txn.communicationEvents.length > 0 && (

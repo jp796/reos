@@ -56,6 +56,8 @@ export default async function TodayPage() {
     pendingReviewCount,
     counts,
     allActive,
+    overdueTasks,
+    weekTasks,
   ] = await Promise.all([
     prisma.milestone.findMany({
       where: {
@@ -121,6 +123,36 @@ export default async function TodayPage() {
         tasks: true,
         communicationEvents: { orderBy: { happenedAt: "desc" }, take: 10 },
       },
+    }),
+    // TC work queue — overdue tasks across every active deal
+    prisma.task.findMany({
+      where: {
+        completedAt: null,
+        dueAt: { lte: now },
+        transaction: { status: "active" },
+      },
+      include: {
+        transaction: {
+          select: { id: true, propertyAddress: true, contact: { select: { fullName: true } } },
+        },
+      },
+      orderBy: [{ priority: "desc" }, { dueAt: "asc" }],
+      take: 25,
+    }),
+    // Tasks due in the next 7 days
+    prisma.task.findMany({
+      where: {
+        completedAt: null,
+        dueAt: { gt: now, lte: weekFromNow },
+        transaction: { status: "active" },
+      },
+      include: {
+        transaction: {
+          select: { id: true, propertyAddress: true, contact: { select: { fullName: true } } },
+        },
+      },
+      orderBy: [{ dueAt: "asc" }, { priority: "desc" }],
+      take: 25,
     }),
   ]);
 
@@ -240,7 +272,33 @@ export default async function TodayPage() {
         )}
       </Section>
 
-      {/* Overdue */}
+      {/* Overdue TC tasks — workload-ranked */}
+      <Section title="Overdue tasks" count={overdueTasks.length}>
+        {overdueTasks.length === 0 ? (
+          <Empty>No overdue tasks.</Empty>
+        ) : (
+          <ul className="space-y-2">
+            {overdueTasks.map((t) => (
+              <TaskRow key={t.id} t={t} tone="red" />
+            ))}
+          </ul>
+        )}
+      </Section>
+
+      {/* Tasks due this week */}
+      <Section title="Tasks due this week" count={weekTasks.length}>
+        {weekTasks.length === 0 ? (
+          <Empty>No tasks in the next 7 days.</Empty>
+        ) : (
+          <ul className="space-y-2">
+            {weekTasks.map((t) => (
+              <TaskRow key={t.id} t={t} tone="amber" />
+            ))}
+          </ul>
+        )}
+      </Section>
+
+      {/* Overdue milestones */}
       <Section title="Overdue milestones" count={overdueMilestones.length}>
         {overdueMilestones.length === 0 ? (
           <Empty>Nothing overdue. Good place to be.</Empty>
@@ -253,8 +311,8 @@ export default async function TodayPage() {
         )}
       </Section>
 
-      {/* Week deadlines */}
-      <Section title="Deadlines this week" count={weekDeadlines.length}>
+      {/* Week milestone deadlines */}
+      <Section title="Milestone deadlines this week" count={weekDeadlines.length}>
         {weekDeadlines.length === 0 ? (
           <Empty>Nothing due in the next 7 days.</Empty>
         ) : (
@@ -469,6 +527,86 @@ function MilestoneRow({
           <>
             <div>{fmtDate(m.dueAt)}</div>
             <div className="text-xs text-neutral-500">{fmtRel(m.dueAt)}</div>
+          </>
+        ) : (
+          <div className="text-xs italic text-neutral-400">no date</div>
+        )}
+      </div>
+    </li>
+  );
+}
+
+/** TC task row — same visual style as MilestoneRow but with title +
+ * priority + assignee instead of milestone owner. Links to the
+ * underlying transaction so Vicki can jump in and mark complete. */
+function TaskRow({
+  t,
+  tone,
+}: {
+  t: {
+    id: string;
+    title: string;
+    dueAt: Date | null;
+    priority: string;
+    assignedTo: string | null;
+    transaction: {
+      id: string;
+      propertyAddress: string | null;
+      contact: { fullName: string };
+    };
+  };
+  tone: "red" | "amber";
+}) {
+  const bg =
+    tone === "red" ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50/50";
+  return (
+    <li
+      className={`flex items-center justify-between rounded-md border p-3 ${bg}`}
+    >
+      <div className="min-w-0">
+        <Link
+          href={`/transactions/${t.transaction.id}`}
+          className="font-medium hover:underline"
+        >
+          {t.title}
+        </Link>
+        <div className="text-xs text-neutral-700">
+          {t.transaction.contact.fullName}
+          {t.transaction.propertyAddress && (
+            <>
+              {" · "}
+              <span className="text-neutral-500">
+                {t.transaction.propertyAddress}
+              </span>
+            </>
+          )}
+          {" · "}
+          <span className="text-neutral-500">
+            {t.assignedTo ?? "coordinator"}
+          </span>
+          {t.priority !== "normal" && (
+            <>
+              {" · "}
+              <span
+                className={
+                  t.priority === "urgent"
+                    ? "font-medium text-red-700"
+                    : t.priority === "high"
+                      ? "font-medium text-amber-700"
+                      : "text-neutral-500"
+                }
+              >
+                {t.priority}
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+      <div className="text-right text-sm">
+        {t.dueAt ? (
+          <>
+            <div>{fmtDate(t.dueAt)}</div>
+            <div className="text-xs text-neutral-500">{fmtRel(t.dueAt)}</div>
           </>
         ) : (
           <div className="text-xs italic text-neutral-400">no date</div>
