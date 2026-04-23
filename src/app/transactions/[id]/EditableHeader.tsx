@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Check, X } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { useToast } from "@/app/ToastProvider";
 
 interface Props {
   transactionId: string;
@@ -35,6 +36,7 @@ function statusBadge(status: string) {
  */
 export function EditableHeader(props: Props) {
   const router = useRouter();
+  const toast = useToast();
   const [, startTransition] = useTransition();
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -69,12 +71,35 @@ export function EditableHeader(props: Props) {
       const data = await res.json();
       if (!res.ok) {
         setErr(data.error ?? res.statusText);
+        toast.error("Save failed", data.error ?? res.statusText);
         return;
+      }
+      // Flag the representation flip specifically — that's the change
+      // with the most downstream blast radius (financials interpretation,
+      // transaction list filter tabs, rescan defaults).
+      const repChanged = (props.side ?? "") !== (side ?? "");
+      const repLabel =
+        side === "buy"
+          ? "Buyer"
+          : side === "sell"
+            ? "Seller"
+            : side === "both"
+              ? "Dual"
+              : null;
+      if (repChanged && repLabel) {
+        toast.success(
+          `Representation: ${repLabel}`,
+          "Saved — financials + filters will reflect the new side.",
+        );
+      } else {
+        toast.success("Transaction updated");
       }
       setEditing(false);
       startTransition(() => router.refresh());
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "save failed");
+      const m = e instanceof Error ? e.message : "save failed";
+      setErr(m);
+      toast.error("Save failed", m);
     } finally {
       setBusy(false);
     }
