@@ -19,6 +19,7 @@ interface Extraction {
   closingDate?: Field<string>;
   possessionDate?: Field<string>;
   inspectionDeadline?: Field<string>;
+  inspectionObjectionDeadline?: Field<string>;
   titleObjectionDeadline?: Field<string>;
   titleCommitmentDeadline?: Field<string>;
   financingDeadline?: Field<string>;
@@ -46,6 +47,7 @@ interface FormState {
   closingDate: string;
   possessionDate: string;
   inspectionDeadline: string;
+  inspectionObjectionDeadline: string;
   titleCommitmentDeadline: string;
   titleObjectionDeadline: string;
   financingDeadline: string;
@@ -69,6 +71,7 @@ const EMPTY_FORM: FormState = {
   closingDate: "",
   possessionDate: "",
   inspectionDeadline: "",
+  inspectionObjectionDeadline: "",
   titleCommitmentDeadline: "",
   titleObjectionDeadline: "",
   financingDeadline: "",
@@ -137,6 +140,9 @@ export function ManualContractUploadPanel() {
         closingDate: iso(ex.closingDate?.value as string),
         possessionDate: iso(ex.possessionDate?.value as string),
         inspectionDeadline: iso(ex.inspectionDeadline?.value as string),
+        inspectionObjectionDeadline: iso(
+          ex.inspectionObjectionDeadline?.value as string,
+        ),
         titleCommitmentDeadline: iso(ex.titleCommitmentDeadline?.value as string),
         titleObjectionDeadline: iso(ex.titleObjectionDeadline?.value as string),
         financingDeadline: iso(ex.financingDeadline?.value as string),
@@ -185,6 +191,7 @@ export function ManualContractUploadPanel() {
           closingDate: form.closingDate || null,
           possessionDate: form.possessionDate || null,
           inspectionDeadline: form.inspectionDeadline || null,
+          inspectionObjectionDeadline: form.inspectionObjectionDeadline || null,
           titleCommitmentDeadline: form.titleCommitmentDeadline || null,
           titleObjectionDeadline: form.titleObjectionDeadline || null,
           financingDeadline: form.financingDeadline || null,
@@ -326,6 +333,14 @@ export function ManualContractUploadPanel() {
                 type="date"
                 value={form.inspectionDeadline}
                 onChange={(v) => setForm({ ...form, inspectionDeadline: v })}
+              />
+              <Input
+                label="Inspection objection"
+                type="date"
+                value={form.inspectionObjectionDeadline}
+                onChange={(v) =>
+                  setForm({ ...form, inspectionObjectionDeadline: v })
+                }
               />
               <Input
                 label="Title commitment deadline"

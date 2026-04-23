@@ -19,6 +19,7 @@ interface Extraction {
   closingDate?: Field<string>;
   possessionDate?: Field<string>;
   inspectionDeadline?: Field<string>;
+  inspectionObjectionDeadline?: Field<string>;
   titleObjectionDeadline?: Field<string>;
   titleCommitmentDeadline?: Field<string>;
   financingDeadline?: Field<string>;
@@ -49,6 +50,7 @@ const FIELD_ROWS: Array<{
   { key: "closingDate", label: "Closing", kind: "date" },
   { key: "possessionDate", label: "Possession", kind: "date" },
   { key: "inspectionDeadline", label: "Inspection deadline", kind: "date" },
+  { key: "inspectionObjectionDeadline", label: "Inspection objection", kind: "date" },
   { key: "titleCommitmentDeadline", label: "Title commitment", kind: "date" },
   { key: "titleObjectionDeadline", label: "Title objection", kind: "date" },
   { key: "financingDeadline", label: "Financing deadline", kind: "date" },

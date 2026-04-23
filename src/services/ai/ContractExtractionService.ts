@@ -47,7 +47,12 @@ export interface ContractExtraction {
   earnestMoneyDueDate: ContractExtractionField;
   closingDate: ContractExtractionField;
   possessionDate: ContractExtractionField;
+  /** Deadline for the buyer to COMPLETE inspections. */
   inspectionDeadline: ContractExtractionField;
+  /** Deadline for the buyer to OBJECT in writing to inspection results.
+   * Different from inspectionDeadline in most state contracts
+   * (e.g. WY: inspect-by + a separate objection-by a few days later). */
+  inspectionObjectionDeadline: ContractExtractionField;
   titleObjectionDeadline: ContractExtractionField;
   titleCommitmentDeadline: ContractExtractionField;
   financingDeadline: ContractExtractionField;
@@ -105,7 +110,8 @@ FIELD-SPECIFIC GUIDANCE
   or "Closing Date ___". NOT the title commitment deadline, NOT the inspection deadline.
 - titleCommitmentDeadline: when the title company must deliver the title commitment
   ("title insurance commitment to Buyer no later than ___").
-- inspectionDeadline: when buyer must complete inspection / deliver objection notice.
+- inspectionDeadline: DATE BY WHICH the buyer must COMPLETE physical inspections (home inspection, radon, sewer scope, etc.). Labels vary: "Inspection Objection Deadline", "Inspection Period Expires", "Inspection Period End", "Right to Inspect Deadline".
+- inspectionObjectionDeadline: DATE BY WHICH the buyer must DELIVER WRITTEN OBJECTIONS to the seller. Usually 1-3 days AFTER the inspection completion deadline but MAY be the same day in some WY / CO forms. Look for "Inspection Notice Deadline", "Objection Notice", "Notice of Unsatisfactory Inspection", "Inspection Termination Notice Deadline". If the contract only has a single combined "inspection objection" date, put it in BOTH this field AND inspectionDeadline.
 - titleObjectionDeadline: when buyer must object to title exceptions — often a few days
   AFTER the titleCommitmentDeadline.
 - walkthroughDate: often tied to closing ("on or before day of closing").
@@ -148,6 +154,7 @@ const SCHEMA_HINT = `{
   "closingDate":           { "value": "YYYY-MM-DD or null", "confidence": 0-1, "snippet": "..." },
   "possessionDate":        { "value": "YYYY-MM-DD or null", "confidence": 0-1, "snippet": "..." },
   "inspectionDeadline":    { "value": "YYYY-MM-DD or null", "confidence": 0-1, "snippet": "..." },
+  "inspectionObjectionDeadline": { "value": "YYYY-MM-DD or null", "confidence": 0-1, "snippet": "..." },
   "titleObjectionDeadline":{ "value": "YYYY-MM-DD or null", "confidence": 0-1, "snippet": "..." },
   "titleCommitmentDeadline":{ "value": "YYYY-MM-DD or null", "confidence": 0-1, "snippet": "..." },
   "financingDeadline":     { "value": "YYYY-MM-DD or null", "confidence": 0-1, "snippet": "..." },
@@ -408,6 +415,7 @@ function normalize(parsed: unknown): ContractExtraction {
     closingDate: asField(o.closingDate),
     possessionDate: asField(o.possessionDate),
     inspectionDeadline: asField(o.inspectionDeadline),
+    inspectionObjectionDeadline: asField(o.inspectionObjectionDeadline),
     titleObjectionDeadline: asField(o.titleObjectionDeadline),
     titleCommitmentDeadline: asField(o.titleCommitmentDeadline),
     financingDeadline: asField(o.financingDeadline),

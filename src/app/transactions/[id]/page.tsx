@@ -183,6 +183,15 @@ export default async function TransactionDetailPage({
         <Fact label="Contract date" value={fmtDate(txn.contractDate)} />
         <Fact label="Closing date" value={fmtDate(txn.closingDate)} />
         <Fact label="Inspection" value={fmtDate(txn.inspectionDate)} />
+        <Fact
+          label="Inspection objection"
+          value={fmtDate(txn.inspectionObjectionDate)}
+        />
+        <Fact label="Title commitment" value={fmtDate(txn.titleDeadline)} />
+        <Fact
+          label="Title objection"
+          value={fmtDate(txn.titleObjectionDate)}
+        />
         <Fact label="Appraisal" value={fmtDate(txn.appraisalDate)} />
         <Fact label="Lender" value={txn.lenderName ?? "—"} />
         <Fact label="Title co." value={txn.titleCompanyName ?? "—"} />

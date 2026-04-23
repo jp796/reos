@@ -103,10 +103,18 @@ export async function POST(
   if (possessionDate) data.possessionDate = possessionDate;
   const inspectionDeadline = toDate(fieldVal(ext, "inspectionDeadline"));
   if (inspectionDeadline) data.inspectionDate = inspectionDeadline;
+  const inspectionObjectionDeadline = toDate(
+    fieldVal(ext, "inspectionObjectionDeadline"),
+  );
+  if (inspectionObjectionDeadline) {
+    data.inspectionObjectionDate = inspectionObjectionDeadline;
+  }
   const financingDeadline = toDate(fieldVal(ext, "financingDeadline"));
   if (financingDeadline) data.financingDeadline = financingDeadline;
   const titleDeadline = toDate(fieldVal(ext, "titleCommitmentDeadline"));
   if (titleDeadline) data.titleDeadline = titleDeadline;
+  const titleObjectionDeadline = toDate(fieldVal(ext, "titleObjectionDeadline"));
+  if (titleObjectionDeadline) data.titleObjectionDate = titleObjectionDeadline;
   const effectiveDate = toDate(fieldVal(ext, "effectiveDate"));
   if (effectiveDate) data.contractDate = effectiveDate;
   // Earnest money due: prefer the explicit date on the contract; if
@@ -170,9 +178,10 @@ export async function POST(
       dueAt: earnestDue,
       ownerRole: "client",
     },
-    { type: "inspection", label: "Inspection objection deadline", dueAt: inspectionDeadline, ownerRole: "inspector" },
+    { type: "inspection", label: "Inspection deadline", dueAt: inspectionDeadline, ownerRole: "inspector" },
+    { type: "inspection_objection", label: "Inspection objection deadline", dueAt: inspectionObjectionDeadline, ownerRole: "client" },
     { type: "title_commitment", label: "Title commitment due", dueAt: titleDeadline, ownerRole: "title" },
-    { type: "title_objection", label: "Title objection deadline", dueAt: toDate(fieldVal(ext, "titleObjectionDeadline")), ownerRole: "client" },
+    { type: "title_objection", label: "Title objection deadline", dueAt: titleObjectionDeadline, ownerRole: "client" },
     { type: "financing_approval", label: "Financing approval deadline", dueAt: financingDeadline, ownerRole: "lender" },
     {
       type: "walkthrough",

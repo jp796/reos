@@ -165,9 +165,11 @@ model Transaction {
   closingDate            DateTime? @map("closing_date")
   listDate               DateTime? @map("list_date")
   inspectionDate         DateTime? @map("inspection_date")
+  inspectionObjectionDate DateTime? @map("inspection_objection_date")
   appraisalDate          DateTime? @map("appraisal_date")
   financingDeadline      DateTime? @map("financing_deadline")
-  titleDeadline          DateTime? @map("title_deadline")
+  titleDeadline          DateTime? @map("title_deadline") // title commitment
+  titleObjectionDate     DateTime? @map("title_objection_date")
   possessionDate         DateTime? @map("possession_date")
   earnestMoneyDueDate    DateTime? @map("earnest_money_due_date")
   walkthroughDate        DateTime? @map("walkthrough_date")

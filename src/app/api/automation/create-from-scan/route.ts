@@ -56,6 +56,7 @@ interface Body {
   closingDate?: string | null;
   possessionDate?: string | null;
   inspectionDeadline?: string | null;
+  inspectionObjectionDeadline?: string | null;
   titleCommitmentDeadline?: string | null;
   titleObjectionDeadline?: string | null;
   financingDeadline?: string | null;
@@ -88,6 +89,7 @@ export async function POST(req: NextRequest) {
   const closingDate = toDate(body.closingDate);
   const possessionDate = toDate(body.possessionDate);
   const inspectionDeadline = toDate(body.inspectionDeadline);
+  const inspectionObjectionDeadline = toDate(body.inspectionObjectionDeadline);
   const titleCommitmentDeadline = toDate(body.titleCommitmentDeadline);
   const titleObjectionDeadline = toDate(body.titleObjectionDeadline);
   const financingDeadline = toDate(body.financingDeadline);
@@ -187,7 +189,9 @@ export async function POST(req: NextRequest) {
       closingDate,
       possessionDate,
       inspectionDate: inspectionDeadline,
+      inspectionObjectionDate: inspectionObjectionDeadline,
       titleDeadline: titleCommitmentDeadline,
+      titleObjectionDate: titleObjectionDeadline,
       financingDeadline,
       walkthroughDate,
       earnestMoneyDueDate,
@@ -219,7 +223,8 @@ export async function POST(req: NextRequest) {
       dueAt: earnestMoneyDueDate,
       ownerRole: "client",
     },
-    { type: "inspection", label: "Inspection objection deadline", dueAt: inspectionDeadline, ownerRole: "inspector" },
+    { type: "inspection", label: "Inspection deadline", dueAt: inspectionDeadline, ownerRole: "inspector" },
+    { type: "inspection_objection", label: "Inspection objection deadline", dueAt: inspectionObjectionDeadline, ownerRole: "client" },
     { type: "title_commitment", label: "Title commitment due", dueAt: titleCommitmentDeadline, ownerRole: "title" },
     { type: "title_objection", label: "Title objection deadline", dueAt: titleObjectionDeadline, ownerRole: "client" },
     { type: "financing_approval", label: "Financing approval deadline", dueAt: financingDeadline, ownerRole: "lender" },
