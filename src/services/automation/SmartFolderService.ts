@@ -385,13 +385,47 @@ export class SmartFolderService {
       where: "from" | "to" | "cc",
     ) => {
       if (!raw) return;
-      // Split on comma — headers can have multiple addresses
-      for (const piece of raw.split(",")) {
-        const m = piece.match(/(?:"?([^"<]+?)"?\s*)?<?([^\s<>]+@[^\s<>]+)>?/);
-        if (!m) continue;
-        const name = (m[1] ?? "").trim() || null;
-        const email = m[2].trim().toLowerCase();
-        if (!email.includes("@")) continue;
+      // Split on comma — but only commas OUTSIDE quoted names. A name
+      // like "Doe, John" <john@ex.com> would otherwise split wrong.
+      const pieces: string[] = [];
+      let buf = "";
+      let inQuotes = false;
+      for (const ch of raw) {
+        if (ch === '"') inQuotes = !inQuotes;
+        if (ch === "," && !inQuotes) {
+          pieces.push(buf);
+          buf = "";
+          continue;
+        }
+        buf += ch;
+      }
+      if (buf) pieces.push(buf);
+
+      for (const rawPiece of pieces) {
+        const piece = rawPiece.trim();
+        if (!piece) continue;
+
+        // Two shapes we accept:
+        //   "Name" <email@dom>         ← RFC 5322 display name + angle
+        //   Name <email@dom>           ← unquoted display + angle
+        //   email@dom                  ← bare address
+        // Anything else: skip — don't invent a name from the email.
+        let name: string | null = null;
+        let email: string | null = null;
+
+        const angle = piece.match(/^(?:"?([^"<]*?)"?\s*)?<([^\s<>]+@[^\s<>]+)>\s*$/);
+        if (angle) {
+          name = (angle[1] ?? "").trim().replace(/^"|"$/g, "") || null;
+          email = angle[2].trim().toLowerCase();
+        } else {
+          // Bare — must be JUST the email, optionally wrapped in whitespace
+          const bare = piece.match(/^([^\s<>]+@[^\s<>]+)$/);
+          if (bare) {
+            email = bare[1].trim().toLowerCase();
+          }
+        }
+
+        if (!email || !email.includes("@")) continue;
         if (ownerEmail.includes(email)) continue;
         const domain = email.split("@")[1];
         const cur = parties.get(email) ?? {
