@@ -174,12 +174,40 @@ function subjectPhrasesFromAddress(addr: string): string[] {
 }
 
 /**
+ * Known email addresses for the account owner. These MUST be
+ * excluded from any SmartFolder query — otherwise the filter
+ * labels every email to/from the owner's own mailbox, turning
+ * the folder into an unfiltered inbox dump.
+ *
+ * Sources merged:
+ *   - AUTH_ALLOWED_EMAILS env var (jp@titanreteam.com, elkcitytc@…)
+ *   - OWNER_EMAIL_ALIASES env var (optional comma list; use for
+ *     personal gmail / work alias that isn't in AUTH_ALLOWED_EMAILS
+ *     — e.g. james.fluellen@gmail.com)
+ *
+ * Lowercase + deduped.
+ */
+export function ownerEmailAliases(): string[] {
+  const fromAuth = (process.env.AUTH_ALLOWED_EMAILS ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  const fromAliases = (process.env.OWNER_EMAIL_ALIASES ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  return [...new Set([...fromAuth, ...fromAliases])];
+}
+
+/**
  * Pull every known email for every party involved in a transaction:
  *   - primary contact (buyer OR seller depending on side)
  *   - all TransactionParticipant rows (co_buyer, co_seller, lender,
  *     title, attorney, inspector, coordinator, other)
- * Filters out the owner's own email (we already send + receive, so
- * searching from:me OR to:me would over-match) and dedupes.
+ *
+ * CRITICAL: filter out the owner's own email aliases. Including them
+ * matches every message the owner has ever sent or received — the
+ * original 5736 Blue Bluff over-match bug.
  */
 function collectPartyEmails(txn: {
   contact: { primaryEmail: string | null };
@@ -193,7 +221,10 @@ function collectPartyEmails(txn: {
     const e = p.contact.primaryEmail;
     if (e) emails.add(e.toLowerCase());
   }
-  return [...emails].filter((e) => e.includes("@"));
+  const owners = new Set(ownerEmailAliases());
+  return [...emails]
+    .filter((e) => e.includes("@"))
+    .filter((e) => !owners.has(e));
 }
 
 /** Result of the post-label content-enrichment step. */
@@ -358,12 +389,9 @@ export class SmartFolderService {
       };
     }
 
-    const ownerEmail = (
-      process.env.AUTH_ALLOWED_EMAILS ?? ""
-    )
-      .split(",")
-      .map((s) => s.trim().toLowerCase())
-      .filter(Boolean);
+    // Include aliases (personal gmail etc.) so enrichment doesn't
+    // re-introduce the owner as a participant via Gmail headers.
+    const ownerEmail = ownerEmailAliases();
     const existingEmails = new Set(collectPartyEmails(txn));
 
     // Pull the latest ~20 labeled threads (enough signal, cheap enough)

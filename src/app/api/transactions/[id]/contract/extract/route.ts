@@ -63,6 +63,30 @@ export async function POST(
     );
   }
 
+  // Persist the uploaded PDF as a Document so future rescans can
+  // re-extract it without re-uploading. Done BEFORE the transaction
+  // update so a persist failure doesn't silently drop the PDF.
+  try {
+    await prisma.document.create({
+      data: {
+        transactionId: txn.id,
+        category: "contract",
+        fileName: file.name || "contract.pdf",
+        mimeType: file.type || "application/pdf",
+        rawBytes: buffer,
+        source: "upload",
+        uploadOrigin: "contract_upload_panel",
+        uploadedAt: new Date(),
+        sourceDate: new Date(),
+      },
+    });
+  } catch (err) {
+    console.warn(
+      "[contract/extract] saving Document row failed (non-blocking):",
+      err instanceof Error ? err.message : err,
+    );
+  }
+
   // If this upload is a compensation rider AND a prior contract extraction
   // already exists on the txn, merge the two so the user sees unified data.
   const existing = (txn.pendingContractJson ?? null) as Prisma.JsonValue | null;
@@ -80,10 +104,19 @@ export async function POST(
 }
 
 /**
- * If a prior extraction exists on the transaction, merge the new one
- * in field-by-field, keeping whichever value has higher confidence.
- * This lets the user upload a contract first, then a rider, and end
- * up with a single combined view (contract timeline + rider commission).
+ * Merge a new extraction onto a prior one.
+ *
+ * Policy: **newest wins**. When the same field exists in both, the
+ * value from the new extraction ALWAYS overrides — because the user
+ * just uploaded the newer PDF, so its dates/amounts are authoritative
+ * (addendums, re-signed contracts, amendments, rider updates all flow
+ * this way). We only FALL BACK to the prior value when the new
+ * extraction didn't capture the field at all (value: null / missing).
+ *
+ * This is a deliberate reversal of the old "higher confidence wins"
+ * policy — confidence was being used as a proxy for "better", but
+ * an older high-confidence date that was since amended would incorrectly
+ * stay pinned.
  */
 function mergePending(
   prior: Prisma.JsonValue | null,
@@ -94,24 +127,24 @@ function mergePending(
   const out: Record<string, unknown> = { ...next };
   for (const [k, v] of Object.entries(p)) {
     const n = (next as Record<string, unknown>)[k];
-    // Non-field metadata (notes, _path) — keep latest
-    if (k === "notes" || k === "_path") {
+    // Non-field metadata (notes, _path, _rescan) — keep newest if set
+    if (k === "notes" || k === "_path" || k === "_rescan") {
       out[k] = n ?? v;
       continue;
     }
+    // Field fell off in the new extraction entirely → keep prior
     if (!isField(n) && isField(v)) {
       out[k] = v;
       continue;
     }
+    // Both sides are fields. New wins IF it has a non-null value.
+    // Only fall back to prior when new is explicitly null.
     if (isField(n) && isField(v)) {
-      const nc = (n as { confidence?: number }).confidence ?? 0;
-      const vc = (v as { confidence?: number }).confidence ?? 0;
       const nVal = (n as { value?: unknown }).value;
       if (nVal === null || nVal === undefined) {
         out[k] = v;
-      } else if (vc > nc) {
-        out[k] = v;
       }
+      // else: new already in `out` via {...next} spread — newest wins
     }
   }
   return out;

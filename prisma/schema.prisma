@@ -287,9 +287,17 @@ model Document {
   fileName       String   @map("file_name")
   mimeType       String   @map("mime_type")
   storageUrl     String?  @map("storage_url")
+  /// Raw PDF bytes. Populated on upload OR when a contract is
+  /// pulled from Gmail via rescan, so the same doc can be re-
+  /// extracted later without refetching. For Cloud Run, migrate
+  /// this to GCS blob storage once total corpus >~500MB.
+  rawBytes       Bytes?   @map("raw_bytes")
   source         String   @default("upload") // upload, gmail_attachment, fub_attachment
   extractedText  String?  @map("extracted_text")
   uploadOrigin   String?  @map("upload_origin")
+  /// For Gmail-sourced docs — source message internalDate so we
+  /// can pick the newest when multiple contracts exist on one txn.
+  sourceDate     DateTime? @map("source_date")
   uploadedAt     DateTime @map("uploaded_at")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")

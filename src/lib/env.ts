@@ -34,6 +34,11 @@ const schema = z.object({
   AUTH_ALLOWED_EMAILS: z.string().optional(),
   AUTH_GOOGLE_ID: z.string().optional(),
   AUTH_GOOGLE_SECRET: z.string().optional(),
+  // Additional email aliases that belong to the account owner but
+  // aren't allowed to sign in (e.g. a personal gmail). Any email
+  // listed here is excluded from SmartFolder queries + enrichment
+  // so the filter doesn't match every message to/from the owner.
+  OWNER_EMAIL_ALIASES: z.string().optional(),
 
   FUB_API_KEY: z.string().optional(),
   FUB_SYSTEM_KEY: z.string().default("real-estate-os"),

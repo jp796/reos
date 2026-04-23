@@ -260,33 +260,86 @@ export async function POST(
     }
   }
 
-  if (candidates.length === 0) {
+  // Find the newest stored Document (from a prior upload or rescan).
+  // If Gmail has nothing or Gmail's newest is older than our stored
+  // copy, we fall back to the stored PDF — so an uploaded-only contract
+  // can still be rescanned after a schema/extractor upgrade.
+  const storedDoc = await prisma.document.findFirst({
+    where: {
+      transactionId: txn.id,
+      category: "contract",
+      rawBytes: { not: null },
+    },
+    orderBy: [
+      { sourceDate: "desc" },
+      { uploadedAt: "desc" },
+    ],
+  });
+  const storedTs = (storedDoc?.sourceDate ?? storedDoc?.uploadedAt)?.getTime() ?? 0;
+
+  // Pick the newest source — Gmail or stored — by timestamp
+  candidates.sort((a, b) => b.internalDate - a.internalDate);
+  const gmailNewest = candidates[0];
+  const useStored =
+    storedDoc && storedDoc.rawBytes && storedTs >= (gmailNewest?.internalDate ?? 0);
+
+  if (!useStored && candidates.length === 0) {
     return NextResponse.json({
       ok: false,
       reason: "no_matching_pdfs_found",
       searched: threads.length,
       side,
       hint: labelId
-        ? "Found no contract-like PDF attachments for this side in the SmartFolder. Try widening the side (Dual) or upload directly."
-        : "No SmartFolder configured for this transaction — we only searched by address. Create a SmartFolder first for a focused scan.",
+        ? "No contract PDFs found for this side in Gmail or in stored uploads. Try widening the side (Dual) or upload a contract directly."
+        : "No SmartFolder and no stored uploads. Either upload the contract or create a SmartFolder first.",
     });
   }
 
-  // Pick the newest candidate
-  candidates.sort((a, b) => b.internalDate - a.internalDate);
-  const pick = candidates[0];
-
   let buffer: Buffer;
-  try {
-    buffer = await gmail.downloadAttachment(pick.messageId, pick.attachmentId);
-  } catch (err) {
-    return NextResponse.json(
-      {
-        error: "download failed",
-        detail: err instanceof Error ? err.message : String(err),
-      },
-      { status: 502 },
-    );
+  let pickedFilename: string;
+  let pickedSource: "gmail" | "stored_upload";
+  if (useStored && storedDoc?.rawBytes) {
+    buffer = Buffer.from(storedDoc.rawBytes);
+    pickedFilename = storedDoc.fileName;
+    pickedSource = "stored_upload";
+  } else {
+    const pick = gmailNewest;
+    try {
+      buffer = await gmail.downloadAttachment(pick.messageId, pick.attachmentId);
+    } catch (err) {
+      return NextResponse.json(
+        {
+          error: "download failed",
+          detail: err instanceof Error ? err.message : String(err),
+        },
+        { status: 502 },
+      );
+    }
+    pickedFilename = pick.filename;
+    pickedSource = "gmail";
+
+    // Persist the Gmail-sourced PDF as a Document too, so we can
+    // rescan again offline + have a permanent record of what we saw.
+    try {
+      await prisma.document.create({
+        data: {
+          transactionId: txn.id,
+          category: "contract",
+          fileName: pick.filename,
+          mimeType: "application/pdf",
+          rawBytes: buffer,
+          source: "gmail_attachment",
+          uploadOrigin: `rescan:${side}`,
+          uploadedAt: new Date(),
+          sourceDate: new Date(pick.internalDate),
+        },
+      });
+    } catch (err) {
+      console.warn(
+        "[contract/rescan] saving Gmail PDF as Document failed (non-blocking):",
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
 
   const svc = new ContractExtractionService(env.OPENAI_API_KEY);
@@ -303,16 +356,17 @@ export async function POST(
     );
   }
 
-  // Merge over any existing pending extraction so re-scans don't blow
-  // away prior reviewed data unless new has higher confidence.
+  // Merge over any existing pending extraction — NEWEST WINS (this
+  // rescan is explicitly the "fresh version of the truth").
   const prior = (txn.pendingContractJson ?? null) as Prisma.JsonValue | null;
   const merged = mergePending(prior, extraction as unknown as Record<string, unknown>);
   (merged as Record<string, unknown>)._rescan = {
     side,
-    filename: pick.filename,
-    messageId: pick.messageId,
+    filename: pickedFilename,
+    source: pickedSource,
     pickedAt: new Date().toISOString(),
     candidatesConsidered: candidates.length,
+    storedFallback: pickedSource === "stored_upload",
   };
 
   await prisma.transaction.update({
@@ -326,12 +380,20 @@ export async function POST(
   return NextResponse.json({
     ok: true,
     side,
-    pickedFilename: pick.filename,
+    pickedFilename,
+    pickedSource, // "gmail" | "stored_upload"
     candidatesConsidered: candidates.length,
     extraction: merged,
   });
 }
 
+/**
+ * Newest-wins merge. New extraction authoritative whenever it has a
+ * non-null value; only fall back to prior when the new extraction
+ * dropped the field entirely. Matches the same policy used in the
+ * upload/extract path. See src/app/api/transactions/[id]/contract/
+ * extract/route.ts for rationale.
+ */
 function mergePending(
   prior: Prisma.JsonValue | null,
   next: Record<string, unknown>,
@@ -350,14 +412,11 @@ function mergePending(
       continue;
     }
     if (isField(n) && isField(v)) {
-      const nc = (n as { confidence?: number }).confidence ?? 0;
-      const vc = (v as { confidence?: number }).confidence ?? 0;
       const nVal = (n as { value?: unknown }).value;
       if (nVal === null || nVal === undefined) {
         out[k] = v;
-      } else if (vc > nc) {
-        out[k] = v;
       }
+      // else: new wins (already in out via {...next})
     }
   }
   return out;

@@ -139,9 +139,16 @@ export function ContractUploadPanel({
           : rescanSide === "sell"
             ? "seller"
             : "dual";
-      const note = `Rescanned ${label} side · ${data.pickedFilename} (out of ${data.candidatesConsidered} candidates). Review and Apply.`;
+      const sourceHint =
+        data.pickedSource === "stored_upload"
+          ? " (from stored upload — no newer Gmail version)"
+          : "";
+      const note = `Rescanned ${label} side · ${data.pickedFilename}${sourceHint}. Review and Apply.`;
       setMsg(note);
-      toast.success("Contract rescanned", data.pickedFilename);
+      toast.success(
+        "Contract rescanned",
+        `${data.pickedFilename}${sourceHint}`,
+      );
     } catch (e) {
       const m = e instanceof Error ? e.message : "rescan failed";
       setErr(m);
