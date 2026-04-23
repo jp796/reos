@@ -97,6 +97,7 @@ model User {
   emailVerified DateTime? @map("email_verified")
   image         String?
   role          String    @default("owner") // owner, coordinator, assistant, tc, agent
+  termsAcceptedAt DateTime? @map("terms_accepted_at")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 

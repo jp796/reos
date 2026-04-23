@@ -3,7 +3,10 @@ import { Inter, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "./ThemeProvider";
 import { AppShell } from "./AppShell";
+import { ToastProvider } from "./ToastProvider";
+import { TermsAcceptModal } from "./TermsAcceptModal";
 import { auth, signOut } from "@/auth";
+import { prisma } from "@/lib/db";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -39,6 +42,19 @@ export default async function RootLayout({
       }
     : null;
 
+  // Does the acting user still need to accept the Terms of Use? We
+  // look this up once server-side so the modal only ever renders
+  // when it should. Owners are pre-accepted in createUser (they
+  // authored the terms).
+  let needsTerms = false;
+  if (session?.user?.email) {
+    const row = await prisma.user.findUnique({
+      where: { email: session.user.email.toLowerCase() },
+      select: { termsAcceptedAt: true },
+    });
+    needsTerms = !row?.termsAcceptedAt;
+  }
+
   async function doSignOut() {
     "use server";
     await signOut({ redirectTo: "/login" });
@@ -48,9 +64,12 @@ export default async function RootLayout({
     <html lang="en" className={`${inter.variable} ${spaceGrotesk.variable}`}>
       <body className="min-h-screen bg-bg text-text antialiased">
         <ThemeProvider>
-          <AppShell user={user} signOutAction={doSignOut}>
-            {children}
-          </AppShell>
+          <ToastProvider>
+            <AppShell user={user} signOutAction={doSignOut}>
+              {children}
+            </AppShell>
+            {needsTerms && <TermsAcceptModal signOutAction={doSignOut} />}
+          </ToastProvider>
         </ThemeProvider>
       </body>
     </html>

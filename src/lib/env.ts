@@ -23,6 +23,18 @@ const schema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_REDIRECT_URI: z.string().url().optional(),
 
+  // NextAuth v5 — these gate multi-user sign-in. Marked optional so
+  // the app can still boot in single-user dev without auth wired up,
+  // but `src/auth.ts` warns on startup if any are missing in prod.
+  AUTH_SECRET: z
+    .string()
+    .min(32, "AUTH_SECRET must be at least 32 chars (openssl rand -base64 32)")
+    .optional(),
+  AUTH_TRUST_HOST: z.string().optional(),
+  AUTH_ALLOWED_EMAILS: z.string().optional(),
+  AUTH_GOOGLE_ID: z.string().optional(),
+  AUTH_GOOGLE_SECRET: z.string().optional(),
+
   FUB_API_KEY: z.string().optional(),
   FUB_SYSTEM_KEY: z.string().default("real-estate-os"),
   FUB_WEBHOOK_SECRET: z.string().optional(),

@@ -23,6 +23,35 @@ function allowedEmails(): string[] {
     .filter(Boolean);
 }
 
+/**
+ * Fail loudly at boot in production if the auth config is incomplete.
+ * In dev we only warn, so local tinkering doesn't require the full
+ * OAuth dance to be set up.
+ */
+function checkAuthConfig() {
+  const missing: string[] = [];
+  if (!process.env.AUTH_SECRET) missing.push("AUTH_SECRET");
+  if (!process.env.AUTH_GOOGLE_ID && !process.env.GOOGLE_CLIENT_ID) {
+    missing.push("AUTH_GOOGLE_ID or GOOGLE_CLIENT_ID");
+  }
+  if (!process.env.AUTH_GOOGLE_SECRET && !process.env.GOOGLE_CLIENT_SECRET) {
+    missing.push("AUTH_GOOGLE_SECRET or GOOGLE_CLIENT_SECRET");
+  }
+  if (allowedEmails().length === 0) missing.push("AUTH_ALLOWED_EMAILS");
+
+  if (missing.length === 0) return;
+  const msg =
+    "[auth] Missing required env vars: " +
+    missing.join(", ") +
+    ". See deploy/CLOUD_RUN_RUNBOOK.md §3 for the full list.";
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(msg);
+  }
+  console.warn(msg);
+}
+
+checkAuthConfig();
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: { strategy: "database", maxAge: 30 * 24 * 60 * 60 },
@@ -83,9 +112,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       const allow = allowedEmails();
       const role = allow.indexOf(email) === 0 ? "owner" : "coordinator";
 
+      // The owner is the party who authored the terms — they don't
+      // need to agree to themselves. Coordinators DO need to click
+      // through the ToU on first sign-in.
+      const termsAcceptedAt = role === "owner" ? new Date() : null;
+
       await prisma.user.update({
         where: { id: user.id },
-        data: { accountId: account.id, role },
+        data: { accountId: account.id, role, termsAcceptedAt },
       });
     },
   },

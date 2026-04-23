@@ -15,14 +15,29 @@ export default async function LoginPage({ searchParams }: Props) {
   const callbackUrl = sp.callbackUrl ?? "/";
   const errorCode = sp.error;
 
-  const errorText =
-    errorCode === "AccessDenied"
-      ? "This Google account isn't authorized to access REOS."
-      : errorCode === "Configuration"
-        ? "Authentication configuration error — check server logs."
-        : errorCode
-          ? `Sign-in failed: ${errorCode}`
-          : null;
+  // Human-friendly NextAuth error codes. Full list:
+  // https://authjs.dev/reference/core/errors
+  const errorText = (() => {
+    if (!errorCode) return null;
+    switch (errorCode) {
+      case "AccessDenied":
+        return "This Google account isn't authorized to access REOS. Ask the workspace owner to add your email.";
+      case "Configuration":
+        return "Authentication isn't fully configured on the server — the owner needs to check AUTH_SECRET, AUTH_GOOGLE_ID, and the Google OAuth redirect URI.";
+      case "OAuthSignin":
+      case "OAuthCallback":
+      case "OAuthCreateAccount":
+        return "Google sign-in failed mid-flow. Try again; if it persists, the owner may need to re-check the authorized redirect URI in Google Cloud Console.";
+      case "OAuthAccountNotLinked":
+        return "That Google account is already linked to a different REOS user. Sign in with the account you originally used.";
+      case "SessionRequired":
+        return "Your session expired. Sign in again.";
+      case "Verification":
+        return "Verification link expired or was already used.";
+      default:
+        return `Sign-in failed: ${errorCode}`;
+    }
+  })();
 
   async function doSignIn() {
     "use server";
@@ -62,6 +77,12 @@ export default async function LoginPage({ searchParams }: Props) {
 
         <p className="mt-6 text-center text-xs text-text-subtle">
           Private workspace. Access limited to authorized team members.
+          <br />
+          By signing in you agree to the{" "}
+          <a href="/terms" className="underline hover:text-text">
+            Terms of Use
+          </a>
+          .
         </p>
       </div>
     </div>

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
   Home as HomeIcon,
   Sparkles,
@@ -14,6 +15,8 @@ import {
   SunMoon,
   LogOut,
   Settings as SettingsIcon,
+  Menu,
+  X,
 } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import { cn } from "@/lib/cn";
@@ -57,12 +60,35 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const { mode, setMode, clearOverride, override } = useTheme();
+  const [mobileOpen, setMobileOpen] = useState(false);
 
-  // Public share routes + the sign-in page get no chrome (no nav, no
-  // greeting, no theme toggle). Let the page render its own minimal
-  // presentation.
+  // Close the mobile drawer whenever the route changes
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
+  // Lock body scroll while the drawer is open (prevents background
+  // page scroll on iOS where the drawer covers the viewport)
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.body.style.overflow = mobileOpen ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [mobileOpen]);
+
+  // Public share routes, sign-in page, and anon-reachable /terms get
+  // no chrome (no nav, no greeting, no theme toggle). Let the page
+  // render its own minimal presentation. Authenticated users viewing
+  // /terms from inside the app still get the chrome (we only strip
+  // it when there's no user context).
   if (pathname?.startsWith("/share/") || pathname === "/login") {
     return <>{children}</>;
+  }
+  if (pathname === "/terms" && !user) {
+    return (
+      <main className="min-h-screen bg-bg px-4 py-6 text-text">{children}</main>
+    );
   }
 
   const now = new Date();
@@ -75,99 +101,64 @@ export function AppShell({
   return (
     <div className="min-h-screen bg-bg text-text">
       <div className="mx-auto flex max-w-[1400px]">
-        {/* Sidebar */}
+        {/* Desktop sidebar — hidden on mobile */}
         <aside className="sticky top-0 hidden h-screen w-[232px] shrink-0 flex-col border-r border-border bg-surface px-3 py-5 md:flex">
-          <Link
-            href="/"
-            className="mb-8 px-2 font-display text-2xl font-semibold tracking-tight"
-            aria-label="REOS home"
-          >
-            RE
-            <span className="inline-block h-[0.85em] w-[0.85em] translate-y-[3px] rounded-[3px] bg-brand-500" />
-            S
-          </Link>
-          <nav className="flex flex-col gap-0.5">
-            {NAV.map((item) => {
-              const active =
-                pathname === item.href ||
-                (item.href !== "/" && pathname.startsWith(item.href));
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
-                    active
-                      ? "bg-brand-50 font-medium text-brand-700"
-                      : "text-text-muted hover:bg-surface-2 hover:text-text",
-                  )}
-                >
-                  <Icon className="h-4 w-4 shrink-0" strokeWidth={1.8} />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
-          <div className="mt-auto rounded-md bg-surface-2 p-2.5 text-xs text-text-muted">
-            {user ? (
-              <>
-                <div className="flex items-center gap-2">
-                  {user.image ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={user.image}
-                      alt=""
-                      className="h-7 w-7 shrink-0 rounded-full border border-border"
-                    />
-                  ) : (
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-500 text-[11px] font-semibold text-white">
-                      {(user.name ?? user.email ?? "?")
-                        .slice(0, 1)
-                        .toUpperCase()}
-                    </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium text-text">
-                      {user.name ?? user.email ?? "Signed in"}
-                    </div>
-                    <div className="truncate">
-                      {user.role
-                        ? user.role.charAt(0).toUpperCase() + user.role.slice(1)
-                        : "Team member"}
-                    </div>
-                  </div>
-                </div>
-                <form action={signOutAction} className="mt-2">
-                  <button
-                    type="submit"
-                    className="flex w-full items-center justify-center gap-1.5 rounded border border-border bg-surface px-2 py-1.5 text-[11px] font-medium text-text-muted transition-colors hover:border-brand-500 hover:text-text"
-                  >
-                    <LogOut className="h-3 w-3" strokeWidth={2} />
-                    Sign out
-                  </button>
-                </form>
-              </>
-            ) : (
-              <>
-                <div className="font-medium text-text">Jp Fluellen</div>
-                <div>Real Broker LLC · Cheyenne, WY</div>
-              </>
-            )}
-          </div>
+          <SidebarContents
+            pathname={pathname}
+            user={user}
+            signOutAction={signOutAction}
+          />
         </aside>
+
+        {/* Mobile drawer — slide-out sheet + backdrop */}
+        {mobileOpen && (
+          <>
+            <div
+              role="button"
+              tabIndex={-1}
+              aria-label="Close menu"
+              onClick={() => setMobileOpen(false)}
+              className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm md:hidden animate-in fade-in duration-150"
+            />
+            <aside className="fixed inset-y-0 left-0 z-50 flex h-full w-[260px] flex-col border-r border-border bg-surface px-3 py-4 md:hidden animate-in slide-in-from-left duration-200">
+              <button
+                type="button"
+                onClick={() => setMobileOpen(false)}
+                className="mb-2 ml-auto flex h-8 w-8 items-center justify-center rounded-md text-text-muted hover:bg-surface-2 hover:text-text"
+                aria-label="Close menu"
+              >
+                <X className="h-4 w-4" strokeWidth={2} />
+              </button>
+              <SidebarContents
+                pathname={pathname}
+                user={user}
+                signOutAction={signOutAction}
+              />
+            </aside>
+          </>
+        )}
 
         {/* Main */}
         <div className="flex min-w-0 flex-1 flex-col">
           {/* Top bar */}
-          <header className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-border bg-bg/95 px-5 py-3 backdrop-blur">
-            <div className="min-w-0 shrink-0">
-              <div className="text-xs text-text-muted">{dateStr}</div>
-              <div className="text-h1 font-semibold tracking-tight">
+          <header className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-border bg-bg/95 px-3 py-3 backdrop-blur sm:gap-4 sm:px-5">
+            {/* Mobile menu button */}
+            <button
+              type="button"
+              onClick={() => setMobileOpen(true)}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-surface text-text-muted transition-colors hover:text-text md:hidden"
+              aria-label="Open menu"
+            >
+              <Menu className="h-4 w-4" strokeWidth={2} />
+            </button>
+
+            <div className="min-w-0 flex-1 shrink md:flex-none">
+              <div className="truncate text-xs text-text-muted">{dateStr}</div>
+              <div className="truncate text-base font-semibold tracking-tight sm:text-h1">
                 {greet(now)}, {user?.name?.split(" ")[0] ?? "Jp"}
               </div>
             </div>
-            <div className="flex flex-1 items-center justify-end gap-3">
+            <div className="flex shrink-0 items-center justify-end gap-2 sm:gap-3 md:flex-1">
               <GlobalSearch />
               <ThemeToggle
                 mode={mode}
@@ -177,10 +168,104 @@ export function AppShell({
               />
             </div>
           </header>
-          <main className="flex-1 px-5 py-6">{children}</main>
+          <main className="flex-1 px-3 py-5 sm:px-5 sm:py-6">{children}</main>
         </div>
       </div>
     </div>
+  );
+}
+
+/** Shared nav body — renders inside both the desktop sidebar and the
+ * mobile drawer. Kept in one component so the items + user card stay
+ * identical across breakpoints. */
+function SidebarContents({
+  pathname,
+  user,
+  signOutAction,
+}: {
+  pathname: string;
+  user: ShellUser | null;
+  signOutAction: () => Promise<void>;
+}) {
+  return (
+    <>
+      <Link
+        href="/"
+        className="mb-8 px-2 font-display text-2xl font-semibold tracking-tight"
+        aria-label="REOS home"
+      >
+        RE
+        <span className="inline-block h-[0.85em] w-[0.85em] translate-y-[3px] rounded-[3px] bg-brand-500" />
+        S
+      </Link>
+      <nav className="flex flex-col gap-0.5">
+        {NAV.map((item) => {
+          const active =
+            pathname === item.href ||
+            (item.href !== "/" && pathname.startsWith(item.href));
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
+                active
+                  ? "bg-brand-50 font-medium text-brand-700"
+                  : "text-text-muted hover:bg-surface-2 hover:text-text",
+              )}
+            >
+              <Icon className="h-4 w-4 shrink-0" strokeWidth={1.8} />
+              {item.label}
+            </Link>
+          );
+        })}
+      </nav>
+      <div className="mt-auto rounded-md bg-surface-2 p-2.5 text-xs text-text-muted">
+        {user ? (
+          <>
+            <div className="flex items-center gap-2">
+              {user.image ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={user.image}
+                  alt=""
+                  className="h-7 w-7 shrink-0 rounded-full border border-border"
+                />
+              ) : (
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-500 text-[11px] font-semibold text-white">
+                  {(user.name ?? user.email ?? "?").slice(0, 1).toUpperCase()}
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-medium text-text">
+                  {user.name ?? user.email ?? "Signed in"}
+                </div>
+                <div className="truncate">
+                  {user.role
+                    ? user.role.charAt(0).toUpperCase() + user.role.slice(1)
+                    : "Team member"}
+                </div>
+              </div>
+            </div>
+            <form action={signOutAction} className="mt-2">
+              <button
+                type="submit"
+                className="flex w-full items-center justify-center gap-1.5 rounded border border-border bg-surface px-2 py-1.5 text-[11px] font-medium text-text-muted transition-colors hover:border-brand-500 hover:text-text"
+              >
+                <LogOut className="h-3 w-3" strokeWidth={2} />
+                Sign out
+              </button>
+            </form>
+          </>
+        ) : (
+          <>
+            <div className="font-medium text-text">Jp Fluellen</div>
+            <div>Real Broker LLC · Cheyenne, WY</div>
+          </>
+        )}
+      </div>
+    </>
   );
 }
 

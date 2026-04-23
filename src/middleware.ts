@@ -20,6 +20,7 @@ const PUBLIC_PREFIXES = [
   "/login",
   "/api/auth",
   "/share",
+  "/terms",
 ];
 
 // Webhook endpoints — third parties (Google Pub/Sub, FUB, etc.) call
