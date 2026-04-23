@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2, User } from "lucide-react";
+import { useToast } from "@/app/ToastProvider";
 
 interface Contact {
   id: string;
@@ -25,6 +26,7 @@ const ROLE_LABELS: Record<string, string> = {
   attorney: "Attorney",
   inspector: "Inspector",
   coordinator: "Coordinator",
+  title: "Title",
   other: "Other",
 };
 
@@ -46,11 +48,45 @@ export function ParticipantsPanel({
   initial: Participant[];
 }) {
   const router = useRouter();
+  const toast = useToast();
   const [items, setItems] = useState<Participant[]>(initial);
   const [, startTransition] = useTransition();
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  /** Inline role edit — optimistic, falls back on error. */
+  async function changeRole(pid: string, nextRole: string) {
+    const prev = items.find((p) => p.id === pid)?.role ?? "other";
+    if (prev === nextRole) return;
+    setItems((cur) =>
+      cur.map((p) => (p.id === pid ? { ...p, role: nextRole } : p)),
+    );
+    try {
+      const res = await fetch(
+        `/api/transactions/${transactionId}/participants/${pid}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ role: nextRole }),
+        },
+      );
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error ?? res.statusText);
+      }
+      toast.success(`Role: ${ROLE_LABELS[nextRole] ?? nextRole}`);
+      startTransition(() => router.refresh());
+    } catch (e) {
+      setItems((cur) =>
+        cur.map((p) => (p.id === pid ? { ...p, role: prev } : p)),
+      );
+      toast.error(
+        "Couldn't change role",
+        e instanceof Error ? e.message : "unknown error",
+      );
+    }
+  }
 
   // Form state
   const [fullName, setFullName] = useState("");
@@ -195,9 +231,20 @@ export function ParticipantsPanel({
                   <span className="font-medium text-text">
                     {p.contact.fullName}
                   </span>
-                  <span className="rounded bg-accent-100 px-1.5 py-0.5 text-[11px] font-medium text-accent-600">
-                    {ROLE_LABELS[p.role] ?? p.role}
-                  </span>
+                  {/* Inline role selector — one click to re-classify an
+                      auto-enriched participant without delete+re-add. */}
+                  <select
+                    value={p.role in ROLE_LABELS ? p.role : "other"}
+                    onChange={(e) => changeRole(p.id, e.target.value)}
+                    className="rounded border border-border bg-accent-50 px-1.5 py-0.5 text-[11px] font-medium text-accent-700 focus:border-accent-400 focus:outline-none"
+                    title="Change this participant's role"
+                  >
+                    {Object.entries(ROLE_LABELS).map(([v, l]) => (
+                      <option key={v} value={v}>
+                        {l}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div className="text-xs text-text-muted">
                   {p.contact.primaryEmail ?? p.contact.primaryPhone ?? "—"}
