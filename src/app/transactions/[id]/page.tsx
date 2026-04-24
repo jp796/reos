@@ -12,6 +12,7 @@ import { SharePanel } from "./SharePanel";
 import { EditableHeader } from "./EditableHeader";
 import { EditablePrimaryContact } from "./EditablePrimaryContact";
 import { TaskPanel } from "./TaskPanel";
+import { CompliancePanel } from "./CompliancePanel";
 import { ParticipantsPanel } from "./ParticipantsPanel";
 import { SMART_FOLDER_CUTOFF } from "@/services/automation/SmartFolderService";
 import {
@@ -372,6 +373,9 @@ export default async function TransactionDetailPage({
           milestoneId: t.milestoneId,
         }))}
       />
+
+      {/* Compliance file audit — required docs per side + state */}
+      <CompliancePanel transactionId={txn.id} />
 
       {/* Communication events */}
       {txn.communicationEvents.length > 0 && (
