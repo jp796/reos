@@ -14,6 +14,7 @@ import { EditablePrimaryContact } from "./EditablePrimaryContact";
 import { TaskPanel } from "./TaskPanel";
 import { CompliancePanel } from "./CompliancePanel";
 import { CdaButton } from "./CdaButton";
+import { SendPanel } from "./SendPanel";
 import { ParticipantsPanel } from "./ParticipantsPanel";
 import { SMART_FOLDER_CUTOFF } from "@/services/automation/SmartFolderService";
 import {
@@ -385,6 +386,39 @@ export default async function TransactionDetailPage({
 
       {/* Compliance file audit — required docs per side + state */}
       <CompliancePanel transactionId={txn.id} />
+
+      {/* Send email from template — merges transaction data into saved
+          templates, sends via the acting user's Gmail. */}
+      <SendPanel
+        transactionId={txn.id}
+        primaryEmail={contact.primaryEmail}
+        parties={[
+          // Primary contact is addressable by its side
+          ...(txn.side === "buy" || txn.side === "both"
+            ? [
+                {
+                  role: "co_buyer",
+                  fullName: contact.fullName,
+                  email: contact.primaryEmail,
+                },
+              ]
+            : []),
+          ...(txn.side === "sell" || txn.side === "both"
+            ? [
+                {
+                  role: "co_seller",
+                  fullName: contact.fullName,
+                  email: contact.primaryEmail,
+                },
+              ]
+            : []),
+          ...txn.participants.map((p) => ({
+            role: p.role,
+            fullName: p.contact.fullName,
+            email: p.contact.primaryEmail,
+          })),
+        ]}
+      />
 
       {/* Communication events */}
       {txn.communicationEvents.length > 0 && (

@@ -42,6 +42,7 @@ model Account {
   pendingClosingDateUpdates PendingClosingDateUpdate[]
   forwardedDocuments        ForwardedDocument[]
   invoiceEntries            InvoiceEntry[]
+  emailTemplates            EmailTemplate[]
 
   @@map("accounts")
 }
@@ -597,6 +598,38 @@ model InvoiceEntry {
   @@index([accountId, status])
   @@index([transactionId])
   @@map("invoice_entries")
+}
+
+/// Canned email templates with mail-merge variables. Populated with a
+/// starter set per account on first login; TCs can edit/add.
+///
+/// Body + subject use {{variable_name}} tokens that get resolved
+/// against the current transaction at render time. See
+/// EmailMergeService for the full variable list.
+model EmailTemplate {
+  id          String   @id @default(cuid())
+  accountId   String   @map("account_id")
+  name        String   // internal reference, e.g. "Welcome to new client"
+  subject     String
+  body        String   @db.Text
+  /// Optional grouping: welcome | inspection | title | clear_to_close |
+  /// closing | post_close | review_request | generic
+  category    String?
+  /// Array of party roles to populate as the default To field when
+  /// the user picks this template. e.g. ["primary_contact"] for a
+  /// client email, ["title"] for an escrow update.
+  defaultTo   String[] @default([]) @map("default_to")
+  /// If true, this is a starter template seeded by the system;
+  /// editable but protected from re-seeding.
+  isStarter   Boolean  @default(false) @map("is_starter")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, category])
+  @@map("email_templates")
 }
 
 /// Co-buyers, co-sellers, and other secondary parties on a transaction.

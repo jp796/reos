@@ -6,7 +6,7 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/require-session";
 import { redirect } from "next/navigation";
-import { Users, ScrollText, Building2 } from "lucide-react";
+import { Users, ScrollText, Building2, Mail } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +22,12 @@ const SECTIONS = [
     title: "Brokerage",
     desc: "Broker name, license, EIN — printed on every CDA",
     icon: Building2,
+  },
+  {
+    href: "/settings/templates",
+    title: "Email templates",
+    desc: "Canned messages with mail-merge variables",
+    icon: Mail,
   },
   {
     href: "/settings/activity",
