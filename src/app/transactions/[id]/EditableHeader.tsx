@@ -6,6 +6,14 @@ import { Pencil, Check, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useToast } from "@/app/ToastProvider";
 import { RepresentationToggle } from "./RepresentationToggle";
+import { AssigneePicker } from "./AssigneePicker";
+
+interface TeamMember {
+  id: string;
+  name: string | null;
+  email: string;
+  role: string;
+}
 
 interface Props {
   transactionId: string;
@@ -18,6 +26,8 @@ interface Props {
   state: string | null;
   zip: string | null;
   side: string | null;
+  assignedUserId: string | null;
+  team: TeamMember[];
 }
 
 function statusBadge(status: string) {
@@ -130,6 +140,13 @@ export function EditableHeader(props: Props) {
             transactionId={props.transactionId}
             side={props.side}
             transactionType={props.transactionType}
+          />
+          {/* Assigned coordinator — who's on point for this deal.
+              Drives "my queue" filters on /today + /transactions. */}
+          <AssigneePicker
+            transactionId={props.transactionId}
+            value={props.assignedUserId}
+            team={props.team}
           />
           {props.stageName && (
             <span className="text-xs text-text-muted">

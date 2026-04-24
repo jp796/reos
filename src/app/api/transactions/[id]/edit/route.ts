@@ -29,6 +29,8 @@ interface Body {
   side?: string | null;
   transactionType?: string;
   primaryContactId?: string; // swap the lead contact
+  /** null = unassign, string = User.id in the same account */
+  assignedUserId?: string | null;
 }
 
 export async function PATCH(
@@ -85,6 +87,24 @@ export async function PATCH(
       return NextResponse.json({ error: "contact not found" }, { status: 404 });
     }
     data.contact = { connect: { id: contact.id } };
+  }
+  if (body.assignedUserId !== undefined) {
+    if (body.assignedUserId === null) {
+      data.assignedUser = { disconnect: true };
+    } else {
+      // Must be a user in the same account
+      const user = await prisma.user.findUnique({
+        where: { id: body.assignedUserId },
+        select: { id: true, accountId: true },
+      });
+      if (!user || user.accountId !== actor.accountId) {
+        return NextResponse.json(
+          { error: "assigned user not found in your account" },
+          { status: 404 },
+        );
+      }
+      data.assignedUser = { connect: { id: user.id } };
+    }
   }
 
   const updated = await prisma.transaction.update({

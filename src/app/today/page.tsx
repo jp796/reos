@@ -20,6 +20,8 @@ import {
 } from "@/services/core/RiskScoringService";
 import { ReconcileSSButton } from "./ReconcileSSButton";
 import { PostCloseTickButton } from "./PostCloseTickButton";
+import { requireSession } from "@/lib/require-session";
+import { cn } from "@/lib/cn";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +45,25 @@ function fmtRel(d: Date) {
   return `${-days}d ago`;
 }
 
-export default async function TodayPage() {
+export default async function TodayPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ scope?: string }>;
+}) {
+  const sp = await searchParams;
+  // Scope: "mine" filters all queries to transactions assigned to
+  // the acting user. "all" (default) shows everything in the account.
+  const scope: "mine" | "all" = sp.scope === "mine" ? "mine" : "all";
+  const actor = await requireSession();
+  // actor might be a Response when unauthenticated — middleware
+  // redirects before we get here, so in practice this is always an
+  // ActingUser. Narrow the type:
+  const actingUserId = actor instanceof Response ? null : actor.userId;
+  const txnAssignedFilter =
+    scope === "mine" && actingUserId
+      ? { assignedUserId: actingUserId }
+      : {};
+
   const now = new Date();
   const weekFromNow = new Date(now.getTime() + 7 * DAY_MS);
   const monthFromNow = new Date(now.getTime() + 30 * DAY_MS);
@@ -65,7 +85,7 @@ export default async function TodayPage() {
         status: "pending",
         completedAt: null,
         dueAt: { lte: now },
-        transaction: { status: "active" },
+        transaction: { status: "active", ...txnAssignedFilter },
       },
       include: {
         transaction: { include: { contact: true } },
@@ -78,7 +98,7 @@ export default async function TodayPage() {
         status: "pending",
         completedAt: null,
         dueAt: { gt: now, lte: weekFromNow },
-        transaction: { status: "active" },
+        transaction: { status: "active", ...txnAssignedFilter },
       },
       include: {
         transaction: { include: { contact: true } },
@@ -87,7 +107,7 @@ export default async function TodayPage() {
       take: 25,
     }),
     prisma.transaction.findMany({
-      where: { status: "active" },
+      where: { status: "active", ...txnAssignedFilter },
       include: {
         contact: true,
         communicationEvents: {
@@ -100,6 +120,7 @@ export default async function TodayPage() {
       where: {
         status: "active",
         closingDate: { gte: now, lte: monthFromNow },
+        ...txnAssignedFilter,
       },
       include: { contact: true },
       orderBy: { closingDate: "asc" },
@@ -117,7 +138,7 @@ export default async function TodayPage() {
         (SELECT COUNT(*) FROM contacts)::bigint AS total_contacts
     `,
     prisma.transaction.findMany({
-      where: { status: "active" },
+      where: { status: "active", ...txnAssignedFilter },
       include: {
         contact: true,
         milestones: true,
@@ -130,7 +151,7 @@ export default async function TodayPage() {
       where: {
         completedAt: null,
         dueAt: { lte: now },
-        transaction: { status: "active" },
+        transaction: { status: "active", ...txnAssignedFilter },
       },
       include: {
         transaction: {
@@ -145,7 +166,7 @@ export default async function TodayPage() {
       where: {
         completedAt: null,
         dueAt: { gt: now, lte: weekFromNow },
-        transaction: { status: "active" },
+        transaction: { status: "active", ...txnAssignedFilter },
       },
       include: {
         transaction: {
@@ -199,6 +220,30 @@ export default async function TodayPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <div className="inline-flex overflow-hidden rounded-md border border-border bg-surface">
+            <Link
+              href="/today"
+              className={cn(
+                "px-2.5 py-1 text-xs font-medium transition-colors",
+                scope === "all"
+                  ? "bg-brand-50 text-brand-700"
+                  : "text-text-muted hover:bg-surface-2 hover:text-text",
+              )}
+            >
+              All
+            </Link>
+            <Link
+              href="/today?scope=mine"
+              className={cn(
+                "border-l border-border px-2.5 py-1 text-xs font-medium transition-colors",
+                scope === "mine"
+                  ? "bg-brand-50 text-brand-700"
+                  : "text-text-muted hover:bg-surface-2 hover:text-text",
+              )}
+            >
+              My queue
+            </Link>
+          </div>
           <PostCloseTickButton />
           <ReconcileSSButton />
         </div>

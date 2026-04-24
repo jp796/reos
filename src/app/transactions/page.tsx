@@ -18,6 +18,7 @@ export const dynamic = "force-dynamic";
 
 type StatusFilter = "open" | "closed" | "all";
 type RepFilter = "any" | "buy" | "sell" | "both";
+type ScopeFilter = "all" | "mine";
 
 const FILTER_TABS: Array<{ id: StatusFilter; label: string }> = [
   { id: "open", label: "Active" },
@@ -32,10 +33,15 @@ const REP_TABS: Array<{ id: RepFilter; label: string; dbValue?: string }> = [
   { id: "both", label: "Dual", dbValue: "both" },
 ];
 
-function buildHref(status: StatusFilter, rep: RepFilter): string {
+function buildHref(
+  status: StatusFilter,
+  rep: RepFilter,
+  scope: ScopeFilter = "all",
+): string {
   const params = new URLSearchParams();
   if (status !== "open") params.set("status", status);
   if (rep !== "any") params.set("rep", rep);
+  if (scope !== "all") params.set("scope", scope);
   const qs = params.toString();
   return qs ? `/transactions?${qs}` : "/transactions";
 }
@@ -64,13 +70,20 @@ function statusBadge(status: string) {
 export default async function TransactionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; rep?: string }>;
+  searchParams: Promise<{ status?: string; rep?: string; scope?: string }>;
 }) {
+  const { requireSession } = await import("@/lib/require-session");
+  const actor = await requireSession();
+  const actingUserId = actor instanceof Response ? null : actor.userId;
+
   const sp = await searchParams;
   const filter: StatusFilter =
     sp.status === "closed" || sp.status === "all" ? sp.status : "open";
   const rep: RepFilter =
     sp.rep === "buy" || sp.rep === "sell" || sp.rep === "both" ? sp.rep : "any";
+  const scope: ScopeFilter = sp.scope === "mine" ? "mine" : "all";
+  const scopeWhere =
+    scope === "mine" && actingUserId ? { assignedUserId: actingUserId } : {};
 
   const statusWhere =
     filter === "all"
@@ -81,7 +94,7 @@ export default async function TransactionsPage({
 
   const repWhere = rep === "any" ? {} : { side: rep };
 
-  const where = { ...statusWhere, ...repWhere };
+  const where = { ...statusWhere, ...repWhere, ...scopeWhere };
 
   const [
     transactions,
@@ -98,6 +111,7 @@ export default async function TransactionsPage({
       include: {
         contact: true,
         milestones: { orderBy: { dueAt: "asc" } },
+        assignedUser: { select: { name: true, email: true } },
         _count: {
           select: { milestones: true, tasks: true, documents: true },
         },
@@ -140,8 +154,34 @@ export default async function TransactionsPage({
         </div>
       </header>
 
+      {/* Scope toggle — "my queue" vs all */}
+      <div className="mt-5 inline-flex overflow-hidden rounded-md border border-border bg-surface">
+        <Link
+          href={buildHref(filter, rep, "all")}
+          className={cn(
+            "px-3 py-1 text-xs font-medium transition-colors",
+            scope === "all"
+              ? "bg-brand-50 text-brand-700"
+              : "text-text-muted hover:bg-surface-2 hover:text-text",
+          )}
+        >
+          All transactions
+        </Link>
+        <Link
+          href={buildHref(filter, rep, "mine")}
+          className={cn(
+            "border-l border-border px-3 py-1 text-xs font-medium transition-colors",
+            scope === "mine"
+              ? "bg-brand-50 text-brand-700"
+              : "text-text-muted hover:bg-surface-2 hover:text-text",
+          )}
+        >
+          My queue
+        </Link>
+      </div>
+
       {/* Status filter chips */}
-      <div className="mt-6 flex flex-wrap items-center gap-1.5">
+      <div className="mt-3 flex flex-wrap items-center gap-1.5">
         {FILTER_TABS.map((tab) => {
           const count =
             tab.id === "open"
@@ -153,7 +193,7 @@ export default async function TransactionsPage({
           return (
             <Link
               key={tab.id}
-              href={buildHref(tab.id, rep)}
+              href={buildHref(tab.id, rep, scope)}
               className={cn(
                 "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
                 active
@@ -188,7 +228,7 @@ export default async function TransactionsPage({
           return (
             <Link
               key={tab.id}
-              href={buildHref(filter, tab.id)}
+              href={buildHref(filter, tab.id, scope)}
               className={cn(
                 "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
                 active
@@ -277,6 +317,17 @@ export default async function TransactionsPage({
                       <span className="text-sm font-medium text-text group-hover/link:text-brand-700">
                         {txn.contact.fullName}
                       </span>
+                      {txn.assignedUser && (
+                        <span
+                          className="inline-flex items-center rounded bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-text-muted"
+                          title={`Assigned to ${txn.assignedUser.name ?? txn.assignedUser.email}`}
+                        >
+                          👤{" "}
+                          {(
+                            txn.assignedUser.name ?? txn.assignedUser.email
+                          ).split(" ")[0]}
+                        </span>
+                      )}
                     </div>
                     <div className="mt-1 text-sm text-text-muted">
                       {txn.propertyAddress || "No property address yet"}

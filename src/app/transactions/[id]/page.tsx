@@ -120,6 +120,13 @@ export default async function TransactionDetailPage({
   const otherUses = await prisma.transaction.count({
     where: { contactId: contact.id, NOT: { id: txn.id } },
   });
+
+  // Team members for the AssigneePicker. Scoped to this account.
+  const team = await prisma.user.findMany({
+    where: { accountId: txn.accountId },
+    select: { id: true, name: true, email: true, role: true },
+    orderBy: [{ role: "asc" }, { name: "asc" }],
+  });
   const tags: string[] = Array.isArray(contact?.tagsJson)
     ? (contact.tagsJson as string[])
     : [];
@@ -154,6 +161,13 @@ export default async function TransactionDetailPage({
             state={txn.state}
             zip={txn.zip}
             side={txn.side}
+            assignedUserId={txn.assignedUserId}
+            team={team.map((t) => ({
+              id: t.id,
+              name: t.name,
+              email: t.email,
+              role: t.role,
+            }))}
           />
           <EditablePrimaryContact
             contactId={contact.id}

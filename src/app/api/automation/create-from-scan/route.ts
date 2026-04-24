@@ -80,6 +80,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "no account" }, { status: 500 });
   }
 
+  // Figure out the acting user (for default assignment). Optional —
+  // if called by a cron / background job without a session, assignment
+  // stays null and the deal shows up as unassigned in /today.
+  let actingUserId: string | null = null;
+  try {
+    const { auth } = await import("@/auth");
+    const session = await auth();
+    const email = session?.user?.email?.toLowerCase();
+    if (email) {
+      const u = await prisma.user.findUnique({
+        where: { email },
+        select: { id: true },
+      });
+      actingUserId = u?.id ?? null;
+    }
+  } catch {
+    // best-effort only
+  }
+
   const body = (await req.json().catch(() => null)) as Body | null;
   if (!body?.address) {
     return NextResponse.json({ error: "address required" }, { status: 400 });
@@ -199,6 +218,9 @@ export async function POST(req: NextRequest) {
       lenderName: body.lenderName?.slice(0, 120) ?? null,
       contractStage: stage,
       contractAppliedAt: new Date(),
+      // Default-assign to the creating user so "My queue" populates
+      // from day 1. Leave null if this was auto-created by a cron.
+      assignedUserId: actingUserId,
       rawSourceJson: {
         origin: "manual_contract_upload_or_scan",
         threadId: body.threadId ?? null,

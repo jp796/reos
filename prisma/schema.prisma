@@ -111,6 +111,7 @@ model User {
   authAccounts AuthAccount[]
   sessions     Session[]
   auditLogs    AutomationAuditLog[]
+  assignedTransactions Transaction[] @relation("AssignedTransactions")
 
   @@index([accountId])
   @@map("users")
@@ -190,6 +191,11 @@ model Transaction {
   smartFolderFilterId    String?   @map("smart_folder_filter_id")
   smartFolderSetupAt     DateTime? @map("smart_folder_setup_at")
   smartFolderBackfillCount Int?    @map("smart_folder_backfill_count")
+  /// Who's the TC / assigned coordinator on this deal. Drives /today
+  /// and /transactions "my queue" filters. Nullable = unassigned
+  /// (defaults to the creating user on auto-create). Defer-SET so we
+  /// don't block on a user row during transaction auto-create paths.
+  assignedUserId         String?   @map("assigned_user_id")
   // Contract extraction: pending review + last applied timestamp
   pendingContractJson    Json?     @map("pending_contract_json")
   contractExtractedAt    DateTime? @map("contract_extracted_at")
@@ -225,6 +231,7 @@ model Transaction {
   invoiceEntries      InvoiceEntry[]
   participants        TransactionParticipant[]
   wireVerifications   WireVerification[]
+  assignedUser        User?                    @relation("AssignedTransactions", fields: [assignedUserId], references: [id], onDelete: SetNull)
 
   @@index([accountId])
   @@index([contactId, status], map: "idx_transactions_contact_status")
