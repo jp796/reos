@@ -129,6 +129,20 @@ add_secret GOOGLE_REDIRECT_URI "https://reos.titanreteam.com/api/auth/google/cal
 add_secret OPENAI_API_KEY "<from .env>"
 add_secret ENCRYPTION_KEY "<from .env>"
 add_secret DATABASE_URL "<connection string from step 2>"
+
+# Owner's additional email aliases — excluded from SmartFolder
+# queries so the Gmail filter doesn't over-match on the owner's
+# own mailbox. Copy from local .env.
+add_secret OWNER_EMAIL_ALIASES "james.fluellen@gmail.com,tc@titanreteam.com,wybroker@therealbrokerage.com"
+
+# Shared secret for Cloud Scheduler → REOS automation endpoints
+# (post-close sweep, scan-accepted-contracts, etc.). Generate fresh
+# for prod — don't reuse the local dev value.
+add_secret SCAN_SCHEDULE_SECRET "$(openssl rand -hex 32)"
+
+# Public app URL — used in the intake form (/intake), share links,
+# NEXT_PUBLIC_APP_URL for any client-side base-URL needs.
+add_secret NEXT_PUBLIC_APP_URL "https://reos.titanreteam.com"
 ```
 
 Give the Cloud Run default service account read access to secrets:
@@ -259,11 +273,22 @@ gcloud scheduler jobs create http reos-scan-contracts \
   --http-method=POST \
   --oidc-service-account-email="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
   --oidc-token-audience="https://reos.titanreteam.com"
+
+# Daily post-close sweep: 7am Mountain. Uses the shared-secret header
+# (SCAN_SCHEDULE_SECRET) rather than OIDC because the route is in
+# the public middleware allowlist (/api/automation/*/tick) and
+# validates the header inside the handler.
+gcloud scheduler jobs create http reos-post-close-sweep \
+  --schedule="0 7 * * *" \
+  --time-zone="America/Denver" \
+  --uri="https://reos.titanreteam.com/api/automation/post-close/tick" \
+  --http-method=POST \
+  --headers="x-reos-scan-secret=<SCAN_SCHEDULE_SECRET>"
 ```
 
 Add one job per scan endpoint (earnest-money, title-orders,
-stale-contacts, etc). You'll also want the webhook routes (which
-REOS already exempts from the auth middleware) exposed publicly.
+stale-contacts, etc). Post-close tick fires daily to create the
+review-request / gift / NPS / compliance-file tasks on closed deals.
 
 ---
 
