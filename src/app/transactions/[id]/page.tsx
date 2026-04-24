@@ -13,6 +13,7 @@ import { EditableHeader } from "./EditableHeader";
 import { EditablePrimaryContact } from "./EditablePrimaryContact";
 import { TaskPanel } from "./TaskPanel";
 import { CompliancePanel } from "./CompliancePanel";
+import { CdaButton } from "./CdaButton";
 import { ParticipantsPanel } from "./ParticipantsPanel";
 import { SMART_FOLDER_CUTOFF } from "@/services/automation/SmartFolderService";
 import {
@@ -322,6 +323,14 @@ export default async function TransactionDetailPage({
             : null
         }
       />
+
+      {/* CDA — generate + download the disbursement authorization PDF */}
+      <div className="mt-3 flex items-center justify-end gap-2">
+        <CdaButton
+          transactionId={txn.id}
+          enabled={!!txn.financials?.grossCommission}
+        />
+      </div>
 
       {/* Tags */}
       {tags.length > 0 && (
