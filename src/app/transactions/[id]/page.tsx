@@ -15,6 +15,7 @@ import { TaskPanel } from "./TaskPanel";
 import { CompliancePanel } from "./CompliancePanel";
 import { CdaButton } from "./CdaButton";
 import { SendPanel } from "./SendPanel";
+import { WireVerificationPanel } from "./WireVerificationPanel";
 import { ParticipantsPanel } from "./ParticipantsPanel";
 import { SMART_FOLDER_CUTOFF } from "@/services/automation/SmartFolderService";
 import {
@@ -386,6 +387,14 @@ export default async function TransactionDetailPage({
 
       {/* Compliance file audit — required docs per side + state */}
       <CompliancePanel transactionId={txn.id} />
+
+      {/* Wire fraud verification log — compliance record of the voice
+          call confirming wire instructions before the client sends funds. */}
+      <WireVerificationPanel
+        transactionId={txn.id}
+        closingDate={txn.closingDate?.toISOString() ?? null}
+        titleCompanyName={txn.titleCompanyName}
+      />
 
       {/* Send email from template — merges transaction data into saved
           templates, sends via the acting user's Gmail. */}

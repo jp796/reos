@@ -224,6 +224,7 @@ model Transaction {
   forwardedDocuments  ForwardedDocument[]
   invoiceEntries      InvoiceEntry[]
   participants        TransactionParticipant[]
+  wireVerifications   WireVerification[]
 
   @@index([accountId])
   @@index([contactId, status], map: "idx_transactions_contact_status")
@@ -630,6 +631,43 @@ model EmailTemplate {
 
   @@index([accountId, category])
   @@map("email_templates")
+}
+
+/// Compliance record of the TC verifying wire instructions by voice
+/// call before closing. Proof the brokerage followed its own wire-
+/// fraud prevention protocol — liability is six-figure if wire
+/// instructions turn out to have been spoofed, so we log every
+/// verification with who, when, called number, and a summary of what
+/// was confirmed.
+///
+/// Typical workflow: before a client sends closing funds, the TC
+/// phones the title officer at a number they KNOW (not from the
+/// email that prompted the wire), confirms the wire instructions
+/// verbally, and logs it here. REOS never stores actual ABA / account
+/// numbers; `instructionsSummary` is a free-text description the TC
+/// writes (e.g. "Last 4 of account matches 4823, amount $12,500, no
+/// changes since contract").
+model WireVerification {
+  id                    String   @id @default(cuid())
+  transactionId         String   @map("transaction_id")
+  verifiedAt            DateTime @map("verified_at")
+  /// Which REOS user made the verification call.
+  verifiedByUserId      String?  @map("verified_by_user_id")
+  /// The person at title/settlement confirmed with.
+  titleAgentName        String?  @map("title_agent_name")
+  /// Phone number called (owner sourced from a known-good record,
+  /// NOT from the email that triggered the wire request).
+  phoneCalled           String?  @map("phone_called")
+  /// Short free-text summary of what was confirmed. Never store
+  /// full ABA / account numbers — this is a liability surface.
+  instructionsSummary   String?  @map("instructions_summary") @db.Text
+  notes                 String?  @db.Text
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@index([transactionId, verifiedAt(sort: Desc)])
+  @@map("wire_verifications")
 }
 
 /// Co-buyers, co-sellers, and other secondary parties on a transaction.
