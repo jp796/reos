@@ -359,6 +359,29 @@ export async function POST(
   // Merge over any existing pending extraction — NEWEST WINS (this
   // rescan is explicitly the "fresh version of the truth").
   const prior = (txn.pendingContractJson ?? null) as Prisma.JsonValue | null;
+
+  // Snapshot the prior extraction before the merge so the diff
+  // viewer can compare addendum vs original.
+  if (prior) {
+    try {
+      await prisma.contractExtractionVersion.create({
+        data: {
+          transactionId: txn.id,
+          extractionJson: prior as Prisma.InputJsonValue,
+          source:
+            pickedSource === "gmail" ? "rescan_gmail" : "rescan_stored",
+          filename: pickedFilename,
+          sourceDate: txn.contractExtractedAt ?? new Date(),
+        },
+      });
+    } catch (err) {
+      console.warn(
+        "[contract/rescan] snapshot prior version failed (non-blocking):",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
   const merged = mergePending(prior, extraction as unknown as Record<string, unknown>);
   (merged as Record<string, unknown>)._rescan = {
     side,

@@ -16,6 +16,7 @@ import { CompliancePanel } from "./CompliancePanel";
 import { CdaButton } from "./CdaButton";
 import { SendPanel } from "./SendPanel";
 import { WireVerificationPanel } from "./WireVerificationPanel";
+import { ContractVersionHistory } from "./ContractVersionHistory";
 import { ParticipantsPanel } from "./ParticipantsPanel";
 import { SMART_FOLDER_CUTOFF } from "@/services/automation/SmartFolderService";
 import {
@@ -300,6 +301,10 @@ export default async function TransactionDetailPage({
             | null) ?? null
         }
       />
+
+      {/* Contract version history — shows diffs between snapshots.
+          Hides itself when there's no history (zero prior versions). */}
+      <ContractVersionHistory transactionId={txn.id} />
 
       <SmartFolderSection
         transactionId={txn.id}

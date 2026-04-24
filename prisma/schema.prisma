@@ -231,6 +231,7 @@ model Transaction {
   invoiceEntries      InvoiceEntry[]
   participants        TransactionParticipant[]
   wireVerifications   WireVerification[]
+  contractVersions    ContractExtractionVersion[]
   assignedUser        User?                    @relation("AssignedTransactions", fields: [assignedUserId], references: [id], onDelete: SetNull)
 
   @@index([accountId])
@@ -638,6 +639,38 @@ model EmailTemplate {
 
   @@index([accountId, category])
   @@map("email_templates")
+}
+
+/// Snapshot of a contract extraction at a point in time. Every time
+/// /contract/extract or /contract/rescan produces a new extraction,
+/// we copy the OUTGOING (prior) version here BEFORE the merge writes
+/// the new pendingContractJson.
+///
+/// Gives the TC an audit trail — "what dates were in the original
+/// contract vs what was in the amendment?" — and drives the diff
+/// viewer that shows counter-offer / addendum changes field-by-field.
+model ContractExtractionVersion {
+  id             String   @id @default(cuid())
+  transactionId  String   @map("transaction_id")
+  /// The full extraction JSON at this version. Same shape as
+  /// Transaction.pendingContractJson — { field: { value, confidence,
+  /// snippet } }.
+  extractionJson Json     @map("extraction_json")
+  /// Where the PDF came from. upload | rescan_gmail | rescan_stored
+  /// | auto_apply (contract/apply). Matches _rescan.source in the
+  /// extraction metadata.
+  source         String
+  /// Filename of the PDF that produced this version (if known).
+  filename       String?
+  /// internalDate from Gmail for gmail-sourced versions; uploadedAt
+  /// otherwise. Drives chronological ordering in the diff viewer.
+  sourceDate     DateTime @map("source_date")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@index([transactionId, createdAt(sort: Desc)])
+  @@map("contract_extraction_versions")
 }
 
 /// Compliance record of the TC verifying wire instructions by voice

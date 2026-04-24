@@ -87,6 +87,28 @@ export async function POST(
     );
   }
 
+  // Snapshot the PRIOR extraction (if any) before we merge the new
+  // one over it. This is what powers the diff viewer — "what changed
+  // between the original contract and the addendum?"
+  if (txn.pendingContractJson) {
+    try {
+      await prisma.contractExtractionVersion.create({
+        data: {
+          transactionId: txn.id,
+          extractionJson: txn.pendingContractJson as Prisma.InputJsonValue,
+          source: "upload",
+          filename: file.name || "contract.pdf",
+          sourceDate: txn.contractExtractedAt ?? new Date(),
+        },
+      });
+    } catch (err) {
+      console.warn(
+        "[contract/extract] snapshot prior version failed (non-blocking):",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
   // If this upload is a compensation rider AND a prior contract extraction
   // already exists on the txn, merge the two so the user sees unified data.
   const existing = (txn.pendingContractJson ?? null) as Prisma.JsonValue | null;
