@@ -19,6 +19,7 @@ import {
   riskHealthTone,
 } from "@/services/core/RiskScoringService";
 import { ReconcileSSButton } from "./ReconcileSSButton";
+import { PostCloseTickButton } from "./PostCloseTickButton";
 
 export const dynamic = "force-dynamic";
 
@@ -197,7 +198,10 @@ export default async function TodayPage() {
             contacts
           </p>
         </div>
-        <ReconcileSSButton />
+        <div className="flex items-center gap-2">
+          <PostCloseTickButton />
+          <ReconcileSSButton />
+        </div>
       </header>
 
       {/* KPI strip */}

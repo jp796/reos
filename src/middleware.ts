@@ -23,12 +23,15 @@ const PUBLIC_PREFIXES = [
   "/terms",
 ];
 
-// Webhook endpoints — third parties (Google Pub/Sub, FUB, etc.) call
-// these and can't send a session cookie. Keep a narrow pattern so we
-// don't accidentally expose generic API routes.
+// Webhook + automation-tick endpoints — third parties (Google Pub/Sub,
+// FUB) and Cloud Scheduler call these and can't send a session cookie.
+// Keep a narrow pattern so we don't accidentally expose generic API
+// routes. Each endpoint enforces its own shared-secret / signature
+// check inside the route handler.
 const WEBHOOK_PATTERNS: RegExp[] = [
   /^\/api\/integrations\/[^/]+\/webhook(\/|$)/,
   /^\/api\/integrations\/gmail\/push(\/|$)/,
+  /^\/api\/automation\/[^/]+\/tick(\/|$)/,
 ];
 
 // Routes intentionally callable without a session — e.g. Cloud Run
