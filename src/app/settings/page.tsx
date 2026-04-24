@@ -6,7 +6,7 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/require-session";
 import { redirect } from "next/navigation";
-import { Users, ScrollText, Building2, Mail, Briefcase } from "lucide-react";
+import { Users, ScrollText, Building2, Mail, Briefcase, Inbox } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +34,12 @@ const SECTIONS = [
     title: "Vendors",
     desc: "Title, lenders, inspectors — ranked by past deals",
     icon: Briefcase,
+  },
+  {
+    href: "/settings/intake",
+    title: "Lead intake",
+    desc: "Public form submissions — promote qualified leads",
+    icon: Inbox,
   },
   {
     href: "/settings/activity",

@@ -43,6 +43,7 @@ model Account {
   forwardedDocuments        ForwardedDocument[]
   invoiceEntries            InvoiceEntry[]
   emailTemplates            EmailTemplate[]
+  leadIntakes               LeadIntake[]
 
   @@map("accounts")
 }
@@ -639,6 +640,54 @@ model EmailTemplate {
 
   @@index([accountId, category])
   @@map("email_templates")
+}
+
+/// Pre-listing / pre-offer structured intake. Public `/intake` form
+/// posts here — captures name, email, phone, side (buy/sell), property
+/// or area of interest, timeline, budget, financing status, and free-
+/// text notes. The TC reviews the queue at /settings/intake and
+/// promotes good leads to a real Contact + Transaction.
+///
+/// No auth required to submit (it's a public lead-capture form). We
+/// rate-limit at the route level and flag spam via simple content
+/// heuristics before allowing promotion.
+model LeadIntake {
+  id                       String   @id @default(cuid())
+  accountId                String   @map("account_id")
+  /// "buy" | "sell"
+  side                     String
+  fullName                 String   @map("full_name")
+  email                    String?
+  phone                    String?
+  /// For sellers — the property they want to list.
+  propertyAddress          String?  @map("property_address")
+  /// For buyers — area / price range / beds / baths.
+  areaOfInterest           String?  @map("area_of_interest") @db.Text
+  budget                   String?
+  /// When they hope to close / start.
+  timeline                 String?
+  /// Cash | pre-approved | needs approval | not sure
+  financingStatus          String?  @map("financing_status")
+  notes                    String?  @db.Text
+  /// Where the lead came from — referral, website, open house, etc.
+  source                   String?
+  /// Optional user-agent / IP snapshot for abuse review.
+  submittedUserAgent       String?  @map("submitted_user_agent") @db.Text
+  submittedIp              String?  @map("submitted_ip")
+  status                   String   @default("new") // new | contacted | converted | dismissed
+  /// When a TC promotes the lead to a Transaction, we record the link
+  /// so the lead queue can show "already converted" without deleting
+  /// the intake row (audit trail preserved).
+  convertedTransactionId   String?  @map("converted_transaction_id")
+  convertedContactId       String?  @map("converted_contact_id")
+  convertedAt              DateTime? @map("converted_at")
+  submittedAt              DateTime @default(now()) @map("submitted_at")
+  updatedAt                DateTime @updatedAt @map("updated_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, status, submittedAt(sort: Desc)])
+  @@map("lead_intakes")
 }
 
 /// Snapshot of a contract extraction at a point in time. Every time

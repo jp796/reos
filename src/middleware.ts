@@ -21,6 +21,8 @@ const PUBLIC_PREFIXES = [
   "/api/auth",
   "/share",
   "/terms",
+  "/intake", // public lead-capture form + POST
+  "/api/intake",
 ];
 
 // Webhook + automation-tick endpoints — third parties (Google Pub/Sub,

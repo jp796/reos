@@ -77,13 +77,18 @@ export function AppShell({
     };
   }, [mobileOpen]);
 
-  // Public share routes, sign-in page, and anon-reachable /terms get
-  // no chrome (no nav, no greeting, no theme toggle). Let the page
-  // render its own minimal presentation. Authenticated users viewing
-  // /terms from inside the app still get the chrome (we only strip
-  // it when there's no user context).
+  // Public share routes, sign-in page, intake form, and anon-reachable
+  // /terms get no chrome (no nav, no greeting, no theme toggle). Let
+  // the page render its own minimal presentation. Authenticated users
+  // viewing /terms from inside the app still get the chrome (we only
+  // strip it when there's no user context).
   if (pathname?.startsWith("/share/") || pathname === "/login") {
     return <>{children}</>;
+  }
+  if (pathname === "/intake") {
+    return (
+      <main className="min-h-screen bg-bg px-4 py-6 text-text">{children}</main>
+    );
   }
   if (pathname === "/terms" && !user) {
     return (
