@@ -6,7 +6,7 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/require-session";
 import { redirect } from "next/navigation";
-import { Users, ScrollText, Building2, Mail } from "lucide-react";
+import { Users, ScrollText, Building2, Mail, Briefcase } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +28,12 @@ const SECTIONS = [
     title: "Email templates",
     desc: "Canned messages with mail-merge variables",
     icon: Mail,
+  },
+  {
+    href: "/settings/vendors",
+    title: "Vendors",
+    desc: "Title, lenders, inspectors — ranked by past deals",
+    icon: Briefcase,
   },
   {
     href: "/settings/activity",

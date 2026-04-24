@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2, User } from "lucide-react";
 import { useToast } from "@/app/ToastProvider";
+import { VendorPicker } from "@/app/components/VendorPicker";
 
 interface Contact {
   id: string;
@@ -328,13 +329,22 @@ export function ParticipantsPanel({
             <div className="border-t border-border pt-2">
               <div className="reos-label mb-1">Or add new contact</div>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                <input
-                  type="text"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Full name"
-                  className="rounded border border-border bg-surface px-2 py-1.5 text-sm"
-                />
+                {role === "title" || role === "lender" || role === "inspector" || role === "attorney" ? (
+                  <VendorPicker
+                    category={role as "title" | "lender" | "inspector" | "attorney"}
+                    value={fullName}
+                    onChange={setFullName}
+                    placeholder={`Existing ${role} or new name`}
+                  />
+                ) : (
+                  <input
+                    type="text"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="Full name"
+                    className="rounded border border-border bg-surface px-2 py-1.5 text-sm"
+                  />
+                )}
                 <input
                   type="email"
                   value={email}
