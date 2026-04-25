@@ -18,7 +18,17 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Check, X, Building2 } from "lucide-react";
+import {
+  Pencil,
+  Check,
+  X,
+  Building2,
+  DollarSign,
+  Percent,
+  CalendarDays,
+  Users,
+  Home,
+} from "lucide-react";
 import { useToast } from "@/app/ToastProvider";
 
 interface Props {
@@ -38,6 +48,36 @@ interface Props {
   buyerNames: string[];
   /** Seller-side party names (primary on sell, plus any co_sellers). */
   sellerNames: string[];
+  /** Compact "at-a-glance" facts surfaced under the address — saves a
+   * scroll for the numbers Vicki checks the most. */
+  salePrice?: number | null;
+  commissionPercent?: number | null;
+  grossCommission?: number | null;
+  contractDate?: Date | null;
+  closingDate?: Date | null;
+}
+
+function fmtMoney(n: number | null | undefined): string | null {
+  if (n == null) return null;
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(n);
+}
+function fmtDate(d: Date | null | undefined): string | null {
+  if (!d) return null;
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+function sideLabel(side: string | null): string {
+  if (side === "buy") return "Buy Side";
+  if (side === "sell") return "Sell Side";
+  if (side === "both") return "Dual Agency";
+  return "—";
 }
 
 const COMPANY_RE = /\b(llc|inc|corp|co|company|properties|holdings|trust|ltd|pllc|pc)\b\.?/i;
@@ -100,7 +140,10 @@ export function EditablePrimaryContact(props: Props) {
         : props.side === "buy"
           ? "buyer"
           : "party";
-    const showBoth = props.side === "both";
+    const priceStr = fmtMoney(props.salePrice);
+    const grossStr = fmtMoney(props.grossCommission);
+    const contractStr = fmtDate(props.contractDate);
+    const closingStr = fmtDate(props.closingDate);
     return (
       <div className="mt-2">
         {/* Address is the transaction's headline. Names live underneath,
@@ -118,30 +161,68 @@ export function EditablePrimaryContact(props: Props) {
             <Pencil className="h-3.5 w-3.5" strokeWidth={1.8} />
           </button>
         </div>
-        <div className="mt-1 space-y-0.5 text-sm">
-          {showBoth ? (
-            <>
-              {props.buyerNames.length > 0 && (
-                <div>
-                  <span className="reos-label mr-1.5">Buyer</span>
-                  <span className="font-medium text-text">
-                    {props.buyerNames.join(" · ")}
-                  </span>
-                </div>
-              )}
-              {props.sellerNames.length > 0 && (
-                <div>
-                  <span className="reos-label mr-1.5">Seller</span>
-                  <span className="font-medium text-text">
-                    {props.sellerNames.join(" · ")}
-                  </span>
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="font-medium text-text">{props.fullName}</div>
+
+        {/* At-a-glance summary chips — sale price, side, commission. */}
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
+          {priceStr && (
+            <span className="inline-flex items-center gap-1 font-semibold text-text">
+              <DollarSign className="h-3.5 w-3.5 text-emerald-600" strokeWidth={2} />
+              {priceStr}
+            </span>
+          )}
+          <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700 ring-1 ring-brand-200">
+            <Home className="h-3 w-3" strokeWidth={2} />
+            {sideLabel(props.side)}
+          </span>
+          {props.commissionPercent != null && (
+            <span className="inline-flex items-center gap-1 text-text-muted">
+              <Percent className="h-3.5 w-3.5" strokeWidth={2} />
+              <span className="font-medium text-text">
+                {props.commissionPercent}%
+              </span>
+              {grossStr && <span className="text-text-muted">| {grossStr}</span>}
+            </span>
+          )}
+          {contractStr && (
+            <span className="inline-flex items-center gap-1 text-text-muted">
+              <CalendarDays className="h-3.5 w-3.5" strokeWidth={2} />
+              <span>Contract</span>
+              <span className="font-medium text-text">{contractStr}</span>
+            </span>
+          )}
+          {closingStr && (
+            <span className="inline-flex items-center gap-1 text-text-muted">
+              <CalendarDays className="h-3.5 w-3.5" strokeWidth={2} />
+              <span>Closing</span>
+              <span className="font-medium text-text">{closingStr}</span>
+            </span>
           )}
         </div>
+
+        {/* Buyer / Seller name rows — always shown so dual deals see
+            both sides; non-dual transactions still surface the side
+            they're representing. */}
+        <div className="mt-2 space-y-0.5 text-sm">
+          {props.buyerNames.length > 0 && (
+            <div className="flex items-baseline gap-1.5">
+              <Users className="h-3.5 w-3.5 translate-y-0.5 text-text-muted" strokeWidth={2} />
+              <span className="reos-label">Buyer/Tenant</span>
+              <span className="font-medium text-text">
+                {props.buyerNames.join(", ")}
+              </span>
+            </div>
+          )}
+          {props.sellerNames.length > 0 && (
+            <div className="flex items-baseline gap-1.5">
+              <Users className="h-3.5 w-3.5 translate-y-0.5 text-text-muted" strokeWidth={2} />
+              <span className="reos-label">Seller/Landlord</span>
+              <span className="font-medium text-text">
+                {props.sellerNames.join(", ")}
+              </span>
+            </div>
+          )}
+        </div>
+
         {isCompany && (
           <p className="mt-1 flex items-center gap-1.5 text-xs text-text-muted">
             <Building2 className="h-3 w-3" strokeWidth={1.8} />

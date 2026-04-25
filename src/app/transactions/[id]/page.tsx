@@ -192,6 +192,11 @@ export default async function TransactionDetailPage({
                 .filter((p) => p.role === "co_seller")
                 .map((p) => p.contact.fullName),
             ]}
+            salePrice={txn.financials?.salePrice ?? null}
+            commissionPercent={txn.financials?.commissionPercent ?? null}
+            grossCommission={txn.financials?.grossCommission ?? null}
+            contractDate={txn.contractDate}
+            closingDate={txn.closingDate}
           />
         </div>
         {txn.milestones.length > 0 && (
