@@ -137,7 +137,10 @@ export function PartiesQuickEdit({
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error ?? res.statusText);
     toast.success("Saved", patch.fullName);
+    // Hard reload so the at-a-glance strip + ParticipantsPanel below
+    // both pick up the change without a soft-refresh edge case.
     startTransition(() => router.refresh());
+    window.location.reload();
   }
 
   async function addParticipant(
@@ -157,7 +160,10 @@ export function PartiesQuickEdit({
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error ?? res.statusText);
     toast.success("Added", payload.fullName);
+    // Hard reload so the at-a-glance strip + ParticipantsPanel below
+    // both pick up the change without a soft-refresh edge case.
     startTransition(() => router.refresh());
+    window.location.reload();
   }
 
   async function removeParticipant(pid: string) {
@@ -172,7 +178,10 @@ export function PartiesQuickEdit({
       return;
     }
     toast.success("Removed");
+    // Hard reload so the at-a-glance strip + ParticipantsPanel below
+    // both pick up the change without a soft-refresh edge case.
     startTransition(() => router.refresh());
+    window.location.reload();
   }
 
   return (

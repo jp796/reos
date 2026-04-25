@@ -127,6 +127,7 @@ export function ParticipantsPanel({
     );
     toast.success("Contact updated");
     startTransition(() => router.refresh());
+    window.location.reload();
   }
 
   /** Reorder a participant relative to its same-role peers. The
@@ -148,6 +149,7 @@ export function ParticipantsPanel({
       }
       // Re-fetch from server so order matches DB.
       startTransition(() => router.refresh());
+    window.location.reload();
       // Local re-order: swap the moved row with its neighbor in the
       // same role group so the UI updates instantly.
       setItems((cur) => {
@@ -184,6 +186,7 @@ export function ParticipantsPanel({
       if (!res.ok) throw new Error(data.error ?? res.statusText);
       toast.success("Primary contact updated");
       startTransition(() => router.refresh());
+    window.location.reload();
     } catch (e) {
       toast.error("Couldn't promote", e instanceof Error ? e.message : "unknown");
     }
@@ -211,6 +214,7 @@ export function ParticipantsPanel({
       }
       toast.success(`Role: ${ROLE_LABELS[nextRole] ?? nextRole}`);
       startTransition(() => router.refresh());
+    window.location.reload();
     } catch (e) {
       setItems((cur) =>
         cur.map((p) => (p.id === pid ? { ...p, role: prev } : p)),
@@ -285,6 +289,7 @@ export function ParticipantsPanel({
       setItems((prev) => [...prev, data.participant]);
       resetForm();
       startTransition(() => router.refresh());
+    window.location.reload();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "add failed");
     } finally {
@@ -306,6 +311,7 @@ export function ParticipantsPanel({
       }
       setItems((prev) => prev.filter((p) => p.id !== pid));
       startTransition(() => router.refresh());
+    window.location.reload();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "remove failed");
     }
