@@ -1,9 +1,11 @@
 /**
  * PATCH  /api/transactions/:id/participants/:pid
- *   Body: { role?: string, notes?: string }
- *   Edit an existing participant's role or notes. Useful for
- *   correcting auto-enriched participants whose role the regex
- *   inferrer guessed wrong (almost everyone lands as "other").
+ *   Body: { role?, notes?, move? }
+ *   Edit an existing participant's role / notes, or reorder them
+ *   relative to peers in the same role (move: "up" | "down").
+ *   Reorder works by nudging createdAt by ±1ms past the neighbor —
+ *   no schema change needed, and `orderBy: createdAt asc` (used by
+ *   the page) reflects the new order on the next refresh.
  *
  * DELETE /api/transactions/:id/participants/:pid
  *   Remove a participant. Does NOT delete the contact (others may
@@ -44,8 +46,34 @@ export async function PATCH(
   const body = (await req.json().catch(() => null)) as {
     role?: string;
     notes?: string | null;
+    move?: "up" | "down";
   } | null;
   if (!body) return NextResponse.json({ error: "bad JSON" }, { status: 400 });
+
+  // Reorder relative to a peer of the same role.
+  if (body.move === "up" || body.move === "down") {
+    const peers = await prisma.transactionParticipant.findMany({
+      where: { transactionId: id, role: existing.role },
+      orderBy: { createdAt: "asc" },
+    });
+    const idx = peers.findIndex((p) => p.id === pid);
+    const neighborIdx = body.move === "up" ? idx - 1 : idx + 1;
+    if (idx < 0 || neighborIdx < 0 || neighborIdx >= peers.length) {
+      return NextResponse.json({ ok: true, noop: true });
+    }
+    const neighbor = peers[neighborIdx];
+    if (!neighbor) {
+      return NextResponse.json({ ok: true, noop: true });
+    }
+    const nudgeMs = body.move === "up" ? -1 : 1;
+    const newCreatedAt = new Date(neighbor.createdAt.getTime() + nudgeMs);
+    const updated = await prisma.transactionParticipant.update({
+      where: { id: pid },
+      data: { createdAt: newCreatedAt },
+      include: { contact: true },
+    });
+    return NextResponse.json({ ok: true, participant: updated });
+  }
 
   const data: { role?: string; notes?: string | null } = {};
   if (body.role !== undefined) {

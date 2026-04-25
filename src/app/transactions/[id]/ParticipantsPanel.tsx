@@ -2,7 +2,17 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Plus, Trash2, User, X, Check } from "lucide-react";
+import {
+  ArrowUp,
+  ArrowDown,
+  Pencil,
+  Plus,
+  Star,
+  Trash2,
+  User,
+  X,
+  Check,
+} from "lucide-react";
 import { useToast } from "@/app/ToastProvider";
 import { VendorPicker } from "@/app/components/VendorPicker";
 
@@ -117,6 +127,66 @@ export function ParticipantsPanel({
     );
     toast.success("Contact updated");
     startTransition(() => router.refresh());
+  }
+
+  /** Reorder a participant relative to its same-role peers. The
+   * server nudges createdAt by ±1ms past the neighbor; on refresh
+   * the new order is reflected. */
+  async function moveParticipant(pid: string, dir: "up" | "down") {
+    try {
+      const res = await fetch(
+        `/api/transactions/${transactionId}/participants/${pid}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ move: dir }),
+        },
+      );
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error ?? res.statusText);
+      }
+      // Re-fetch from server so order matches DB.
+      startTransition(() => router.refresh());
+      // Local re-order: swap the moved row with its neighbor in the
+      // same role group so the UI updates instantly.
+      setItems((cur) => {
+        const sameRole = cur.filter(
+          (p) => p.role === cur.find((q) => q.id === pid)?.role,
+        );
+        const idx = sameRole.findIndex((p) => p.id === pid);
+        const swapWith = dir === "up" ? sameRole[idx - 1] : sameRole[idx + 1];
+        if (!swapWith) return cur;
+        return cur.map((p) =>
+          p.id === pid
+            ? { ...p, createdAt: swapWith.createdAt }
+            : p.id === swapWith.id
+              ? { ...p, createdAt: cur.find((q) => q.id === pid)!.createdAt }
+              : p,
+        );
+      });
+    } catch (e) {
+      toast.error("Move failed", e instanceof Error ? e.message : "unknown");
+    }
+  }
+
+  /** Promote a participant to "primary contact" of the transaction.
+   * Swaps txn.primaryContactId to this participant's contact and
+   * demotes the previous primary into a participant in the matching
+   * role bucket (co_buyer if was buyer-side, co_seller if seller). */
+  async function makePrimary(pid: string) {
+    try {
+      const res = await fetch(
+        `/api/transactions/${transactionId}/participants/${pid}/promote`,
+        { method: "POST" },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? res.statusText);
+      toast.success("Primary contact updated");
+      startTransition(() => router.refresh());
+    } catch (e) {
+      toast.error("Couldn't promote", e instanceof Error ? e.message : "unknown");
+    }
   }
 
   /** Inline role edit — optimistic, falls back on error. */
@@ -325,6 +395,11 @@ export function ParticipantsPanel({
                     role={p.role}
                     contactEmail={p.contact.primaryEmail}
                     contactPhone={p.contact.primaryPhone}
+                    canMoveUp={i > 0}
+                    canMoveDown={i < buyers.length - 1}
+                    onMoveUp={() => moveParticipant(p.id, "up")}
+                    onMoveDown={() => moveParticipant(p.id, "down")}
+                    onMakePrimary={() => makePrimary(p.id)}
                     onChangeRole={(r) => changeRole(p.id, r)}
                     onEditContact={(patch) => saveContactEdits(p.contact.id, patch)}
                     onRemove={() => remove(p.id)}
@@ -363,6 +438,11 @@ export function ParticipantsPanel({
                     role={p.role}
                     contactEmail={p.contact.primaryEmail}
                     contactPhone={p.contact.primaryPhone}
+                    canMoveUp={i > 0}
+                    canMoveDown={i < sellers.length - 1}
+                    onMoveUp={() => moveParticipant(p.id, "up")}
+                    onMoveDown={() => moveParticipant(p.id, "down")}
+                    onMakePrimary={() => makePrimary(p.id)}
                     onChangeRole={(r) => changeRole(p.id, r)}
                     onEditContact={(patch) => saveContactEdits(p.contact.id, patch)}
                     onRemove={() => remove(p.id)}
@@ -594,6 +674,11 @@ function PartyRow({
   onEditContact,
   contactEmail,
   contactPhone,
+  canMoveUp,
+  canMoveDown,
+  onMoveUp,
+  onMoveDown,
+  onMakePrimary,
 }: {
   name: string;
   label: string;
@@ -610,6 +695,11 @@ function PartyRow({
   }) => Promise<void>;
   contactEmail?: string | null;
   contactPhone?: string | null;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  onMakePrimary?: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState(name);
@@ -737,6 +827,36 @@ function PartyRow({
           </div>
         )}
       </div>
+      {onMoveUp && canMoveUp && (
+        <button
+          type="button"
+          onClick={onMoveUp}
+          className="rounded p-1 text-text-subtle hover:bg-surface-2 hover:text-text"
+          title="Move up (lower number)"
+        >
+          <ArrowUp className="h-3.5 w-3.5" strokeWidth={1.8} />
+        </button>
+      )}
+      {onMoveDown && canMoveDown && (
+        <button
+          type="button"
+          onClick={onMoveDown}
+          className="rounded p-1 text-text-subtle hover:bg-surface-2 hover:text-text"
+          title="Move down (higher number)"
+        >
+          <ArrowDown className="h-3.5 w-3.5" strokeWidth={1.8} />
+        </button>
+      )}
+      {onMakePrimary && (
+        <button
+          type="button"
+          onClick={onMakePrimary}
+          className="rounded p-1 text-text-subtle hover:bg-surface-2 hover:text-amber-600"
+          title="Make this the primary contact for the transaction"
+        >
+          <Star className="h-3.5 w-3.5" strokeWidth={1.8} />
+        </button>
+      )}
       {onEditContact && (
         <button
           type="button"
