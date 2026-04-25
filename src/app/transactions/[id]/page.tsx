@@ -18,6 +18,7 @@ import { SendPanel } from "./SendPanel";
 import { WireVerificationPanel } from "./WireVerificationPanel";
 import { ContractVersionHistory } from "./ContractVersionHistory";
 import { ParticipantsPanel } from "./ParticipantsPanel";
+import { PartiesQuickEdit } from "./PartiesQuickEdit";
 import { SMART_FOLDER_CUTOFF } from "@/services/automation/SmartFolderService";
 import {
   RiskScoringService,
@@ -197,6 +198,26 @@ export default async function TransactionDetailPage({
             grossCommission={txn.financials?.grossCommission ?? null}
             contractDate={txn.contractDate}
             closingDate={txn.closingDate}
+          />
+          <PartiesQuickEdit
+            transactionId={txn.id}
+            primaryContact={{
+              id: contact.id,
+              fullName: contact.fullName,
+              primaryEmail: contact.primaryEmail,
+              primaryPhone: contact.primaryPhone,
+            }}
+            side={txn.side}
+            participants={txn.participants.map((p) => ({
+              id: p.id,
+              role: p.role,
+              contact: {
+                id: p.contact.id,
+                fullName: p.contact.fullName,
+                primaryEmail: p.contact.primaryEmail,
+                primaryPhone: p.contact.primaryPhone,
+              },
+            }))}
           />
         </div>
         {txn.milestones.length > 0 && (
