@@ -75,19 +75,46 @@ export function ParticipantsPanel({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  /** Inline edit for the primary contact (name/email/phone). */
-  async function savePrimaryEdits(patch: {
-    fullName?: string;
-    primaryEmail?: string | null;
-    primaryPhone?: string | null;
-  }) {
-    const res = await fetch(`/api/contacts/${primaryContact.id}`, {
+  /** Inline edit for any contact on this panel (name/email/phone).
+   * Used by primary + every participant row, since the underlying
+   * Contact PATCH endpoint is the same. */
+  async function saveContactEdits(
+    contactId: string,
+    patch: {
+      fullName?: string;
+      primaryEmail?: string | null;
+      primaryPhone?: string | null;
+    },
+  ) {
+    const res = await fetch(`/api/contacts/${contactId}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(patch),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error ?? res.statusText);
+    // Reflect locally so the row updates without a full reload.
+    setItems((cur) =>
+      cur.map((p) =>
+        p.contact.id === contactId
+          ? {
+              ...p,
+              contact: {
+                ...p.contact,
+                fullName: patch.fullName ?? p.contact.fullName,
+                primaryEmail:
+                  patch.primaryEmail !== undefined
+                    ? patch.primaryEmail
+                    : p.contact.primaryEmail,
+                primaryPhone:
+                  patch.primaryPhone !== undefined
+                    ? patch.primaryPhone
+                    : p.contact.primaryPhone,
+              },
+            }
+          : p,
+      ),
+    );
     toast.success("Contact updated");
     startTransition(() => router.refresh());
   }
@@ -272,11 +299,13 @@ export function ParticipantsPanel({
                       primaryContact.primaryPhone ??
                       undefined
                     }
-                    primaryEmail={primaryContact.primaryEmail}
-                    primaryPhone={primaryContact.primaryPhone}
+                    contactEmail={primaryContact.primaryEmail}
+                    contactPhone={primaryContact.primaryPhone}
                     label="Buyer 1 · primary"
                     isPrimary
-                    onEditPrimary={savePrimaryEdits}
+                    onEditContact={(patch) =>
+                      saveContactEdits(primaryContact.id, patch)
+                    }
                   />
                 )}
                 {buyers.map((p, i) => (
@@ -287,7 +316,10 @@ export function ParticipantsPanel({
                     sub={p.contact.primaryEmail ?? p.contact.primaryPhone ?? "—"}
                     notes={p.notes}
                     role={p.role}
+                    contactEmail={p.contact.primaryEmail}
+                    contactPhone={p.contact.primaryPhone}
                     onChangeRole={(r) => changeRole(p.id, r)}
+                    onEditContact={(patch) => saveContactEdits(p.contact.id, patch)}
                     onRemove={() => remove(p.id)}
                   />
                 ))}
@@ -305,11 +337,13 @@ export function ParticipantsPanel({
                       primaryContact.primaryPhone ??
                       undefined
                     }
-                    primaryEmail={primaryContact.primaryEmail}
-                    primaryPhone={primaryContact.primaryPhone}
+                    contactEmail={primaryContact.primaryEmail}
+                    contactPhone={primaryContact.primaryPhone}
                     label="Seller 1 · primary"
                     isPrimary
-                    onEditPrimary={savePrimaryEdits}
+                    onEditContact={(patch) =>
+                      saveContactEdits(primaryContact.id, patch)
+                    }
                   />
                 )}
                 {sellers.map((p, i) => (
@@ -320,7 +354,10 @@ export function ParticipantsPanel({
                     sub={p.contact.primaryEmail ?? p.contact.primaryPhone ?? "—"}
                     notes={p.notes}
                     role={p.role}
+                    contactEmail={p.contact.primaryEmail}
+                    contactPhone={p.contact.primaryPhone}
                     onChangeRole={(r) => changeRole(p.id, r)}
+                    onEditContact={(patch) => saveContactEdits(p.contact.id, patch)}
                     onRemove={() => remove(p.id)}
                   />
                 ))}
@@ -338,7 +375,10 @@ export function ParticipantsPanel({
                     sub={p.contact.primaryEmail ?? p.contact.primaryPhone ?? "—"}
                     notes={p.notes}
                     role={p.role}
+                    contactEmail={p.contact.primaryEmail}
+                    contactPhone={p.contact.primaryPhone}
                     onChangeRole={(r) => changeRole(p.id, r)}
+                    onEditContact={(patch) => saveContactEdits(p.contact.id, patch)}
                     onRemove={() => remove(p.id)}
                   />
                 ))}
@@ -356,7 +396,10 @@ export function ParticipantsPanel({
                     sub={p.contact.primaryEmail ?? p.contact.primaryPhone ?? "—"}
                     notes={p.notes}
                     role={p.role}
+                    contactEmail={p.contact.primaryEmail}
+                    contactPhone={p.contact.primaryPhone}
                     onChangeRole={(r) => changeRole(p.id, r)}
+                    onEditContact={(patch) => saveContactEdits(p.contact.id, patch)}
                     onRemove={() => remove(p.id)}
                   />
                 ))}
@@ -529,8 +572,9 @@ function Group({
   );
 }
 
-/** Single party row — primary contacts use this with inline edit,
- * participants use it with role selector + delete affordance. */
+/** Single party row — used for primary contact AND every participant
+ * row. The pencil icon opens an inline form for name/email/phone;
+ * the upstream callback decides which Contact id to PATCH. */
 function PartyRow({
   name,
   label,
@@ -540,9 +584,9 @@ function PartyRow({
   role,
   onChangeRole,
   onRemove,
-  onEditPrimary,
-  primaryEmail,
-  primaryPhone,
+  onEditContact,
+  contactEmail,
+  contactPhone,
 }: {
   name: string;
   label: string;
@@ -552,32 +596,32 @@ function PartyRow({
   role?: string;
   onChangeRole?: (next: string) => void;
   onRemove?: () => void;
-  onEditPrimary?: (patch: {
+  onEditContact?: (patch: {
     fullName?: string;
     primaryEmail?: string | null;
     primaryPhone?: string | null;
   }) => Promise<void>;
-  primaryEmail?: string | null;
-  primaryPhone?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
 }) {
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState(name);
-  const [draftEmail, setDraftEmail] = useState(primaryEmail ?? "");
-  const [draftPhone, setDraftPhone] = useState(primaryPhone ?? "");
+  const [draftEmail, setDraftEmail] = useState(contactEmail ?? "");
+  const [draftPhone, setDraftPhone] = useState(contactPhone ?? "");
   const [saving, setSaving] = useState(false);
 
   function startEdit() {
     setDraftName(name);
-    setDraftEmail(primaryEmail ?? "");
-    setDraftPhone(primaryPhone ?? "");
+    setDraftEmail(contactEmail ?? "");
+    setDraftPhone(contactPhone ?? "");
     setEditing(true);
   }
 
   async function save() {
-    if (!onEditPrimary) return;
+    if (!onEditContact) return;
     setSaving(true);
     try {
-      await onEditPrimary({
+      await onEditContact({
         fullName: draftName,
         primaryEmail: draftEmail.trim() || null,
         primaryPhone: draftPhone.trim() || null,
@@ -590,7 +634,7 @@ function PartyRow({
     }
   }
 
-  if (editing && onEditPrimary) {
+  if (editing && onEditContact) {
     return (
       <div className="rounded-md border border-brand-300 bg-brand-50/40 px-3 py-2 text-sm">
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -635,7 +679,7 @@ function PartyRow({
             Cancel
           </button>
           <span className="ml-auto text-[11px] text-text-subtle">
-            Editing primary contact — changes apply to this contact everywhere.
+            Edits apply to this contact everywhere it&rsquo;s referenced.
           </span>
         </div>
       </div>
@@ -686,12 +730,12 @@ function PartyRow({
           </div>
         )}
       </div>
-      {onEditPrimary && (
+      {onEditContact && (
         <button
           type="button"
           onClick={startEdit}
           className="rounded p-1 text-text-subtle hover:bg-surface-2 hover:text-brand-700"
-          title="Edit primary contact"
+          title="Edit contact (name / email / phone)"
         >
           <Pencil className="h-3.5 w-3.5" strokeWidth={1.8} />
         </button>

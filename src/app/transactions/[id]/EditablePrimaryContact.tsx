@@ -32,6 +32,12 @@ interface Props {
   /** Which side the transaction represents — drives the "add a
    * natural-person signer" copy when the name looks like a company. */
   side: string | null;
+  /** Property address — rendered as the H1 above party names. */
+  propertyAddress: string | null;
+  /** Buyer-side party names (primary on buy, plus any co_buyers). */
+  buyerNames: string[];
+  /** Seller-side party names (primary on sell, plus any co_sellers). */
+  sellerNames: string[];
 }
 
 const COMPANY_RE = /\b(llc|inc|corp|co|company|properties|holdings|trust|ltd|pllc|pc)\b\.?/i;
@@ -94,11 +100,14 @@ export function EditablePrimaryContact(props: Props) {
         : props.side === "buy"
           ? "buyer"
           : "party";
+    const showBoth = props.side === "both";
     return (
       <div className="mt-2">
+        {/* Address is the transaction's headline. Names live underneath,
+            split by side when the deal is dual. */}
         <div className="flex items-start gap-2">
           <h1 className="font-display text-display-md font-semibold">
-            {props.fullName}
+            {props.propertyAddress ?? "No property address yet"}
           </h1>
           <button
             type="button"
@@ -108,6 +117,30 @@ export function EditablePrimaryContact(props: Props) {
           >
             <Pencil className="h-3.5 w-3.5" strokeWidth={1.8} />
           </button>
+        </div>
+        <div className="mt-1 space-y-0.5 text-sm">
+          {showBoth ? (
+            <>
+              {props.buyerNames.length > 0 && (
+                <div>
+                  <span className="reos-label mr-1.5">Buyer</span>
+                  <span className="font-medium text-text">
+                    {props.buyerNames.join(" · ")}
+                  </span>
+                </div>
+              )}
+              {props.sellerNames.length > 0 && (
+                <div>
+                  <span className="reos-label mr-1.5">Seller</span>
+                  <span className="font-medium text-text">
+                    {props.sellerNames.join(" · ")}
+                  </span>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="font-medium text-text">{props.fullName}</div>
+          )}
         </div>
         {isCompany && (
           <p className="mt-1 flex items-center gap-1.5 text-xs text-text-muted">

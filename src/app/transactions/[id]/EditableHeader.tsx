@@ -162,17 +162,13 @@ export function EditableHeader(props: Props) {
             <Pencil className="h-3.5 w-3.5" strokeWidth={1.8} />
           </button>
         </div>
-        {/* h1 + contact edit now lives in <EditablePrimaryContact>,
-            rendered by the page alongside this component. */}
-        <p className="mt-2 text-sm text-text-muted">
-          {props.propertyAddress ?? "No property address yet"}
-          {(props.city || props.state) && (
-            <>
-              {" · "}
-              {[props.city, props.state, props.zip].filter(Boolean).join(" ")}
-            </>
-          )}
-        </p>
+        {/* Address is the H1 in <EditablePrimaryContact>. Show only the
+            city/state/zip suffix here so the location still surfaces. */}
+        {(props.city || props.state) && (
+          <p className="mt-1 text-xs text-text-muted">
+            {[props.city, props.state, props.zip].filter(Boolean).join(" ")}
+          </p>
+        )}
       </div>
     );
   }

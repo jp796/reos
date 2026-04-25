@@ -177,6 +177,23 @@ export default async function TransactionDetailPage({
             primaryPhone={contact.primaryPhone}
             referencedElsewhere={otherUses > 0}
             side={txn.side}
+            propertyAddress={txn.propertyAddress}
+            buyerNames={[
+              ...(txn.side === "buy" || txn.side === "both"
+                ? [contact.fullName]
+                : []),
+              ...txn.participants
+                .filter((p) => p.role === "co_buyer")
+                .map((p) => p.contact.fullName),
+            ]}
+            sellerNames={[
+              ...(txn.side === "sell" || txn.side === "both"
+                ? [contact.fullName]
+                : []),
+              ...txn.participants
+                .filter((p) => p.role === "co_seller")
+                .map((p) => p.contact.fullName),
+            ]}
           />
         </div>
         {txn.milestones.length > 0 && (
