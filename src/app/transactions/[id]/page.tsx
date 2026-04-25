@@ -187,9 +187,7 @@ export default async function TransactionDetailPage({
                 .map((p) => p.contact.fullName),
             ]}
             sellerNames={[
-              ...(txn.side === "sell" || txn.side === "both"
-                ? [contact.fullName]
-                : []),
+              ...(txn.side === "sell" ? [contact.fullName] : []),
               ...txn.participants
                 .filter((p) => p.role === "co_seller")
                 .map((p) => p.contact.fullName),

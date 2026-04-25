@@ -283,8 +283,15 @@ export function ParticipantsPanel({
         const others = items.filter(
           (p) => !ROLE_GROUP[p.role] || ROLE_GROUP[p.role] === "other",
         );
+        // On dual deals, the primary Contact is a single record — it
+        // represents one human, not two. We anchor it to the BUYER
+        // side (Buyer 1); the actual seller(s) are added as
+        // co_seller participants and render as Seller 1, 2, …
+        // Without this rule, Buyer 1 and Seller 1 would both point
+        // at the same Contact id, so editing one would silently
+        // mutate the other.
         const primaryIsBuy = primarySide === "buy" || primarySide === "both";
-        const primaryIsSell = primarySide === "sell" || primarySide === "both";
+        const primaryIsSell = primarySide === "sell";
 
         return (
           <div className="space-y-3">
