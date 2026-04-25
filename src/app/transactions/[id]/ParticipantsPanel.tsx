@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, User } from "lucide-react";
+import { Pencil, Plus, Trash2, User, X, Check } from "lucide-react";
 import { useToast } from "@/app/ToastProvider";
 import { VendorPicker } from "@/app/components/VendorPicker";
 
@@ -53,12 +53,17 @@ const ROLE_GROUP: Record<string, "buyer" | "seller" | "service" | "other"> = {
  */
 export function ParticipantsPanel({
   transactionId,
-  primaryContactName,
+  primaryContact,
   primarySide,
   initial,
 }: {
   transactionId: string;
-  primaryContactName: string;
+  primaryContact: {
+    id: string;
+    fullName: string;
+    primaryEmail: string | null;
+    primaryPhone: string | null;
+  };
   primarySide: string | null;
   initial: Participant[];
 }) {
@@ -69,6 +74,23 @@ export function ParticipantsPanel({
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  /** Inline edit for the primary contact (name/email/phone). */
+  async function savePrimaryEdits(patch: {
+    fullName?: string;
+    primaryEmail?: string | null;
+    primaryPhone?: string | null;
+  }) {
+    const res = await fetch(`/api/contacts/${primaryContact.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error ?? res.statusText);
+    toast.success("Contact updated");
+    startTransition(() => router.refresh());
+  }
 
   /** Inline role edit — optimistic, falls back on error. */
   async function changeRole(pid: string, nextRole: string) {
@@ -244,9 +266,17 @@ export function ParticipantsPanel({
               <Group label="Buyer side">
                 {primaryIsBuy && (
                   <PartyRow
-                    name={primaryContactName}
+                    name={primaryContact.fullName}
+                    sub={
+                      primaryContact.primaryEmail ??
+                      primaryContact.primaryPhone ??
+                      undefined
+                    }
+                    primaryEmail={primaryContact.primaryEmail}
+                    primaryPhone={primaryContact.primaryPhone}
                     label="Buyer 1 · primary"
                     isPrimary
+                    onEditPrimary={savePrimaryEdits}
                   />
                 )}
                 {buyers.map((p, i) => (
@@ -269,9 +299,17 @@ export function ParticipantsPanel({
               <Group label="Seller side">
                 {primaryIsSell && (
                   <PartyRow
-                    name={primaryContactName}
+                    name={primaryContact.fullName}
+                    sub={
+                      primaryContact.primaryEmail ??
+                      primaryContact.primaryPhone ??
+                      undefined
+                    }
+                    primaryEmail={primaryContact.primaryEmail}
+                    primaryPhone={primaryContact.primaryPhone}
                     label="Seller 1 · primary"
                     isPrimary
+                    onEditPrimary={savePrimaryEdits}
                   />
                 )}
                 {sellers.map((p, i) => (
@@ -491,8 +529,8 @@ function Group({
   );
 }
 
-/** Single party row — primary contacts use this read-only, participants
- * use it with role selector + delete affordance. */
+/** Single party row — primary contacts use this with inline edit,
+ * participants use it with role selector + delete affordance. */
 function PartyRow({
   name,
   label,
@@ -502,6 +540,9 @@ function PartyRow({
   role,
   onChangeRole,
   onRemove,
+  onEditPrimary,
+  primaryEmail,
+  primaryPhone,
 }: {
   name: string;
   label: string;
@@ -511,7 +552,96 @@ function PartyRow({
   role?: string;
   onChangeRole?: (next: string) => void;
   onRemove?: () => void;
+  onEditPrimary?: (patch: {
+    fullName?: string;
+    primaryEmail?: string | null;
+    primaryPhone?: string | null;
+  }) => Promise<void>;
+  primaryEmail?: string | null;
+  primaryPhone?: string | null;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draftName, setDraftName] = useState(name);
+  const [draftEmail, setDraftEmail] = useState(primaryEmail ?? "");
+  const [draftPhone, setDraftPhone] = useState(primaryPhone ?? "");
+  const [saving, setSaving] = useState(false);
+
+  function startEdit() {
+    setDraftName(name);
+    setDraftEmail(primaryEmail ?? "");
+    setDraftPhone(primaryPhone ?? "");
+    setEditing(true);
+  }
+
+  async function save() {
+    if (!onEditPrimary) return;
+    setSaving(true);
+    try {
+      await onEditPrimary({
+        fullName: draftName,
+        primaryEmail: draftEmail.trim() || null,
+        primaryPhone: draftPhone.trim() || null,
+      });
+      setEditing(false);
+    } catch {
+      // toast already shown upstream
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (editing && onEditPrimary) {
+    return (
+      <div className="rounded-md border border-brand-300 bg-brand-50/40 px-3 py-2 text-sm">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <input
+            type="text"
+            value={draftName}
+            onChange={(e) => setDraftName(e.target.value)}
+            placeholder="Full name"
+            className="rounded border border-border bg-surface px-2 py-1.5 text-sm"
+          />
+          <input
+            type="email"
+            value={draftEmail}
+            onChange={(e) => setDraftEmail(e.target.value)}
+            placeholder="Email"
+            className="rounded border border-border bg-surface px-2 py-1.5 text-sm"
+          />
+          <input
+            type="tel"
+            value={draftPhone}
+            onChange={(e) => setDraftPhone(e.target.value)}
+            placeholder="Phone"
+            className="rounded border border-border bg-surface px-2 py-1.5 text-sm"
+          />
+        </div>
+        <div className="mt-2 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving || !draftName.trim()}
+            className="inline-flex items-center gap-1 rounded bg-brand-600 px-2 py-1 text-xs font-medium text-white hover:bg-brand-500 disabled:opacity-50"
+          >
+            <Check className="h-3 w-3" strokeWidth={2} />
+            {saving ? "Saving…" : "Save"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditing(false)}
+            className="inline-flex items-center gap-1 rounded border border-border bg-surface px-2 py-1 text-xs hover:border-border-strong"
+          >
+            <X className="h-3 w-3" strokeWidth={2} />
+            Cancel
+          </button>
+          <span className="ml-auto text-[11px] text-text-subtle">
+            Editing primary contact — changes apply to this contact everywhere.
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={
@@ -556,6 +686,16 @@ function PartyRow({
           </div>
         )}
       </div>
+      {onEditPrimary && (
+        <button
+          type="button"
+          onClick={startEdit}
+          className="rounded p-1 text-text-subtle hover:bg-surface-2 hover:text-brand-700"
+          title="Edit primary contact"
+        >
+          <Pencil className="h-3.5 w-3.5" strokeWidth={1.8} />
+        </button>
+      )}
       {onRemove && (
         <button
           type="button"

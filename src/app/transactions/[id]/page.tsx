@@ -224,7 +224,12 @@ export default async function TransactionDetailPage({
 
       <ParticipantsPanel
         transactionId={txn.id}
-        primaryContactName={contact.fullName}
+        primaryContact={{
+          id: contact.id,
+          fullName: contact.fullName,
+          primaryEmail: contact.primaryEmail,
+          primaryPhone: contact.primaryPhone,
+        }}
         primarySide={txn.side}
         initial={txn.participants.map((p) => ({
           id: p.id,
