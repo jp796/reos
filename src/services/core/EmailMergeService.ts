@@ -181,6 +181,10 @@ export function buildVariables(input: MergeInput): Record<string, string> {
     // Services
     title_company: txn.titleCompanyName ?? "",
     lender_name: txn.lenderName ?? "",
+    lender_first_name: firstName(txn.lenderName),
+
+    // Effective date / contract date — alias used by some templates
+    contract_date: fmtDate(txn.contractDate),
   };
 
   return vars;
@@ -308,6 +312,29 @@ Let me know if anything is unclear. Excited for you!
 
 {{agent_name}}`,
     defaultTo: ["primary_contact"],
+  },
+  {
+    name: "Request lending estimate from lender",
+    category: "title",
+    sortOrder: 35,
+    subject: "Updated lender estimate needed — {{property_address}}",
+    body: `Hi {{lender_first_name}},
+
+To keep our transaction file compliant and complete, we need an updated lender estimate / loan estimate for the file on the following transaction:
+
+Borrower: {{buyer_name}}
+Property Address: {{property_address}}
+Contract Date: {{contract_date}}
+
+Please send over the most current lender estimate / loan estimate at your earliest convenience so we can update our records accordingly.
+
+Let me know if you need anything further from our side.
+
+Thank you,
+
+{{agent_name}}
+{{brokerage_name}}`,
+    defaultTo: ["lender"],
   },
   {
     name: "Post-close — review request",

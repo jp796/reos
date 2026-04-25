@@ -21,14 +21,28 @@ interface Participant {
 }
 
 const ROLE_LABELS: Record<string, string> = {
-  co_buyer: "Co-buyer",
-  co_seller: "Co-seller",
+  co_buyer: "Buyer 2 (co-buyer)",
+  co_seller: "Seller 2 (co-seller)",
   lender: "Lender",
   attorney: "Attorney",
   inspector: "Inspector",
   coordinator: "Coordinator",
-  title: "Title",
+  title: "Title / escrow",
   other: "Other",
+};
+
+/** Display group on the panel — buy-side parties cluster together,
+ * sell-side together, services (lender / title / inspector / attorney)
+ * together, everything else last. */
+const ROLE_GROUP: Record<string, "buyer" | "seller" | "service" | "other"> = {
+  co_buyer: "buyer",
+  co_seller: "seller",
+  lender: "service",
+  title: "service",
+  inspector: "service",
+  attorney: "service",
+  coordinator: "service",
+  other: "other",
 };
 
 /**
@@ -209,61 +223,110 @@ export function ParticipantsPanel({
         </button>
       </div>
 
-      {/* Primary-contact row (read-only, for context) */}
-      <div className="mb-2 flex items-center gap-2 rounded-md bg-surface-2 px-3 py-2 text-xs">
-        <User className="h-3.5 w-3.5 text-brand-600" strokeWidth={1.8} />
-        <span className="font-medium text-text">{primaryContactName}</span>
-        <span className="rounded bg-brand-50 px-1.5 py-0.5 font-medium text-brand-700">
-          {primarySide === "buy" ? "Primary buyer" : primarySide === "sell" ? "Primary seller" : "Primary"}
-        </span>
-      </div>
+      {/* Parties — explicitly grouped by side so dual deals show
+          Buyer 1/2 + Seller 1/2 cleanly, not a flat list. */}
+      {(() => {
+        // Bucket participants by group. Primary contact is the
+        // "1" slot for whichever side they represent.
+        const buyers = items.filter((p) => ROLE_GROUP[p.role] === "buyer");
+        const sellers = items.filter((p) => ROLE_GROUP[p.role] === "seller");
+        const services = items.filter((p) => ROLE_GROUP[p.role] === "service");
+        const others = items.filter(
+          (p) => !ROLE_GROUP[p.role] || ROLE_GROUP[p.role] === "other",
+        );
+        const primaryIsBuy = primarySide === "buy" || primarySide === "both";
+        const primaryIsSell = primarySide === "sell" || primarySide === "both";
 
-      {/* Participant rows */}
-      {items.length > 0 && (
-        <ul className="space-y-1">
-          {items.map((p) => (
-            <li
-              key={p.id}
-              className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm"
-            >
-              <User className="h-3.5 w-3.5 text-text-muted" strokeWidth={1.8} />
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium text-text">
-                    {p.contact.fullName}
-                  </span>
-                  {/* Inline role selector — one click to re-classify an
-                      auto-enriched participant without delete+re-add. */}
-                  <select
-                    value={p.role in ROLE_LABELS ? p.role : "other"}
-                    onChange={(e) => changeRole(p.id, e.target.value)}
-                    className="rounded border border-border bg-accent-50 px-1.5 py-0.5 text-[11px] font-medium text-accent-700 focus:border-accent-400 focus:outline-none"
-                    title="Change this participant's role"
-                  >
-                    {Object.entries(ROLE_LABELS).map(([v, l]) => (
-                      <option key={v} value={v}>
-                        {l}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="text-xs text-text-muted">
-                  {p.contact.primaryEmail ?? p.contact.primaryPhone ?? "—"}
-                  {p.notes && <> · {p.notes}</>}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => remove(p.id)}
-                className="rounded p-1 text-text-subtle hover:bg-surface-2 hover:text-danger"
-                title="Remove from transaction"
-              >
-                <Trash2 className="h-3.5 w-3.5" strokeWidth={1.8} />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+        return (
+          <div className="space-y-3">
+            {/* Buyer group */}
+            {(primaryIsBuy || buyers.length > 0) && (
+              <Group label="Buyer side">
+                {primaryIsBuy && (
+                  <PartyRow
+                    name={primaryContactName}
+                    label="Buyer 1 · primary"
+                    isPrimary
+                  />
+                )}
+                {buyers.map((p, i) => (
+                  <PartyRow
+                    key={p.id}
+                    name={p.contact.fullName}
+                    label={`Buyer ${i + (primaryIsBuy ? 2 : 1)}`}
+                    sub={p.contact.primaryEmail ?? p.contact.primaryPhone ?? "—"}
+                    notes={p.notes}
+                    role={p.role}
+                    onChangeRole={(r) => changeRole(p.id, r)}
+                    onRemove={() => remove(p.id)}
+                  />
+                ))}
+              </Group>
+            )}
+
+            {/* Seller group */}
+            {(primaryIsSell || sellers.length > 0) && (
+              <Group label="Seller side">
+                {primaryIsSell && (
+                  <PartyRow
+                    name={primaryContactName}
+                    label="Seller 1 · primary"
+                    isPrimary
+                  />
+                )}
+                {sellers.map((p, i) => (
+                  <PartyRow
+                    key={p.id}
+                    name={p.contact.fullName}
+                    label={`Seller ${i + (primaryIsSell ? 2 : 1)}`}
+                    sub={p.contact.primaryEmail ?? p.contact.primaryPhone ?? "—"}
+                    notes={p.notes}
+                    role={p.role}
+                    onChangeRole={(r) => changeRole(p.id, r)}
+                    onRemove={() => remove(p.id)}
+                  />
+                ))}
+              </Group>
+            )}
+
+            {/* Services (lender / title / inspector / attorney) */}
+            {services.length > 0 && (
+              <Group label="Services">
+                {services.map((p) => (
+                  <PartyRow
+                    key={p.id}
+                    name={p.contact.fullName}
+                    label={ROLE_LABELS[p.role] ?? p.role}
+                    sub={p.contact.primaryEmail ?? p.contact.primaryPhone ?? "—"}
+                    notes={p.notes}
+                    role={p.role}
+                    onChangeRole={(r) => changeRole(p.id, r)}
+                    onRemove={() => remove(p.id)}
+                  />
+                ))}
+              </Group>
+            )}
+
+            {/* Other / unclassified */}
+            {others.length > 0 && (
+              <Group label="Other">
+                {others.map((p) => (
+                  <PartyRow
+                    key={p.id}
+                    name={p.contact.fullName}
+                    label={ROLE_LABELS[p.role] ?? p.role}
+                    sub={p.contact.primaryEmail ?? p.contact.primaryPhone ?? "—"}
+                    notes={p.notes}
+                    role={p.role}
+                    onChangeRole={(r) => changeRole(p.id, r)}
+                    onRemove={() => remove(p.id)}
+                  />
+                ))}
+              </Group>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Add form */}
       {adding && (
@@ -409,5 +472,100 @@ export function ParticipantsPanel({
         </div>
       )}
     </section>
+  );
+}
+
+/** Visual section header for a parties group (Buyer side / Seller side / Services / Other). */
+function Group({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="reos-label mb-1.5">{label}</div>
+      <div className="space-y-1">{children}</div>
+    </div>
+  );
+}
+
+/** Single party row — primary contacts use this read-only, participants
+ * use it with role selector + delete affordance. */
+function PartyRow({
+  name,
+  label,
+  sub,
+  notes,
+  isPrimary,
+  role,
+  onChangeRole,
+  onRemove,
+}: {
+  name: string;
+  label: string;
+  sub?: string;
+  notes?: string | null;
+  isPrimary?: boolean;
+  role?: string;
+  onChangeRole?: (next: string) => void;
+  onRemove?: () => void;
+}) {
+  return (
+    <div
+      className={
+        "flex items-center gap-2 rounded-md border px-3 py-2 text-sm " +
+        (isPrimary
+          ? "border-brand-200 bg-brand-50/40"
+          : "border-border bg-surface")
+      }
+    >
+      <User
+        className={
+          "h-3.5 w-3.5 " + (isPrimary ? "text-brand-600" : "text-text-muted")
+        }
+        strokeWidth={1.8}
+      />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-medium text-text">{name}</span>
+          {role && onChangeRole ? (
+            <select
+              value={role in ROLE_LABELS ? role : "other"}
+              onChange={(e) => onChangeRole(e.target.value)}
+              className="rounded border border-border bg-accent-50 px-1.5 py-0.5 text-[11px] font-medium text-accent-700 focus:border-accent-400 focus:outline-none"
+              title="Change this participant's role"
+            >
+              {Object.entries(ROLE_LABELS).map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="rounded bg-brand-50 px-1.5 py-0.5 text-[11px] font-medium text-brand-700">
+              {label}
+            </span>
+          )}
+        </div>
+        {sub && (
+          <div className="text-xs text-text-muted">
+            {sub}
+            {notes && <> · {notes}</>}
+          </div>
+        )}
+      </div>
+      {onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="rounded p-1 text-text-subtle hover:bg-surface-2 hover:text-danger"
+          title="Remove from transaction"
+        >
+          <Trash2 className="h-3.5 w-3.5" strokeWidth={1.8} />
+        </button>
+      )}
+    </div>
   );
 }

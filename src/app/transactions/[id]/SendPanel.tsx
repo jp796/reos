@@ -193,6 +193,42 @@ export function SendPanel({
         </div>
       ) : (
         <div className="space-y-3">
+          {/* Quick-send shortcuts — one click pre-selects a common
+              template instead of hunting through the dropdown. */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {(() => {
+              const quickPicks: Array<{ matchName: string; label: string }> = [
+                { matchName: "request lending estimate", label: "📋 Request lending estimate" },
+                { matchName: "welcome", label: "👋 Welcome (under contract)" },
+                { matchName: "executed contract to title", label: "📄 Send contract to title" },
+                { matchName: "clear to close", label: "🔑 Clear to close" },
+                { matchName: "review request", label: "⭐ Post-close review" },
+              ];
+              return quickPicks.map((qp) => {
+                const match = templates.find((t) =>
+                  t.name.toLowerCase().includes(qp.matchName),
+                );
+                if (!match) return null;
+                const active = selectedId === match.id;
+                return (
+                  <button
+                    key={qp.matchName}
+                    type="button"
+                    onClick={() => pickTemplate(match.id)}
+                    className={
+                      "rounded border px-2 py-1 text-[11px] font-medium transition-colors " +
+                      (active
+                        ? "border-brand-500 bg-brand-50 text-brand-700"
+                        : "border-border bg-surface text-text-muted hover:border-brand-500 hover:text-brand-700")
+                    }
+                  >
+                    {qp.label}
+                  </button>
+                );
+              });
+            })()}
+          </div>
+
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
             <select
               value={selectedId}

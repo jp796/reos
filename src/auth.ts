@@ -63,6 +63,14 @@ function checkAuthConfig() {
     "[auth] Missing required env vars: " +
     missing.join(", ") +
     ". See deploy/CLOUD_RUN_RUNBOOK.md §3 for the full list.";
+  // Skip validation during `next build` — secrets are injected at
+  // runtime (Cloud Run --set-secrets), not at build time. Next.js
+  // sets NEXT_PHASE during builds. We still warn so a misconfigured
+  // image is loud at runtime.
+  if (process.env.NEXT_PHASE === "phase-production-build") {
+    console.warn(msg + " (skipped — build phase)");
+    return;
+  }
   if (process.env.NODE_ENV === "production") {
     throw new Error(msg);
   }

@@ -53,9 +53,13 @@ const schema = z.object({
   SCAN_SCHEDULE_SECRET: z.string().optional(),
 });
 
+// Skip validation during `next build` — Cloud Run injects secrets
+// at runtime, not build time. Build-phase imports get a permissive
+// passthrough; runtime validation still fires loudly.
+const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
 const parsed = schema.safeParse(process.env);
 
-if (!parsed.success) {
+if (!parsed.success && !isBuildPhase) {
   console.error(
     "❌ Invalid environment variables:",
     parsed.error.flatten().fieldErrors,
@@ -63,5 +67,7 @@ if (!parsed.success) {
   throw new Error("Environment validation failed (see src/lib/env.ts)");
 }
 
-export const env = parsed.data;
+export const env = parsed.success
+  ? parsed.data
+  : (process.env as unknown as z.infer<typeof schema>);
 export type Env = typeof env;
