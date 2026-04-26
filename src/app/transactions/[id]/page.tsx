@@ -129,6 +129,16 @@ export default async function TransactionDetailPage({
     select: { id: true, name: true, email: true, role: true },
     orderBy: [{ role: "asc" }, { name: "asc" }],
   });
+
+  // Brokerage-level toggles. Compliance audit hides when the brokerage
+  // already has its own audit (Rezen, Skyslope, etc.) so we don't
+  // duplicate the file-completeness signal.
+  const account = await prisma.account.findUnique({
+    where: { id: txn.accountId },
+    select: { settingsJson: true },
+  });
+  const accountSettings = (account?.settingsJson ?? {}) as Record<string, unknown>;
+  const complianceAuditEnabled = accountSettings.complianceAuditEnabled !== false;
   const tags: string[] = Array.isArray(contact?.tagsJson)
     ? (contact.tagsJson as string[])
     : [];
@@ -450,8 +460,9 @@ export default async function TransactionDetailPage({
         }))}
       />
 
-      {/* Compliance file audit — required docs per side + state */}
-      <CompliancePanel transactionId={txn.id} />
+      {/* Compliance file audit — required docs per side + state.
+          Hidden when the brokerage runs its own audit (Settings → Brokerage). */}
+      {complianceAuditEnabled && <CompliancePanel transactionId={txn.id} />}
 
       {/* Wire fraud verification log — compliance record of the voice
           call confirming wire instructions before the client sends funds. */}

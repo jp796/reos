@@ -8,9 +8,11 @@ import type { BrokerSettings } from "@/services/core/CdaGeneratorService";
 export function BrokerageForm({
   initial,
   fallbackBusinessName,
+  complianceAuditEnabled: initialComplianceAuditEnabled,
 }: {
   initial: BrokerSettings;
   fallbackBusinessName: string;
+  complianceAuditEnabled: boolean;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -28,6 +30,9 @@ export function BrokerageForm({
     agentName: initial.agentName ?? "",
     agentLicense: initial.agentLicense ?? "",
   });
+  const [complianceAuditEnabled, setComplianceAuditEnabled] = useState(
+    initialComplianceAuditEnabled,
+  );
 
   function field<K extends keyof BrokerSettings>(k: K, v: string) {
     setForm((f) => ({ ...f, [k]: v }));
@@ -40,7 +45,7 @@ export function BrokerageForm({
         const res = await fetch("/api/settings/brokerage", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify(form),
+          body: JSON.stringify({ ...form, complianceAuditEnabled }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? res.statusText);
@@ -131,6 +136,29 @@ export function BrokerageForm({
           placeholder="WY-11223"
         />
       </Section>
+
+      <div>
+        <div className="reos-label mb-2">Compliance audit</div>
+        <label className="flex items-start gap-3 rounded-md border border-border bg-surface-2 px-3 py-2.5">
+          <input
+            type="checkbox"
+            checked={complianceAuditEnabled}
+            onChange={(e) => setComplianceAuditEnabled(e.target.checked)}
+            className="mt-0.5 h-4 w-4 accent-brand-600"
+          />
+          <span className="text-sm">
+            <span className="font-medium">
+              Show REOS&rsquo;s per-state document checklist on each transaction
+            </span>
+            <span className="mt-0.5 block text-xs text-text-muted">
+              Turn this OFF if your brokerage already runs its own audit
+              (e.g. Rezen, Lone Wolf, Skyslope). When off, the Compliance
+              panel and the post-close &ldquo;Submit compliance file&rdquo;
+              auto-task are hidden.
+            </span>
+          </span>
+        </label>
+      </div>
 
       <div className="flex items-center justify-end">
         <button

@@ -112,6 +112,22 @@ export async function tickPostClose(db: PrismaClient): Promise<{
   let tasksCreated = 0;
   const rulesFired: Record<string, number> = {};
 
+  // Per-account toggle so brokerages whose own software runs the file
+  // audit (Rezen, Skyslope, etc.) don't get a duplicate REOS task.
+  const accountSettingsCache = new Map<string, boolean>();
+  async function complianceAuditEnabledFor(accountId: string): Promise<boolean> {
+    const cached = accountSettingsCache.get(accountId);
+    if (cached !== undefined) return cached;
+    const a = await db.account.findUnique({
+      where: { id: accountId },
+      select: { settingsJson: true },
+    });
+    const s = (a?.settingsJson ?? {}) as Record<string, unknown>;
+    const enabled = s.complianceAuditEnabled !== false;
+    accountSettingsCache.set(accountId, enabled);
+    return enabled;
+  }
+
   for (const txn of closedTxns) {
     if (!txn.closingDate) continue;
     const daysSinceClose = Math.floor(
@@ -120,6 +136,11 @@ export async function tickPostClose(db: PrismaClient): Promise<{
 
     for (const rule of POST_CLOSE_RULES) {
       if (daysSinceClose < rule.daysAfter) continue;
+      if (
+        rule.id === "post_close_compliance_file" &&
+        !(await complianceAuditEnabledFor(txn.accountId))
+      )
+        continue;
 
       // De-dupe via audit log: did we already fire this rule for this txn?
       const prior = await db.automationAuditLog.findFirst({

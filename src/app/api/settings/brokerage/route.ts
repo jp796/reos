@@ -26,6 +26,7 @@ export async function GET() {
   return NextResponse.json({
     brokerage: broker,
     fallbackBusinessName: account?.businessName ?? null,
+    complianceAuditEnabled: settings.complianceAuditEnabled !== false,
   });
 }
 
@@ -33,7 +34,9 @@ export async function POST(req: NextRequest) {
   const actor = await requireOwner();
   if (actor instanceof NextResponse) return actor;
 
-  const body = (await req.json().catch(() => null)) as BrokerSettings | null;
+  const body = (await req.json().catch(() => null)) as
+    | (BrokerSettings & { complianceAuditEnabled?: boolean })
+    | null;
   if (!body) return NextResponse.json({ error: "bad JSON" }, { status: 400 });
 
   // Length-cap every string — prevent accidental-paste garbage
@@ -61,7 +64,10 @@ export async function POST(req: NextRequest) {
     select: { settingsJson: true },
   });
   const existing = (account?.settingsJson ?? {}) as Record<string, unknown>;
-  const merged = { ...existing, broker: clean };
+  const merged: Record<string, unknown> = { ...existing, broker: clean };
+  if (typeof body.complianceAuditEnabled === "boolean") {
+    merged.complianceAuditEnabled = body.complianceAuditEnabled;
+  }
 
   await prisma.account.update({
     where: { id: actor.accountId },

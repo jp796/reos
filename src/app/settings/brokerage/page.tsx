@@ -22,6 +22,7 @@ export default async function BrokerageSettingsPage() {
   });
   const settings = (account?.settingsJson ?? {}) as Record<string, unknown>;
   const broker = (settings.broker ?? {}) as BrokerSettings;
+  const complianceAuditEnabled = settings.complianceAuditEnabled !== false;
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -36,6 +37,7 @@ export default async function BrokerageSettingsPage() {
         <BrokerageForm
           initial={broker}
           fallbackBusinessName={account?.businessName ?? ""}
+          complianceAuditEnabled={complianceAuditEnabled}
         />
       </div>
     </div>
