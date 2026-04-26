@@ -18,11 +18,13 @@
     --brand-700:   4 120  87;
 
     /* Accent (amber — warm, 1 stop below loud) */
+    --accent-50:  255 251 235;
     --accent-100: 254 243 199;
     --accent-200: 253 230 138;
     --accent-400: 251 191  36;
     --accent-500: 217 119   6;
     --accent-600: 180  83   9;
+    --accent-700: 146  64  14;
 
     /* Semantic */
     --success:   5 150 105;
@@ -61,11 +63,13 @@
     --brand-600: 20 192 138;
     --brand-700: 52 211 153;
 
+    --accent-50:   69  26   3;
     --accent-100: 120  53  15;
     --accent-200: 146  64  14;
     --accent-400: 251 191  36;
     --accent-500: 245 158  11;
     --accent-600: 217 119   6;
+    --accent-700: 253 224  71;
 
     --success:  16 185 129;
     --warn:    245 158  11;
@@ -85,6 +89,15 @@
     --shadow-sm: 0 0 0 1px rgb(255 255 255 / 0.04);
     --shadow-md: 0 0 0 1px rgb(255 255 255 / 0.05);
     --shadow-lg: 0 0 0 1px rgb(255 255 255 / 0.06);
+
+    /* Tell the browser native form controls (<select> menus, scroll
+       bars, file inputs) to render in dark — without this, dropdown
+       options pop open as a white sheet against our dark surfaces. */
+    color-scheme: dark;
+  }
+
+  :root {
+    color-scheme: light;
   }
 
   * {

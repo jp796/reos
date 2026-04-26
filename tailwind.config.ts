@@ -18,11 +18,13 @@ export default {
           700: rgb("--brand-700"),
         },
         accent: {
+          50: rgb("--accent-50"),
           100: rgb("--accent-100"),
           200: rgb("--accent-200"),
           400: rgb("--accent-400"),
           500: rgb("--accent-500"),
           600: rgb("--accent-600"),
+          700: rgb("--accent-700"),
         },
         bg: rgb("--bg"),
         surface: rgb("--surface"),
