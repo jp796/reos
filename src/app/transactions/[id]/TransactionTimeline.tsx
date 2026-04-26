@@ -86,34 +86,36 @@ function toneClasses(t: Tone): {
     case "complete":
       return {
         dot: "bg-emerald-500 border-emerald-600",
-        card: "border-emerald-200 bg-emerald-50/40",
-        chip: "bg-emerald-100",
-        chipText: "text-emerald-800",
-        rail: "bg-emerald-300",
+        card: "border-emerald-200 bg-emerald-50/40 dark:border-emerald-900 dark:bg-emerald-950/40",
+        chip: "bg-emerald-100 dark:bg-emerald-900",
+        chipText: "text-emerald-800 dark:text-emerald-200",
+        rail: "bg-emerald-300 dark:bg-emerald-700",
       };
     case "overdue":
       return {
         dot: "bg-red-500 border-red-600",
-        card: "border-red-200 bg-red-50/60",
-        chip: "bg-red-100",
-        chipText: "text-red-800",
-        rail: "bg-red-300",
+        card: "border-red-200 bg-red-50/60 dark:border-red-900 dark:bg-red-950/40",
+        chip: "bg-red-100 dark:bg-red-900",
+        chipText: "text-red-800 dark:text-red-200",
+        rail: "bg-red-300 dark:bg-red-700",
       };
     case "today":
       return {
         dot: "bg-amber-500 border-amber-600",
-        card: "border-amber-300 bg-amber-50/80 ring-1 ring-amber-200",
-        chip: "bg-amber-100",
-        chipText: "text-amber-800",
-        rail: "bg-amber-300",
+        card:
+          "border-amber-300 bg-amber-50/80 ring-1 ring-amber-200 " +
+          "dark:border-amber-800 dark:bg-amber-950/50 dark:ring-amber-900",
+        chip: "bg-amber-100 dark:bg-amber-900",
+        chipText: "text-amber-800 dark:text-amber-200",
+        rail: "bg-amber-300 dark:bg-amber-700",
       };
     case "soon":
       return {
         dot: "bg-amber-300 border-amber-500",
-        card: "border-amber-200 bg-amber-50/40",
-        chip: "bg-amber-50",
-        chipText: "text-amber-700",
-        rail: "bg-amber-200",
+        card: "border-amber-200 bg-amber-50/40 dark:border-amber-900 dark:bg-amber-950/30",
+        chip: "bg-amber-50 dark:bg-amber-950",
+        chipText: "text-amber-700 dark:text-amber-300",
+        rail: "bg-amber-200 dark:bg-amber-800",
       };
     case "undated":
       return {
