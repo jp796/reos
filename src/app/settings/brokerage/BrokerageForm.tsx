@@ -9,10 +9,12 @@ export function BrokerageForm({
   initial,
   fallbackBusinessName,
   complianceAuditEnabled: initialComplianceAuditEnabled,
+  trustedTcSenders: initialTrustedTcSenders,
 }: {
   initial: BrokerSettings;
   fallbackBusinessName: string;
   complianceAuditEnabled: boolean;
+  trustedTcSenders: string[];
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -33,6 +35,23 @@ export function BrokerageForm({
   const [complianceAuditEnabled, setComplianceAuditEnabled] = useState(
     initialComplianceAuditEnabled,
   );
+  const [trustedTcSenders, setTrustedTcSenders] = useState<string[]>(
+    initialTrustedTcSenders,
+  );
+  const [newSender, setNewSender] = useState("");
+  function addSender() {
+    const v = newSender.trim().toLowerCase();
+    if (!v) return;
+    if (trustedTcSenders.includes(v)) {
+      setNewSender("");
+      return;
+    }
+    setTrustedTcSenders((cur) => [...cur, v]);
+    setNewSender("");
+  }
+  function removeSender(s: string) {
+    setTrustedTcSenders((cur) => cur.filter((x) => x !== s));
+  }
 
   function field<K extends keyof BrokerSettings>(k: K, v: string) {
     setForm((f) => ({ ...f, [k]: v }));
@@ -45,7 +64,11 @@ export function BrokerageForm({
         const res = await fetch("/api/settings/brokerage", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ ...form, complianceAuditEnabled }),
+          body: JSON.stringify({
+            ...form,
+            complianceAuditEnabled,
+            trustedTcSenders,
+          }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? res.statusText);
@@ -136,6 +159,62 @@ export function BrokerageForm({
           placeholder="WY-11223"
         />
       </Section>
+
+      <div>
+        <div className="reos-label mb-2">Trusted transaction-coordinator senders</div>
+        <p className="mb-2 text-xs text-text-muted">
+          Email addresses or domains for outside TCs you work with often
+          (e.g. <code>coordinator@417realestate.com</code> or{" "}
+          <code>@417realestate.com</code>). The contract scanner widens its
+          Gmail query to include any thread from these senders so deals they
+          send you get auto-flagged for import.
+        </p>
+        <div className="space-y-1.5">
+          {trustedTcSenders.length === 0 && (
+            <div className="rounded border border-dashed border-border bg-surface-2/40 px-3 py-2 text-xs text-text-muted">
+              No trusted TC senders yet.
+            </div>
+          )}
+          {trustedTcSenders.map((s) => (
+            <div
+              key={s}
+              className="flex items-center justify-between rounded border border-border bg-surface-2 px-3 py-1.5 text-sm"
+            >
+              <span className="font-mono text-xs">{s}</span>
+              <button
+                type="button"
+                onClick={() => removeSender(s)}
+                className="rounded p-1 text-text-subtle hover:bg-surface hover:text-danger"
+                title="Remove"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+        <div className="mt-2 flex items-center gap-2">
+          <input
+            type="text"
+            value={newSender}
+            onChange={(e) => setNewSender(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                addSender();
+              }
+            }}
+            placeholder="coordinator@example.com or @example.com"
+            className="flex-1 rounded border border-border bg-surface-2 px-2.5 py-1.5 text-sm focus:border-brand-500 focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={addSender}
+            className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm hover:border-brand-500"
+          >
+            Add
+          </button>
+        </div>
+      </div>
 
       <div>
         <div className="reos-label mb-2">Compliance audit</div>

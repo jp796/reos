@@ -23,10 +23,15 @@ export async function GET() {
   });
   const settings = (account?.settingsJson ?? {}) as Record<string, unknown>;
   const broker = (settings.broker ?? {}) as BrokerSettings;
+  const tcSendersRaw = settings.trustedTcSenders;
+  const trustedTcSenders = Array.isArray(tcSendersRaw)
+    ? (tcSendersRaw as unknown[]).filter((x): x is string => typeof x === "string")
+    : [];
   return NextResponse.json({
     brokerage: broker,
     fallbackBusinessName: account?.businessName ?? null,
     complianceAuditEnabled: settings.complianceAuditEnabled !== false,
+    trustedTcSenders,
   });
 }
 
@@ -35,7 +40,10 @@ export async function POST(req: NextRequest) {
   if (actor instanceof NextResponse) return actor;
 
   const body = (await req.json().catch(() => null)) as
-    | (BrokerSettings & { complianceAuditEnabled?: boolean })
+    | (BrokerSettings & {
+        complianceAuditEnabled?: boolean;
+        trustedTcSenders?: string[];
+      })
     | null;
   if (!body) return NextResponse.json({ error: "bad JSON" }, { status: 400 });
 
@@ -67,6 +75,26 @@ export async function POST(req: NextRequest) {
   const merged: Record<string, unknown> = { ...existing, broker: clean };
   if (typeof body.complianceAuditEnabled === "boolean") {
     merged.complianceAuditEnabled = body.complianceAuditEnabled;
+  }
+  if (Array.isArray(body.trustedTcSenders)) {
+    // Sanitize: lowercase, valid-shape emails or domains, dedupe, cap.
+    const seen = new Set<string>();
+    const cleaned: string[] = [];
+    for (const raw of body.trustedTcSenders) {
+      if (typeof raw !== "string") continue;
+      const v = raw.trim().toLowerCase().slice(0, 200);
+      if (!v) continue;
+      const ok =
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ||
+        /^@?[^\s@]+\.[^\s@]+$/.test(v); // bare domain or @domain
+      if (!ok) continue;
+      const key = v.startsWith("@") ? v : v;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      cleaned.push(v);
+      if (cleaned.length >= 50) break;
+    }
+    merged.trustedTcSenders = cleaned;
   }
 
   await prisma.account.update({

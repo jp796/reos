@@ -23,6 +23,11 @@ export default async function BrokerageSettingsPage() {
   const settings = (account?.settingsJson ?? {}) as Record<string, unknown>;
   const broker = (settings.broker ?? {}) as BrokerSettings;
   const complianceAuditEnabled = settings.complianceAuditEnabled !== false;
+  const trustedTcSenders = Array.isArray(settings.trustedTcSenders)
+    ? (settings.trustedTcSenders as unknown[]).filter(
+        (x): x is string => typeof x === "string",
+      )
+    : [];
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -38,6 +43,7 @@ export default async function BrokerageSettingsPage() {
           initial={broker}
           fallbackBusinessName={account?.businessName ?? ""}
           complianceAuditEnabled={complianceAuditEnabled}
+          trustedTcSenders={trustedTcSenders}
         />
       </div>
     </div>

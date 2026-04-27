@@ -87,7 +87,9 @@ export class AcceptedContractScanService {
     private readonly extractor: ContractExtractionService,
   ) {}
 
-  async scan(options: { days?: number } = {}): Promise<AcceptedContractScanResult> {
+  async scan(
+    options: { days?: number; trustedSenders?: string[] } = {},
+  ): Promise<AcceptedContractScanResult> {
     const days = Math.min(Math.max(options.days ?? 90, 7), 365);
     const out: AcceptedContractScanResult = {
       scanned: 0,
@@ -98,8 +100,19 @@ export class AcceptedContractScanService {
       errored: 0,
     };
 
-    // Gmail query: attachments in last N days that look like contracts
-    const q = `newer_than:${days}d has:attachment (contract OR "purchase agreement" OR "offer to purchase" OR "binding agreement")`;
+    // Trusted-sender union — if the user has flagged outside TCs in
+    // Settings → Brokerage, ANY thread from those senders with an
+    // attachment counts as a contract candidate (TCs sometimes send
+    // the executed contract without the keywords we usually match).
+    const senderClause = (options.trustedSenders ?? [])
+      .map((s) => `from:"${s.replace(/"/g, "")}"`)
+      .join(" OR ");
+    const keywordClause =
+      `(contract OR "purchase agreement" OR "offer to purchase" OR "binding agreement")`;
+    const matchClause = senderClause
+      ? `(${keywordClause} OR ${senderClause})`
+      : keywordClause;
+    const q = `newer_than:${days}d has:attachment ${matchClause}`;
     const { threads } = await this.gmail.searchThreadsPaged({
       q,
       maxTotal: MAX_THREADS_PER_RUN,

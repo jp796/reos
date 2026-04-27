@@ -79,6 +79,21 @@ export async function POST(req: NextRequest) {
     gmail,
     new ContractExtractionService(env.OPENAI_API_KEY),
   );
-  const result = await svc.scan({ days: body.days });
+
+  // Pull the user-configured trusted-TC sender allowlist so the scan
+  // also surfaces threads from outside coordinators that don't carry
+  // the usual contract-keyword markers in the subject.
+  const acct = await prisma.account.findUnique({
+    where: { id: account.id },
+    select: { settingsJson: true },
+  });
+  const settings = (acct?.settingsJson ?? {}) as Record<string, unknown>;
+  const trustedSenders = Array.isArray(settings.trustedTcSenders)
+    ? (settings.trustedTcSenders as unknown[]).filter(
+        (x): x is string => typeof x === "string",
+      )
+    : [];
+
+  const result = await svc.scan({ days: body.days, trustedSenders });
   return NextResponse.json({ ok: true, ...result });
 }
