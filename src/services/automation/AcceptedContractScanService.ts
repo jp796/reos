@@ -122,10 +122,49 @@ export class AcceptedContractScanService {
     let extracts = 0;
     const seenAttachments = new Set<string>();
 
+    // Lowercased allowlist for fast `from`-header matching
+    const trustedLower = (options.trustedSenders ?? []).map((s) =>
+      s.trim().toLowerCase(),
+    );
+    const fromMatchesTrusted = (fromHeader: string): boolean => {
+      const f = (fromHeader ?? "").toLowerCase();
+      if (!f) return false;
+      for (const entry of trustedLower) {
+        if (!entry) continue;
+        // bare/leading-@ domain → match anything ending in that domain
+        if (entry.startsWith("@")) {
+          if (f.includes(entry)) return true;
+          continue;
+        }
+        if (entry.includes("@")) {
+          if (f.includes(entry)) return true;
+        } else if (f.includes("@" + entry)) {
+          return true;
+        }
+      }
+      return false;
+    };
+
     for (const t of threads) {
       if (extracts >= MAX_EXTRACTS_PER_RUN) break;
       out.scanned++;
       if (!t.messages?.length) continue;
+
+      // Pre-scan: is any message in this thread from a trusted TC?
+      // When yes we widen our attachment filter so a contract named
+      // "Smith_2026.pdf" still gets extracted.
+      let threadFromTrusted = false;
+      if (trustedLower.length > 0) {
+        for (const m of t.messages) {
+          const fromH =
+            m.payload?.headers?.find((h) => h.name?.toLowerCase() === "from")
+              ?.value ?? "";
+          if (fromMatchesTrusted(fromH)) {
+            threadFromTrusted = true;
+            break;
+          }
+        }
+      }
 
       // Find the newest contract-ish PDF in the thread
       let found: {
@@ -143,7 +182,14 @@ export class AcceptedContractScanService {
           const atts = await this.gmail.getMessageAttachments(m.id);
           for (const a of atts) {
             if (!/\.pdf$/i.test(a.filename)) continue;
-            if (!CONTRACT_FILENAME_RES.some((re) => re.test(a.filename))) continue;
+            // Trusted TC sender? Any PDF qualifies. Otherwise require the
+            // filename to look contract-y so we don't burn extractions on
+            // random invoices / commission disclosures.
+            if (
+              !threadFromTrusted &&
+              !CONTRACT_FILENAME_RES.some((re) => re.test(a.filename))
+            )
+              continue;
             const dedupKey = `${m.id}:${a.attachmentId}`;
             if (seenAttachments.has(dedupKey)) continue;
             seenAttachments.add(dedupKey);
@@ -374,16 +420,28 @@ export class AcceptedContractScanService {
       if (isNewConstruction) signals.push("new-construction (TBD/Lot)");
       if (matchedTransactionId) signals.push("already tracked in REOS");
 
+      // (8) Trusted TC sender — strong evidence the deal is real.
+      // Vouches for the source even when REOS doesn't yet have the
+      // contact (the whole point: pulling NEW deals from outside TCs).
+      const fromTrusted = fromMatchesTrusted(found.from);
+      if (fromTrusted) {
+        score += 0.25;
+        signals.push("trusted TC sender (+0.25)");
+      }
+
       score = Math.max(0, Math.min(1, score));
 
       // ──────────────────────────────────────────
       // GATING
       // Higher bar for deals with no contact match — those are the
       // common false-positive surface (blast offers, adjacent deals).
+      // Trusted TC senders pre-vouch for the deal so we lower the bar
+      // and accept "stage unknown" + price/closing as evidence.
       // ──────────────────────────────────────────
-      const minScore = matchedContactId ? 0.4 : 0.55;
+      const minScore = fromTrusted ? 0.35 : matchedContactId ? 0.4 : 0.55;
       const hasEvidence =
         stage === "executed" ||
+        fromTrusted ||
         (ex.purchasePrice?.value && (closing || matchedContactId));
       if (!hasEvidence || score < minScore) {
         if (stage !== "executed") out.skippedNoExec++;
