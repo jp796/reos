@@ -14,6 +14,7 @@
 
 import Link from "next/link";
 import { prisma } from "@/lib/db";
+import { ExcludeRowButton } from "./ExcludeRowButton";
 
 export const dynamic = "force-dynamic";
 
@@ -237,7 +238,7 @@ export default async function ProductionPage({
       </section>
 
       {missingFinancials > 0 && (
-        <p className="mt-3 text-xs text-neutral-500">
+        <p className="mt-3 text-xs text-text-muted">
           {missingFinancials} closed transaction{missingFinancials === 1 ? "" : "s"} in {year} don&apos;t
           have sale price / commission captured yet. Add them per-transaction to
           populate volume / GCI / net.
@@ -247,9 +248,9 @@ export default async function ProductionPage({
       {/* Monthly breakdown */}
       <section className="mt-8">
         <h2 className="mb-2 text-lg font-medium">Monthly</h2>
-        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
+        <div className="overflow-x-auto rounded-lg border border-border bg-surface">
           <table className="w-full text-sm">
-            <thead className="border-b border-neutral-200 bg-neutral-50 text-left">
+            <thead className="border-b border-border bg-surface-2 text-left">
               <tr>
                 <th className="px-4 py-2 font-medium">Month</th>
                 <th className="px-4 py-2 text-right font-medium">Closings</th>
@@ -265,18 +266,18 @@ export default async function ProductionPage({
                   <td className="px-4 py-2 text-right">
                     {r.closings || "—"}
                   </td>
-                  <td className="px-4 py-2 text-right text-neutral-700">
+                  <td className="px-4 py-2 text-right text-text">
                     {fmtMoney(r.volume)}
                   </td>
-                  <td className="px-4 py-2 text-right text-neutral-700">
+                  <td className="px-4 py-2 text-right text-text">
                     {fmtMoney(r.gci)}
                   </td>
-                  <td className="px-4 py-2 text-right text-neutral-700">
+                  <td className="px-4 py-2 text-right text-text">
                     {fmtMoney(r.net)}
                   </td>
                 </tr>
               ))}
-              <tr className="border-t-2 border-neutral-300 bg-neutral-50 font-semibold">
+              <tr className="border-t-2 border-border-strong bg-surface-2 font-semibold">
                 <td className="px-4 py-2">Total</td>
                 <td className="px-4 py-2 text-right">{totalClosings}</td>
                 <td className="px-4 py-2 text-right">
@@ -298,9 +299,9 @@ export default async function ProductionPage({
       {bySource.length > 0 && (
         <section className="mt-8">
           <h2 className="mb-2 text-lg font-medium">By source</h2>
-          <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
+          <div className="overflow-x-auto rounded-lg border border-border bg-surface">
             <table className="w-full text-sm">
-              <thead className="border-b border-neutral-200 bg-neutral-50 text-left">
+              <thead className="border-b border-border bg-surface-2 text-left">
                 <tr>
                   <th className="px-4 py-2 font-medium">Source</th>
                   <th className="px-4 py-2 text-right font-medium">Closings</th>
@@ -318,10 +319,10 @@ export default async function ProductionPage({
                     <td className="px-4 py-2 text-right">
                       {Number(r.closings)}
                     </td>
-                    <td className="px-4 py-2 text-right text-neutral-700">
+                    <td className="px-4 py-2 text-right text-text">
                       {r.volume ? fmtMoney(Number(r.volume)) : "—"}
                     </td>
-                    <td className="px-4 py-2 text-right text-neutral-700">
+                    <td className="px-4 py-2 text-right text-text">
                       {r.gci ? fmtMoney(Number(r.gci)) : "—"}
                     </td>
                   </tr>
@@ -336,7 +337,7 @@ export default async function ProductionPage({
       <section className="mt-8">
         <h2 className="mb-2 text-lg font-medium">Closings in {year}</h2>
         {closedYTD.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-neutral-300 p-8 text-center text-sm text-neutral-500">
+          <div className="rounded-lg border border-dashed border-border-strong p-8 text-center text-sm text-text-muted">
             No closings recorded in {year}. Apply the pending Settlement
             Statement updates on{" "}
             <Link href="/transactions" className="underline">
@@ -349,28 +350,29 @@ export default async function ProductionPage({
             {closedYTD.map((t) => (
               <li
                 key={t.id}
-                className="flex items-center justify-between rounded-md border border-neutral-200 bg-white p-3"
+                className="flex items-center justify-between gap-3 rounded-md border border-border bg-surface p-3"
               >
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <Link
                     href={`/transactions/${t.id}`}
                     className="font-medium hover:underline"
                   >
                     {t.contact.fullName}
                   </Link>
-                  <div className="text-xs text-neutral-600">
+                  <div className="text-xs text-text-muted">
                     {t.propertyAddress ?? "No address"} · {t.transactionType}
                     {t.contact.sourceName && ` · ${t.contact.sourceName}`}
                   </div>
                 </div>
                 <div className="text-right">
-                  <div>{fmtDate(t.closingDate)}</div>
-                  <div className="text-xs text-neutral-500">
+                  <div className="text-text">{fmtDate(t.closingDate)}</div>
+                  <div className="text-xs text-text-muted">
                     {t.financials?.salePrice
                       ? fmtMoney(t.financials.salePrice)
                       : "no price"}
                   </div>
                 </div>
+                <ExcludeRowButton transactionId={t.id} />
               </li>
             ))}
           </ul>
