@@ -20,6 +20,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { requireSession } from "@/lib/require-session";
+import { logError } from "@/lib/log";
 import { getEncryptionService } from "@/lib/encryption";
 import {
   GoogleOAuthService,
@@ -258,6 +259,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: res.ok, type: body.type, ...data });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    logError(err, {
+      route: "/api/scan",
+      accountId: actor.accountId,
+      userId: actor.userId,
+      meta: { type: body.type, window, runId: run.id },
+    });
     await finish(0, msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
