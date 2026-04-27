@@ -19,6 +19,7 @@ import { WireVerificationPanel } from "./WireVerificationPanel";
 import { ContractVersionHistory } from "./ContractVersionHistory";
 import { ParticipantsPanel } from "./ParticipantsPanel";
 import { PartiesQuickEdit } from "./PartiesQuickEdit";
+import { ProductionToggle } from "./ProductionToggle";
 import { SMART_FOLDER_CUTOFF } from "@/services/automation/SmartFolderService";
 import {
   RiskScoringService,
@@ -399,6 +400,13 @@ export default async function TransactionDetailPage({
               }
             : null
         }
+      />
+
+      <ProductionToggle
+        transactionId={txn.id}
+        initial={txn.excludeFromProduction}
+        closingDateIso={txn.closingDate?.toISOString() ?? null}
+        status={txn.status}
       />
 
       {/* CDA — generate + download the disbursement authorization PDF */}

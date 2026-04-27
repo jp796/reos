@@ -31,6 +31,9 @@ interface Body {
   primaryContactId?: string; // swap the lead contact
   /** null = unassign, string = User.id in the same account */
   assignedUserId?: string | null;
+  closingDate?: string | null;
+  contractDate?: string | null;
+  excludeFromProduction?: boolean;
 }
 
 export async function PATCH(
@@ -105,6 +108,15 @@ export async function PATCH(
       }
       data.assignedUser = { connect: { id: user.id } };
     }
+  }
+  if (body.closingDate !== undefined) {
+    data.closingDate = body.closingDate ? new Date(body.closingDate) : null;
+  }
+  if (body.contractDate !== undefined) {
+    data.contractDate = body.contractDate ? new Date(body.contractDate) : null;
+  }
+  if (body.excludeFromProduction !== undefined) {
+    data.excludeFromProduction = body.excludeFromProduction;
   }
 
   const updated = await prisma.transaction.update({

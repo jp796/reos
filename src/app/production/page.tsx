@@ -62,6 +62,7 @@ export default async function ProductionPage({
       prisma.transaction.findMany({
         where: {
           status: "closed",
+          excludeFromProduction: false,
           closingDate: { gte: yearStart, lt: yearEnd },
         },
         include: {
@@ -94,6 +95,7 @@ export default async function ProductionPage({
         FROM transactions t
         LEFT JOIN transaction_financials f ON f.transaction_id = t.id
         WHERE t.status='closed'
+          AND t.exclude_from_production = false
           AND t.closing_date >= ${yearStart}
           AND t.closing_date <  ${yearEnd}
         GROUP BY EXTRACT(MONTH FROM t.closing_date)
@@ -116,6 +118,7 @@ export default async function ProductionPage({
         JOIN contacts c ON c.id = t.contact_id
         LEFT JOIN transaction_financials f ON f.transaction_id = t.id
         WHERE t.status='closed'
+          AND t.exclude_from_production = false
           AND t.closing_date >= ${yearStart}
           AND t.closing_date <  ${yearEnd}
         GROUP BY c.source_name

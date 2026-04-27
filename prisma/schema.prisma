@@ -182,6 +182,11 @@ model Transaction {
   notesSummary           String?   @map("notes_summary")
   riskScore              Float     @default(0) @map("risk_score")
   missingItemsJson       Json?     @map("missing_items_json")
+  /// Hide this transaction from Production / Digest / Sources rollups
+  /// without deleting it. Use for migrated deals whose closingDate is
+  /// stamped wrong (e.g. legacy 2025 closing imported with today's date)
+  /// or one-off non-production deals (referrals out, training files).
+  excludeFromProduction  Boolean   @default(false) @map("exclude_from_production")
   lastMeaningfulTouchAt  DateTime? @map("last_meaningful_touch_at")
   lastSyncedAt           DateTime? @map("last_synced_at")
   rawSourceJson          Json?     @map("raw_source_json")
