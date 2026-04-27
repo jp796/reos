@@ -20,6 +20,7 @@ import { ContractVersionHistory } from "./ContractVersionHistory";
 import { ParticipantsPanel } from "./ParticipantsPanel";
 import { PartiesQuickEdit } from "./PartiesQuickEdit";
 import { ProductionToggle } from "./ProductionToggle";
+import { RezenCompliancePrepPanel } from "./RezenCompliancePrepPanel";
 import { SMART_FOLDER_CUTOFF } from "@/services/automation/SmartFolderService";
 import {
   RiskScoringService,
@@ -471,6 +472,12 @@ export default async function TransactionDetailPage({
       {/* Compliance file audit — required docs per side + state.
           Hidden when the brokerage runs its own audit (Settings → Brokerage). */}
       {complianceAuditEnabled && <CompliancePanel transactionId={txn.id} />}
+
+      {/* Rezen prep — slot-by-slot status + downloadable package
+          renamed for Rezen's file UI. Always shown — runs even
+          when the in-house compliance panel is disabled, since the
+          bridge to Rezen is the whole point. */}
+      <RezenCompliancePrepPanel transactionId={txn.id} />
 
       {/* Wire fraud verification log — compliance record of the voice
           call confirming wire instructions before the client sends funds. */}
