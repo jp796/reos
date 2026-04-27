@@ -44,6 +44,7 @@ model Account {
   invoiceEntries            InvoiceEntry[]
   emailTemplates            EmailTemplate[]
   leadIntakes               LeadIntake[]
+  scanRuns                  ScanRun[]
 
   @@map("accounts")
 }
@@ -783,6 +784,25 @@ model TransactionParticipant {
   @@index([transactionId])
   @@index([contactId])
   @@map("transaction_participants")
+}
+
+/// History of scan runs from /scan — what type, when, how many hits.
+/// Drives the "since last scan" default + the recent-scans list.
+model ScanRun {
+  id            String    @id @default(cuid())
+  accountId     String    @map("account_id")
+  scanType      String    @map("scan_type") // contract | earnest_money | invoice | title_order | stale_contact | search | smart
+  source        String    @default("gmail") // gmail | upload
+  paramsJson    Json?     @map("params_json") // window, query, senders, etc.
+  startedAt     DateTime  @default(now()) @map("started_at")
+  finishedAt    DateTime? @map("finished_at")
+  hitsCount     Int       @default(0) @map("hits_count")
+  errorText     String?   @map("error_text")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, startedAt])
+  @@map("scan_runs")
 }
 
 /// Dedupe table for documents we've already forwarded to an external

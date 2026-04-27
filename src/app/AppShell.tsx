@@ -26,6 +26,7 @@ const NAV = [
   { href: "/", label: "Home", icon: HomeIcon },
   { href: "/today", label: "Today", icon: Sparkles },
   { href: "/digest", label: "Digest", icon: LineChart },
+  { href: "/scan", label: "Scan", icon: Sparkles },
   { href: "/transactions", label: "Transactions", icon: Wallet },
   { href: "/production", label: "Production", icon: LineChart },
   { href: "/sources", label: "Sources", icon: Receipt },
