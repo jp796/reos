@@ -51,6 +51,11 @@ const schema = z.object({
   // the scan endpoint rejects external calls entirely (same-origin UI
   // calls still work).
   SCAN_SCHEDULE_SECRET: z.string().optional(),
+
+  // Sentry — optional. When set, both client + server SDKs initialize
+  // and uncaught errors / 5xx responses are captured.
+  NEXT_PUBLIC_SENTRY_DSN: z.string().optional(),
+  SENTRY_DSN: z.string().optional(),
 });
 
 // Skip validation during `next build` — Cloud Run injects secrets

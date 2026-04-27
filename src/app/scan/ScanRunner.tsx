@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Sparkles, Upload, History, ExternalLink } from "lucide-react";
 import { useToast } from "@/app/ToastProvider";
+import { Hint } from "@/app/components/Hint";
 
 const SCAN_TYPES: Array<{
   value: string;
@@ -108,8 +109,35 @@ export function ScanRunner({
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<Hit[] | null>(null);
   const [resultMeta, setResultMeta] = useState<string | null>(null);
+  const [history, setHistory] = useState(recent);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const selected = SCAN_TYPES.find((s) => s.value === type)!;
+
+  // Poll the runs endpoint while a scan is in flight so the recent-
+  // history list (and the running indicator) stays fresh without
+  // demanding a full page refresh.
+  useEffect(() => {
+    if (!busy) {
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = null;
+      return;
+    }
+    const tick = async () => {
+      try {
+        const res = await fetch("/api/scan/runs");
+        const data = (await res.json()) as { runs?: RunSummary[] };
+        if (data.runs) setHistory(data.runs);
+      } catch {
+        // ignore
+      }
+    };
+    void tick();
+    pollRef.current = setInterval(tick, 3000);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [busy]);
 
   async function run() {
     if (selected.needsQuery && !query.trim()) {
@@ -190,15 +218,23 @@ export function ScanRunner({
               ))}
             </select>
           </label>
-          <button
-            type="button"
-            onClick={run}
-            disabled={busy}
-            className="mt-1 inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
+          <Hint
+            label={
+              busy
+                ? "Scan in progress — check the history below for results when finished."
+                : "Run the selected scan against the chosen window. Hits show inline."
+            }
           >
-            <Sparkles className="h-3.5 w-3.5" strokeWidth={2} />
-            {busy ? "Scanning…" : "Run scan"}
-          </button>
+            <button
+              type="button"
+              onClick={run}
+              disabled={busy}
+              className="mt-1 inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
+            >
+              <Sparkles className="h-3.5 w-3.5" strokeWidth={2} />
+              {busy ? "Scanning…" : "Run scan"}
+            </button>
+          </Hint>
         </div>
 
         {selected.needsQuery && (
@@ -302,13 +338,13 @@ export function ScanRunner({
           <History className="h-3.5 w-3.5 text-text-muted" strokeWidth={1.8} />
           <h2 className="text-sm font-medium">Recent scans</h2>
         </div>
-        {recent.length === 0 ? (
+        {history.length === 0 ? (
           <div className="rounded-md border border-dashed border-border bg-surface-2/40 px-3 py-4 text-center text-sm text-text-muted">
             No scans yet. Run one above.
           </div>
         ) : (
           <ul className="space-y-1">
-            {recent.map((r) => {
+            {history.map((r) => {
               const params = r.paramsJson ?? {};
               const win = (params.window as number | undefined) ?? null;
               const q = (params.query as string | undefined) ?? null;
