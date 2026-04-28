@@ -40,11 +40,26 @@ export async function GET(
     },
   });
 
-  const report = buildRezenPrepReport({
-    side: txn.side,
-    state: txn.state,
-    documents,
-  });
+  // Dual agency = render BOTH checklists. Single-side defaults to
+  // matching kind, but the user can also flip to either checklist
+  // via the panel; we always return both when the side calls for it.
+  const showTransaction = txn.side !== "sell"; // buy / both / null
+  const showListing = txn.side === "sell" || txn.side === "both";
 
-  return NextResponse.json(report);
+  const transaction = showTransaction
+    ? buildRezenPrepReport({
+        side: txn.side,
+        documents,
+        kind: "transaction",
+      })
+    : null;
+  const listing = showListing
+    ? buildRezenPrepReport({
+        side: txn.side,
+        documents,
+        kind: "listing",
+      })
+    : null;
+
+  return NextResponse.json({ transaction, listing });
 }

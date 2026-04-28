@@ -3,15 +3,16 @@
 /**
  * Rezen compliance prep panel.
  *
- * Shows the per-slot status (Purchase Contract, Agency Disclosure,
- * Settlement Statement, …), what REOS document fills each slot,
- * and the suggested filename for upload to Rezen. A "Download
- * Rezen package" button streams a ZIP of every present doc with
- * the right filenames + a coverage report — drag-drop into the
- * Rezen file UI and it's done.
+ * Mirrors Rezen's actual checklists 1:1 (Transaction = 34 items,
+ * Listing = 14 items). Renders one or both depending on the
+ * transaction side:
+ *   - buy / null   → Transaction only
+ *   - sell         → Listing only
+ *   - both (dual)  → Both, side by side
  *
- * This is Layer 1 of the Rezen-bridge plan. Layer 2 (Playwright
- * bot) will reuse the same prep report to drive uploads.
+ * "Download Rezen package" streams a ZIP with renamed PDFs (and
+ * Transaction/ + Listing/ subfolders when both apply) plus a
+ * COMPLIANCE_REPORT.txt — drag into Rezen and slots line up.
  */
 
 import { useEffect, useState } from "react";
@@ -24,19 +25,32 @@ import {
 } from "lucide-react";
 import { Hint } from "@/app/components/Hint";
 
-interface Item {
-  requirement: { key: string; label: string; detail?: string; stage?: string };
+interface SlotItem {
+  slot: {
+    number: number;
+    key: string;
+    label: string;
+    required: "required" | "if_applicable";
+    tag?: "cda" | "closing_docs" | "termination";
+    requiredFor?: string;
+  };
   status: "present" | "missing";
   matches: Array<{ id: string; fileName: string; source: string }>;
   rezenFilename: string | null;
-  order: number;
 }
 
 interface Report {
-  items: Item[];
+  kind: "transaction" | "listing";
+  items: SlotItem[];
   presentCount: number;
-  missingCount: number;
+  totalCount: number;
+  requiredMissing: number;
   coverage: number;
+}
+
+interface ApiResponse {
+  transaction: Report | null;
+  listing: Report | null;
 }
 
 export function RezenCompliancePrepPanel({
@@ -44,7 +58,7 @@ export function RezenCompliancePrepPanel({
 }: {
   transactionId: string;
 }) {
-  const [report, setReport] = useState<Report | null>(null);
+  const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
@@ -55,10 +69,10 @@ export function RezenCompliancePrepPanel({
         const res = await fetch(
           `/api/transactions/${transactionId}/compliance-prep`,
         );
-        const data = await res.json();
+        const body = await res.json();
         if (!done) {
-          if (!res.ok) setErr(data.error ?? res.statusText);
-          else setReport(data);
+          if (!res.ok) setErr(body.error ?? res.statusText);
+          else setData(body);
         }
       } catch (e) {
         if (!done) setErr(e instanceof Error ? e.message : "load failed");
@@ -86,10 +100,17 @@ export function RezenCompliancePrepPanel({
       </section>
     );
   }
-  if (!report) return null;
+  if (!data || (!data.transaction && !data.listing)) return null;
 
-  const pct = Math.round(report.coverage * 100);
-  const allPresent = report.missingCount === 0;
+  const reports: Report[] = [];
+  if (data.transaction) reports.push(data.transaction);
+  if (data.listing) reports.push(data.listing);
+
+  // Aggregate stats across whichever checklists apply.
+  const totalRequiredMissing = reports.reduce(
+    (s, r) => s + r.requiredMissing,
+    0,
+  );
 
   return (
     <section className="mt-6 rounded-md border border-border bg-surface p-4">
@@ -97,17 +118,18 @@ export function RezenCompliancePrepPanel({
         <h2 className="flex items-center gap-1.5 text-sm font-medium">
           <ShieldCheck className="h-4 w-4 text-text-muted" strokeWidth={1.8} />
           Rezen prep
-          <span className="ml-2 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-normal text-text-muted">
-            {report.presentCount}/{report.presentCount + report.missingCount} ·{" "}
-            {pct}%
-          </span>
+          {totalRequiredMissing > 0 && (
+            <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700 dark:bg-red-950 dark:text-red-200">
+              {totalRequiredMissing} required missing
+            </span>
+          )}
         </h2>
-        <Hint label="Download a ZIP of every present doc, renamed to Rezen's filename convention. Drag into Rezen's file area to upload all at once.">
+        <Hint label="Download a ZIP of every present doc, renamed to Rezen's filename convention. Drag each subfolder into Rezen's file area to upload all at once.">
           <a
             href={`/api/transactions/${transactionId}/compliance-prep/bundle`}
             className={
               "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium " +
-              (allPresent
+              (totalRequiredMissing === 0
                 ? "bg-brand-600 text-white hover:bg-brand-500"
                 : "border border-border bg-surface text-text hover:border-brand-500")
             }
@@ -118,65 +140,111 @@ export function RezenCompliancePrepPanel({
         </Hint>
       </header>
 
-      {/* Progress bar */}
+      <div className={reports.length > 1 ? "grid gap-4 md:grid-cols-2" : ""}>
+        {reports.map((report) => (
+          <ChecklistColumn key={report.kind} report={report} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ChecklistColumn({ report }: { report: Report }) {
+  const pct = Math.round(report.coverage * 100);
+  const allDone = report.requiredMissing === 0;
+  const heading =
+    report.kind === "listing" ? "Listing checklist" : "Transaction checklist";
+
+  return (
+    <div>
+      <div className="mb-2 flex items-baseline justify-between">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-text-muted">
+          {heading}
+        </h3>
+        <span className="text-[11px] text-text-muted">
+          {report.presentCount}/{report.totalCount} · {pct}%
+        </span>
+      </div>
       <div className="mb-3 h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
         <div
           className={
             "h-full transition-all " +
-            (allPresent ? "bg-emerald-500" : pct >= 60 ? "bg-amber-500" : "bg-red-500")
+            (allDone
+              ? "bg-emerald-500"
+              : pct >= 60
+                ? "bg-amber-500"
+                : "bg-red-500")
           }
           style={{ width: `${pct}%` }}
         />
       </div>
-
       <ul className="space-y-1.5 text-sm">
         {report.items.map((item) => (
-          <li
-            key={item.requirement.key}
-            className={
-              "flex items-start gap-2 rounded-md border px-3 py-2 " +
-              (item.status === "present"
-                ? "border-emerald-200 bg-emerald-50/40 dark:border-emerald-900 dark:bg-emerald-950/30"
-                : "border-amber-200 bg-amber-50/40 dark:border-amber-900 dark:bg-amber-950/30")
-            }
-          >
-            {item.status === "present" ? (
-              <Check
-                className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600"
-                strokeWidth={2}
-              />
-            ) : (
-              <FileWarning
-                className="mt-0.5 h-4 w-4 shrink-0 text-amber-600"
-                strokeWidth={2}
-              />
-            )}
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-baseline gap-2">
-                <span className="font-medium text-text">
-                  {item.requirement.label}
-                </span>
-                {item.rezenFilename && (
-                  <span className="font-mono text-[11px] text-text-muted">
-                    → {item.rezenFilename}
-                  </span>
-                )}
-              </div>
-              {item.status === "present" && item.matches[0] && (
-                <div className="mt-0.5 truncate text-xs text-text-muted">
-                  matched: <span className="font-mono">{item.matches[0].fileName}</span>{" "}
-                  · {item.matches[0].source}
-                </div>
-              )}
-              {item.status === "missing" && item.requirement.detail && (
-                <div className="mt-0.5 text-xs text-text-muted">
-                  {item.requirement.detail}
-                </div>
-              )}
-            </div>
-          </li>
+          <SlotRow key={item.slot.key} item={item} />
         ))}
       </ul>
-    </section>
+    </div>
+  );
+}
+
+function SlotRow({ item }: { item: SlotItem }) {
+  const isRequired = item.slot.required === "required";
+  const tone =
+    item.status === "present"
+      ? "border-emerald-200 bg-emerald-50/40 dark:border-emerald-900 dark:bg-emerald-950/30"
+      : isRequired
+        ? "border-red-200 bg-red-50/40 dark:border-red-900 dark:bg-red-950/30"
+        : "border-border bg-surface-2/40";
+  return (
+    <li className={"flex items-start gap-2 rounded-md border px-3 py-2 " + tone}>
+      {item.status === "present" ? (
+        <Check
+          className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600"
+          strokeWidth={2}
+        />
+      ) : (
+        <FileWarning
+          className={
+            "mt-0.5 h-4 w-4 shrink-0 " +
+            (isRequired ? "text-red-600" : "text-text-subtle")
+          }
+          strokeWidth={2}
+        />
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-baseline gap-1.5">
+          <span className="text-[11px] font-mono text-text-subtle">
+            {item.slot.number}.
+          </span>
+          <span className="font-medium text-text">{item.slot.label}</span>
+          {item.slot.tag && (
+            <span className="rounded bg-surface px-1.5 py-0.5 text-[10px] font-medium uppercase text-text-muted ring-1 ring-border">
+              {item.slot.tag.replace(/_/g, " ")}
+            </span>
+          )}
+          {!isRequired && item.status === "missing" && (
+            <span className="text-[10px] text-text-subtle">if applic.</span>
+          )}
+          {isRequired && item.status === "missing" && (
+            <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-red-700 dark:bg-red-950 dark:text-red-200">
+              required
+            </span>
+          )}
+        </div>
+        {item.status === "present" && item.matches[0] && (
+          <div className="mt-0.5 truncate text-xs text-text-muted">
+            <span className="font-mono">→ {item.rezenFilename}</span>
+            <span className="ml-2 text-text-subtle">
+              from {item.matches[0].fileName} · {item.matches[0].source}
+            </span>
+          </div>
+        )}
+        {item.slot.requiredFor && (
+          <div className="mt-0.5 text-[11px] text-text-subtle">
+            required for: {item.slot.requiredFor}
+          </div>
+        )}
+      </div>
+    </li>
   );
 }

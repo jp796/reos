@@ -54,51 +54,88 @@ export async function GET(
     },
   });
 
-  const report = buildRezenPrepReport({
-    side: txn.side,
-    state: txn.state,
-    documents: documents.map(({ rawBytes: _r, mimeType: _m, ...d }) => d),
-  });
+  const showTransaction = txn.side !== "sell";
+  const showListing = txn.side === "sell" || txn.side === "both";
+  const cleanDocs = documents.map(
+    ({ rawBytes: _r, mimeType: _m, ...d }) => d,
+  );
+  const reports: Array<{
+    folder: string;
+    report: ReturnType<typeof buildRezenPrepReport>;
+  }> = [];
+  if (showTransaction) {
+    reports.push({
+      folder: showListing ? "Transaction" : "",
+      report: buildRezenPrepReport({
+        side: txn.side,
+        documents: cleanDocs,
+        kind: "transaction",
+      }),
+    });
+  }
+  if (showListing) {
+    reports.push({
+      folder: showTransaction ? "Listing" : "",
+      report: buildRezenPrepReport({
+        side: txn.side,
+        documents: cleanDocs,
+        kind: "listing",
+      }),
+    });
+  }
 
   // Build the zip
   const zip = new JSZip();
 
   // Top-level human-readable report (drives any reviewer's eye to
   // what's missing without opening every PDF).
-  const txt = [
+  const txtLines: string[] = [
     `Rezen Compliance Prep — ${txn.propertyAddress ?? "(no address)"}`,
-    `Coverage: ${report.presentCount}/${
-      report.presentCount + report.missingCount
-    }  (${Math.round(report.coverage * 100)}%)`,
     "",
-    "PRESENT:",
-    ...report.items
-      .filter((i) => i.status === "present")
-      .map(
-        (i) =>
-          `  ✓ ${i.rezenFilename ?? "(unfiled)"}  ←  ${
-            i.matches[0]?.fileName ?? ""
-          }`,
-      ),
-    "",
-    "MISSING:",
-    ...report.items
-      .filter((i) => i.status === "missing")
-      .map((i) => `  ✗ ${i.requirement.label}`),
-    "",
-    `Generated ${new Date().toISOString()}`,
-  ].join("\n");
-  zip.file("COMPLIANCE_REPORT.txt", txt);
+  ];
+  for (const { folder, report } of reports) {
+    const heading =
+      folder ||
+      (report.kind === "listing" ? "LISTING" : "TRANSACTION");
+    txtLines.push(`=== ${heading.toUpperCase()} CHECKLIST ===`);
+    txtLines.push(
+      `Coverage: ${report.presentCount}/${report.totalCount}  (${Math.round(
+        report.coverage * 100,
+      )}%) — ${report.requiredMissing} required missing`,
+    );
+    txtLines.push("");
+    txtLines.push("PRESENT:");
+    for (const i of report.items.filter((x) => x.status === "present")) {
+      txtLines.push(
+        `  ✓ ${i.rezenFilename ?? "(unfiled)"}  ←  ${i.matches[0]?.fileName ?? ""}`,
+      );
+    }
+    txtLines.push("");
+    txtLines.push("MISSING:");
+    for (const i of report.items.filter((x) => x.status === "missing")) {
+      const req = i.slot.required === "required" ? "[REQUIRED]" : "[if applic]";
+      txtLines.push(`  ✗ ${req} ${i.slot.label}`);
+    }
+    txtLines.push("");
+  }
+  txtLines.push(`Generated ${new Date().toISOString()}`);
+  zip.file("COMPLIANCE_REPORT.txt", txtLines.join("\n"));
 
-  // Each present doc, renamed.
+  // Each present doc, renamed; folder-prefix when both checklists
+  // are present so the user can drag each subfolder separately.
   const docsById = new Map(documents.map((d) => [d.id, d]));
-  for (const item of report.items) {
-    if (item.status !== "present") continue;
-    const matchId = item.matches[0]?.id;
-    if (!matchId) continue;
-    const doc = docsById.get(matchId);
-    if (!doc?.rawBytes || !item.rezenFilename) continue;
-    zip.file(item.rezenFilename, doc.rawBytes);
+  for (const { folder, report } of reports) {
+    for (const item of report.items) {
+      if (item.status !== "present") continue;
+      const matchId = item.matches[0]?.id;
+      if (!matchId) continue;
+      const doc = docsById.get(matchId);
+      if (!doc?.rawBytes || !item.rezenFilename) continue;
+      const path = folder
+        ? `${folder}/${item.rezenFilename}`
+        : item.rezenFilename;
+      zip.file(path, doc.rawBytes);
+    }
   }
 
   const buf = await zip.generateAsync({ type: "nodebuffer" });
