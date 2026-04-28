@@ -22,7 +22,9 @@ import {
   FileWarning,
   Loader2,
   ShieldCheck,
+  Sparkles,
 } from "lucide-react";
+import { useToast } from "@/app/ToastProvider";
 import { Hint } from "@/app/components/Hint";
 
 interface SlotItem {
@@ -58,22 +60,78 @@ export function RezenCompliancePrepPanel({
 }: {
   transactionId: string;
 }) {
+  const toast = useToast();
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [classifying, setClassifying] = useState(false);
+
+  async function reload() {
+    const res = await fetch(`/api/transactions/${transactionId}/compliance-prep`);
+    const body = await res.json();
+    if (!res.ok) setErr(body.error ?? res.statusText);
+    else {
+      setErr(null);
+      setData(body);
+    }
+  }
+
+  async function classifyAll(force: boolean) {
+    setClassifying(true);
+    try {
+      let total = { classified: 0, nullified: 0, errored: 0 };
+      let safety = 10;
+      // Loop while the server says hasMore — paginates ~25 docs/call.
+      // Cap at 10 iterations (250 docs) so a runaway can't burn budget.
+      while (safety-- > 0) {
+        const res = await fetch(
+          `/api/transactions/${transactionId}/classify-docs`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ force }),
+          },
+        );
+        const body = (await res.json()) as {
+          ok?: boolean;
+          classified: number;
+          nullified: number;
+          errored: number;
+          hasMore: boolean;
+          error?: string;
+        };
+        if (!res.ok || !body.ok) {
+          toast.error(
+            "Classification failed",
+            body.error ?? res.statusText,
+          );
+          return;
+        }
+        total.classified += body.classified;
+        total.nullified += body.nullified;
+        total.errored += body.errored;
+        if (!body.hasMore) break;
+      }
+      toast.success(
+        "AI classification done",
+        `${total.classified} matched · ${total.nullified} unrelated · ${total.errored} errored`,
+      );
+      await reload();
+    } catch (e) {
+      toast.error(
+        "Classification failed",
+        e instanceof Error ? e.message : "unknown",
+      );
+    } finally {
+      setClassifying(false);
+    }
+  }
 
   useEffect(() => {
     let done = false;
     (async () => {
       try {
-        const res = await fetch(
-          `/api/transactions/${transactionId}/compliance-prep`,
-        );
-        const body = await res.json();
-        if (!done) {
-          if (!res.ok) setErr(body.error ?? res.statusText);
-          else setData(body);
-        }
+        await reload();
       } catch (e) {
         if (!done) setErr(e instanceof Error ? e.message : "load failed");
       } finally {
@@ -83,6 +141,7 @@ export function RezenCompliancePrepPanel({
     return () => {
       done = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transactionId]);
 
   if (loading) {
@@ -124,20 +183,33 @@ export function RezenCompliancePrepPanel({
             </span>
           )}
         </h2>
-        <Hint label="Download a ZIP of every present doc, renamed to Rezen's filename convention. Drag each subfolder into Rezen's file area to upload all at once.">
-          <a
-            href={`/api/transactions/${transactionId}/compliance-prep/bundle`}
-            className={
-              "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium " +
-              (totalRequiredMissing === 0
-                ? "bg-brand-600 text-white hover:bg-brand-500"
-                : "border border-border bg-surface text-text hover:border-brand-500")
-            }
-          >
-            <Download className="h-3.5 w-3.5" strokeWidth={2} />
-            Download Rezen package
-          </a>
-        </Hint>
+        <div className="flex items-center gap-1.5">
+          <Hint label="Run AI on each PDF to classify which Rezen slot it fills. Catches docs whose filenames don't match keywords (e.g. 'Document_2026.pdf' that's actually an Earnest Money Receipt).">
+            <button
+              type="button"
+              onClick={() => classifyAll(false)}
+              disabled={classifying}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-text hover:border-brand-500 disabled:opacity-50"
+            >
+              <Sparkles className="h-3.5 w-3.5" strokeWidth={2} />
+              {classifying ? "Classifying…" : "Classify with AI"}
+            </button>
+          </Hint>
+          <Hint label="Download a ZIP of every present doc, renamed to Rezen's filename convention. Drag each subfolder into Rezen's file area to upload all at once.">
+            <a
+              href={`/api/transactions/${transactionId}/compliance-prep/bundle`}
+              className={
+                "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium " +
+                (totalRequiredMissing === 0
+                  ? "bg-brand-600 text-white hover:bg-brand-500"
+                  : "border border-border bg-surface text-text hover:border-brand-500")
+              }
+            >
+              <Download className="h-3.5 w-3.5" strokeWidth={2} />
+              Download Rezen package
+            </a>
+          </Hint>
+        </div>
       </header>
 
       <div className={reports.length > 1 ? "grid gap-4 md:grid-cols-2" : ""}>

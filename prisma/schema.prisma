@@ -318,6 +318,12 @@ model Document {
   source         String   @default("upload") // upload, gmail_attachment, fub_attachment
   extractedText  String?  @map("extracted_text")
   uploadOrigin   String?  @map("upload_origin")
+  /// AI-classified Rezen slot key (e.g. "earnest_money_receipt").
+  /// Populated by DocumentClassifierService; null = unclassified.
+  /// Drives Rezen prep matching when filename keywords miss.
+  suggestedRezenSlot       String?   @map("suggested_rezen_slot")
+  suggestedRezenConfidence Float?    @map("suggested_rezen_confidence")
+  classifiedAt             DateTime? @map("classified_at")
   /// For Gmail-sourced docs — source message internalDate so we
   /// can pick the newest when multiple contracts exist on one txn.
   sourceDate     DateTime? @map("source_date")

@@ -51,6 +51,8 @@ export async function GET(
       source: true,
       rawBytes: true,
       mimeType: true,
+      suggestedRezenSlot: true,
+      suggestedRezenConfidence: true,
     },
   });
 

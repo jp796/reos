@@ -474,12 +474,25 @@ export interface RezenCompliancePrepReport {
 /**
  * Build the per-side prep report. Caller passes already-loaded
  * Document rows so this stays a pure function.
+ *
+ * Match order per slot:
+ *   1. AI classification (Document.suggestedRezenSlot === slot.key)
+ *      with confidence >= 0.5
+ *   2. Filename / category / extractedText keyword regex
+ * Anything matched by AI is shown first so confident classifications
+ * trump filename heuristics.
  */
 export function buildRezenPrepReport(args: {
   side: string | null;
   documents: Pick<
     Document,
-    "id" | "fileName" | "category" | "extractedText" | "source"
+    | "id"
+    | "fileName"
+    | "category"
+    | "extractedText"
+    | "source"
+    | "suggestedRezenSlot"
+    | "suggestedRezenConfidence"
   >[];
   /** Override the auto-picked checklist (e.g. show both on dual). */
   kind?: RezenChecklistKind;
@@ -494,15 +507,25 @@ export function buildRezenPrepReport(args: {
         .join("|"),
       "i",
     );
-    const matches = args.documents.filter((d) => {
+
+    const aiMatches = args.documents.filter(
+      (d) =>
+        d.suggestedRezenSlot === slot.key &&
+        (d.suggestedRezenConfidence ?? 0) >= 0.5,
+    );
+    const keywordMatches = args.documents.filter((d) => {
+      // Skip if already picked up by AI to avoid double-listing
+      if (aiMatches.some((m) => m.id === d.id)) return false;
       const blob = [d.fileName, d.category ?? "", d.extractedText ?? ""].join(" ");
       return re.test(blob);
     });
-    const firstMatch = matches[0];
+
+    const allMatches = [...aiMatches, ...keywordMatches];
+    const firstMatch = allMatches[0];
     return {
       slot,
-      status: matches.length > 0 ? "present" : "missing",
-      matches: matches.map((d) => ({
+      status: allMatches.length > 0 ? "present" : "missing",
+      matches: allMatches.map((d) => ({
         id: d.id,
         fileName: d.fileName,
         source: d.source,

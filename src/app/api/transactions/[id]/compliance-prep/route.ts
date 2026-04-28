@@ -37,6 +37,8 @@ export async function GET(
       category: true,
       extractedText: true,
       source: true,
+      suggestedRezenSlot: true,
+      suggestedRezenConfidence: true,
     },
   });
 
