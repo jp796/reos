@@ -1,14 +1,13 @@
 /**
  * AtlasChatService
  *
- * Two-way Atlas chat over Telegram (and any future inbound channel).
- * Uses OpenAI gpt-4o-mini — cheapest path that still reads context
- * well and you already have the key. ~$0.0001 / message at typical
- * chat volume.
+ * Two-way Atlas chat over Telegram. Backed by OpenAI gpt-4o-mini —
+ * uses the existing OPENAI_API_KEY (no new account), and at single-
+ * user volume costs ~5¢/month.
  *
  * Receives raw user text, builds a tight context snapshot of the
- * acting account's open deals + recent activity, asks the model for
- * a short reply.
+ * acting account's open deals + recent activity, asks the model
+ * for a short reply.
  */
 
 import type { PrismaClient } from "@prisma/client";

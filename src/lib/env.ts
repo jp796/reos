@@ -74,6 +74,10 @@ const schema = z.object({
    * when Telegram POSTs to our webhook — proves the request really
    * came from Telegram (set via setWebhook). */
   TELEGRAM_WEBHOOK_SECRET: z.string().optional(),
+
+  /** Google AI Studio (Gemini) API key — used by AtlasChatService.
+   * Free tier covers a single-user chat workload comfortably. */
+  GEMINI_API_KEY: z.string().optional(),
 });
 
 // Skip validation during `next build` — Cloud Run injects secrets
