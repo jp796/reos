@@ -64,6 +64,12 @@ const schema = z.object({
   UC_PASS: z.string().optional(),
   UC_PARTNER_CODE: z.string().optional(),
   UC_BASE_URL: z.string().url().optional(),
+
+  // Telegram bot for morning brief delivery. Both required to fire;
+  // when either is missing the morning tick still runs but skips the
+  // notification step.
+  TELEGRAM_BOT_TOKEN: z.string().optional(),
+  TELEGRAM_CHAT_ID: z.string().optional(),
 });
 
 // Skip validation during `next build` — Cloud Run injects secrets
