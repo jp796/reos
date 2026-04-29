@@ -21,6 +21,7 @@ import {
 import { useTheme } from "./ThemeProvider";
 import { cn } from "@/lib/cn";
 import { GlobalSearch } from "./components/GlobalSearch";
+import { Logo } from "./components/Logo";
 
 const NAV = [
   { href: "/", label: "Home", icon: HomeIcon },
@@ -198,12 +199,14 @@ function SidebarContents({
     <>
       <Link
         href="/"
-        className="mb-8 px-2 font-display text-2xl font-semibold tracking-tight"
+        className="mb-8 flex items-center gap-2 px-2 font-display text-2xl font-bold tracking-tight"
         aria-label="REOS home"
       >
-        RE
-        <span className="inline-block h-[0.85em] w-[0.85em] translate-y-[3px] rounded-[3px] bg-brand-500" />
-        S
+        <Logo size={32} />
+        <span>
+          <span>RE</span>
+          <span className="text-gradient-brand">OS</span>
+        </span>
       </Link>
       <nav className="flex flex-col gap-0.5">
         {NAV.map((item) => {

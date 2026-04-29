@@ -5,6 +5,7 @@
  */
 
 import { signIn } from "@/auth";
+import { Logo } from "@/app/components/Logo";
 
 interface Props {
   searchParams: Promise<{ error?: string; callbackUrl?: string }>;
@@ -48,13 +49,17 @@ export default async function LoginPage({ searchParams }: Props) {
     <div className="flex min-h-screen items-center justify-center bg-bg px-6">
       <div className="w-full max-w-sm rounded-lg border border-border bg-surface p-8 shadow-md">
         <div className="mb-6 text-center">
-          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-md bg-brand-500 text-white">
-            <span className="font-display text-lg font-semibold">R</span>
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center text-text">
+            <Logo size={48} />
           </div>
-          <h1 className="font-display text-2xl font-semibold tracking-tight text-text">
-            Real Estate OS
+          <h1 className="font-display text-2xl font-bold tracking-tight">
+            <span className="text-text">RE</span>
+            <span className="text-gradient-brand">OS</span>
           </h1>
-          <p className="mt-1 text-sm text-text-muted">
+          <p className="mt-1 text-xs uppercase tracking-wider text-accent-500">
+            Coordinate · Automate · Close
+          </p>
+          <p className="mt-3 text-sm text-text-muted">
             Sign in with your authorized Google account
           </p>
         </div>

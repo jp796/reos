@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Space_Grotesk } from "next/font/google";
+import { Montserrat } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "./ThemeProvider";
 import { AppShell } from "./AppShell";
@@ -8,17 +8,14 @@ import { TermsAcceptModal } from "./TermsAcceptModal";
 import { auth, signOut } from "@/auth";
 import { prisma } from "@/lib/db";
 
-const inter = Inter({
+// Brand typeface — Montserrat (per 2026 brand guide). One face for
+// both body + display so weight choice (Regular/Medium/Semibold/
+// Bold) does the visual differentiation, not a separate family.
+const montserrat = Montserrat({
   subsets: ["latin"],
   variable: "--font-sans",
   display: "swap",
-});
-
-const spaceGrotesk = Space_Grotesk({
-  subsets: ["latin"],
-  variable: "--font-display",
-  display: "swap",
-  weight: ["500", "600", "700"],
+  weight: ["400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
@@ -61,7 +58,7 @@ export default async function RootLayout({
   }
 
   return (
-    <html lang="en" className={`${inter.variable} ${spaceGrotesk.variable}`}>
+    <html lang="en" className={montserrat.variable}>
       {/* suppressHydrationWarning: password manager / grammar extensions
           inject attrs like `bis_register` / `__processed_*` on <body>
           before React hydrates. Only ignores body-level mismatches,
