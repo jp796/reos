@@ -158,7 +158,7 @@ function decisionStyle(decision: string): string {
     case "suggested":
       return "bg-amber-50 text-amber-700";
     case "rejected":
-      return "bg-gray-100 text-gray-600";
+      return "bg-gray-100 text-text-muted";
     case "failed":
       return "bg-red-50 text-red-700";
     default:

@@ -382,7 +382,7 @@ export default async function TodayPage({
             {closingSoon.map((t) => (
               <li
                 key={t.id}
-                className="flex items-center justify-between rounded-md border border-neutral-200 bg-white p-3"
+                className="flex items-center justify-between rounded-md border border-border bg-surface p-3"
               >
                 <div className="min-w-0">
                   <Link
@@ -391,7 +391,7 @@ export default async function TodayPage({
                   >
                     {t.contact.fullName}
                   </Link>
-                  <div className="text-xs text-neutral-600">
+                  <div className="text-xs text-text-muted">
                     {t.propertyAddress ?? "No address"} ·{" "}
                     {t.transactionType}
                   </div>
@@ -399,7 +399,7 @@ export default async function TodayPage({
                 <div className="text-right text-sm">
                   <div>{fmtDate(t.closingDate)}</div>
                   {t.closingDate && (
-                    <div className="text-xs text-neutral-500">
+                    <div className="text-xs text-text-muted">
                       {fmtRel(t.closingDate)}
                     </div>
                   )}
@@ -423,7 +423,7 @@ export default async function TodayPage({
             {silentDeals.map(({ txn, daysSince, lastTouch }) => (
               <li
                 key={txn.id}
-                className="flex items-center justify-between rounded-md border border-neutral-200 bg-white p-3"
+                className="flex items-center justify-between rounded-md border border-border bg-surface p-3"
               >
                 <div className="min-w-0">
                   <Link
@@ -432,14 +432,14 @@ export default async function TodayPage({
                   >
                     {txn.contact.fullName}
                   </Link>
-                  <div className="text-xs text-neutral-600">
+                  <div className="text-xs text-text-muted">
                     {txn.propertyAddress ?? "No address"} ·{" "}
                     {txn.transactionType}
                   </div>
                 </div>
                 <div className="text-right text-sm">
-                  <div className="text-neutral-700">{daysSince}d ago</div>
-                  <div className="text-xs text-neutral-500">
+                  <div className="text-text">{daysSince}d ago</div>
+                  <div className="text-xs text-text-muted">
                     {fmtDate(lastTouch)}
                   </div>
                 </div>
@@ -559,12 +559,12 @@ function MilestoneRow({
         >
           {m.label}
         </Link>
-        <div className="text-xs text-neutral-700">
+        <div className="text-xs text-text">
           {m.transaction.contact.fullName}
           {m.transaction.propertyAddress && (
             <>
               {" · "}
-              <span className="text-neutral-500">
+              <span className="text-text-muted">
                 {m.transaction.propertyAddress}
               </span>
             </>
@@ -575,7 +575,7 @@ function MilestoneRow({
         {m.dueAt ? (
           <>
             <div>{fmtDate(m.dueAt)}</div>
-            <div className="text-xs text-neutral-500">{fmtRel(m.dueAt)}</div>
+            <div className="text-xs text-text-muted">{fmtRel(m.dueAt)}</div>
           </>
         ) : (
           <div className="text-xs italic text-neutral-400">no date</div>
@@ -619,18 +619,18 @@ function TaskRow({
         >
           {t.title}
         </Link>
-        <div className="text-xs text-neutral-700">
+        <div className="text-xs text-text">
           {t.transaction.contact.fullName}
           {t.transaction.propertyAddress && (
             <>
               {" · "}
-              <span className="text-neutral-500">
+              <span className="text-text-muted">
                 {t.transaction.propertyAddress}
               </span>
             </>
           )}
           {" · "}
-          <span className="text-neutral-500">
+          <span className="text-text-muted">
             {t.assignedTo ?? "coordinator"}
           </span>
           {t.priority !== "normal" && (
@@ -642,7 +642,7 @@ function TaskRow({
                     ? "font-medium text-red-700"
                     : t.priority === "high"
                       ? "font-medium text-amber-700"
-                      : "text-neutral-500"
+                      : "text-text-muted"
                 }
               >
                 {t.priority}
@@ -655,7 +655,7 @@ function TaskRow({
         {t.dueAt ? (
           <>
             <div>{fmtDate(t.dueAt)}</div>
-            <div className="text-xs text-neutral-500">{fmtRel(t.dueAt)}</div>
+            <div className="text-xs text-text-muted">{fmtRel(t.dueAt)}</div>
           </>
         ) : (
           <div className="text-xs italic text-neutral-400">no date</div>

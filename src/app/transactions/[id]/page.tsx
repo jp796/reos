@@ -75,7 +75,7 @@ function msStatusTone(ms: {
   if (ms.completedAt) return "border-emerald-200 bg-emerald-50";
   const overdue = ms.status === "pending" && ms.dueAt && ms.dueAt <= new Date();
   if (overdue) return "border-red-200 bg-red-50";
-  return "border-neutral-200 bg-white";
+  return "border-border bg-surface";
 }
 
 export default async function TransactionDetailPage({
@@ -421,14 +421,14 @@ export default async function TransactionDetailPage({
       {/* Tags */}
       {tags.length > 0 && (
         <section className="mt-6">
-          <h3 className="text-xs uppercase tracking-wide text-neutral-500">
+          <h3 className="text-xs uppercase tracking-wide text-text-muted">
             FUB tags
           </h3>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {tags.map((t) => (
               <span
                 key={t}
-                className="rounded bg-neutral-100 px-2 py-0.5 text-xs text-neutral-700"
+                className="rounded bg-surface-2 px-2 py-0.5 text-xs text-text"
               >
                 {t}
               </span>
@@ -528,15 +528,15 @@ export default async function TransactionDetailPage({
             {txn.communicationEvents.map((c) => (
               <li
                 key={c.id}
-                className="rounded-md border border-neutral-200 bg-white p-3 text-sm"
+                className="rounded-md border border-border bg-surface p-3 text-sm"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs uppercase tracking-wide text-neutral-500">
+                      <span className="text-xs uppercase tracking-wide text-text-muted">
                         {c.type}
                       </span>
-                      <span className="text-xs text-neutral-500">
+                      <span className="text-xs text-text-muted">
                         · {c.source}
                       </span>
                     </div>
@@ -544,12 +544,12 @@ export default async function TransactionDetailPage({
                       {c.subject ?? "(no subject)"}
                     </div>
                     {c.summary && (
-                      <div className="mt-0.5 line-clamp-2 text-xs text-neutral-600">
+                      <div className="mt-0.5 line-clamp-2 text-xs text-text-muted">
                         {c.summary}
                       </div>
                     )}
                   </div>
-                  <div className="shrink-0 text-right text-xs text-neutral-500">
+                  <div className="shrink-0 text-right text-xs text-text-muted">
                     {fmtDate(c.happenedAt)}
                   </div>
                 </div>
@@ -569,10 +569,10 @@ export default async function TransactionDetailPage({
             {txn.calendarEvents.map((e) => (
               <li
                 key={e.id}
-                className="flex items-center justify-between rounded-md border border-neutral-200 bg-white px-3 py-2"
+                className="flex items-center justify-between rounded-md border border-border bg-surface px-3 py-2"
               >
                 <span className="truncate">{e.title}</span>
-                <span className="ml-3 shrink-0 text-xs text-neutral-500">
+                <span className="ml-3 shrink-0 text-xs text-text-muted">
                   {fmtDate(e.startAt)} · {e.calendarType}
                 </span>
               </li>
@@ -589,10 +589,10 @@ export default async function TransactionDetailPage({
             {txn.documents.map((d) => (
               <li
                 key={d.id}
-                className="flex items-center justify-between rounded-md border border-neutral-200 bg-white px-3 py-2"
+                className="flex items-center justify-between rounded-md border border-border bg-surface px-3 py-2"
               >
                 <span className="truncate">{d.fileName}</span>
-                <span className="ml-3 shrink-0 text-xs text-neutral-500">
+                <span className="ml-3 shrink-0 text-xs text-text-muted">
                   {d.category ?? "—"} · {fmtDate(d.uploadedAt)}
                 </span>
               </li>

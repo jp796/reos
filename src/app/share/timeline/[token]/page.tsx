@@ -60,9 +60,9 @@ const toneStyle: Record<Tone, { dot: string; label: string; text: string }> = {
     text: "text-amber-600",
   },
   future: {
-    dot: "bg-white border-neutral-300",
+    dot: "bg-surface border-border-strong",
     label: "Upcoming",
-    text: "text-neutral-500",
+    text: "text-text-muted",
   },
 };
 
@@ -90,7 +90,7 @@ export default async function PublicTimelinePage({
         <h1 className="font-display text-2xl font-semibold">
           This share link has expired
         </h1>
-        <p className="mt-3 text-sm text-neutral-600">
+        <p className="mt-3 text-sm text-text-muted">
           Ask the agent to send you a fresh link.
         </p>
       </main>
@@ -153,7 +153,7 @@ export default async function PublicTimelinePage({
               kd.d && (
                 <div
                   key={kd.label}
-                  className="rounded-lg border border-stone-200 bg-white p-4"
+                  className="rounded-lg border border-stone-200 bg-surface p-4"
                 >
                   <div className="text-xs font-semibold uppercase tracking-wide text-stone-500">
                     {kd.label}
@@ -186,7 +186,7 @@ export default async function PublicTimelinePage({
                       <span
                         className={`relative z-10 mt-2 h-3.5 w-3.5 shrink-0 rounded-full border-2 ${style.dot}`}
                       />
-                      <div className="flex-1 rounded-lg border border-stone-200 bg-white px-4 py-3">
+                      <div className="flex-1 rounded-lg border border-stone-200 bg-surface px-4 py-3">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div>
                             <div className="font-medium text-stone-900">
