@@ -70,6 +70,10 @@ const schema = z.object({
   // notification step.
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   TELEGRAM_CHAT_ID: z.string().optional(),
+  /** Shared secret used as `X-Telegram-Bot-Api-Secret-Token` header
+   * when Telegram POSTs to our webhook — proves the request really
+   * came from Telegram (set via setWebhook). */
+  TELEGRAM_WEBHOOK_SECRET: z.string().optional(),
 });
 
 // Skip validation during `next build` — Cloud Run injects secrets

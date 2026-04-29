@@ -17,6 +17,7 @@
     "crypto:test": "tsx src/lib/encryption.test.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.91.1",
     "@auth/prisma-adapter": "^2.11.2",
     "@prisma/client": "^5.22.0",
     "@radix-ui/react-dialog": "^1.1.15",
