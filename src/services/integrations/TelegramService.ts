@@ -16,7 +16,11 @@ const TG_API = "https://api.telegram.org";
 
 export class TelegramService {
   static isConfigured(): boolean {
-    return !!(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID);
+    // "unset" is the placeholder we write into Secret Manager when
+    // the user hasn't filled in real values yet — treat it as missing.
+    const t = env.TELEGRAM_BOT_TOKEN?.trim();
+    const c = env.TELEGRAM_CHAT_ID?.trim();
+    return !!(t && c && t !== "unset" && c !== "unset");
   }
 
   /** Send a message to the configured chat. Throws on non-2xx so
