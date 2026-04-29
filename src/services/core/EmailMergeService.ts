@@ -185,6 +185,13 @@ export function buildVariables(input: MergeInput): Record<string, string> {
 
     // Effective date / contract date — alias used by some templates
     contract_date: fmtDate(txn.contractDate),
+
+    // Utility Connect — public enrollment URL when the transaction
+    // has been auto-enrolled. Otherwise renders empty so the
+    // template gracefully degrades.
+    utility_connect_url: txn.utilityConnectReferenceCode
+      ? `https://utilityconnect.net/start/${encodeURIComponent(txn.utilityConnectReferenceCode)}`
+      : "",
   };
 
   return vars;

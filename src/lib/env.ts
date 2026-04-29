@@ -56,6 +56,14 @@ const schema = z.object({
   // and uncaught errors / 5xx responses are captured.
   NEXT_PUBLIC_SENTRY_DSN: z.string().optional(),
   SENTRY_DSN: z.string().optional(),
+
+  // Utility Connect — partner-side credentials for buyer-utility
+  // enrollment. Optional so non-UC accounts run unaffected; the
+  // enrollment endpoints fail closed when missing.
+  UC_USER: z.string().optional(),
+  UC_PASS: z.string().optional(),
+  UC_PARTNER_CODE: z.string().optional(),
+  UC_BASE_URL: z.string().url().optional(),
 });
 
 // Skip validation during `next build` — Cloud Run injects secrets

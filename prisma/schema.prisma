@@ -188,6 +188,14 @@ model Transaction {
   /// stamped wrong (e.g. legacy 2025 closing imported with today's date)
   /// or one-off non-production deals (referrals out, training files).
   excludeFromProduction  Boolean   @default(false) @map("exclude_from_production")
+
+  /// Utility Connect enrollment refs (set after a successful POST /lead).
+  /// Presence of utilityConnectLeadId is the idempotency key — the
+  /// scheduler skips this transaction once enrolled.
+  utilityConnectCustomerId      Int?      @map("utility_connect_customer_id")
+  utilityConnectLeadId          String?   @map("utility_connect_lead_id")
+  utilityConnectReferenceCode   String?   @map("utility_connect_reference_code")
+  utilityConnectEnrolledAt      DateTime? @map("utility_connect_enrolled_at")
   lastMeaningfulTouchAt  DateTime? @map("last_meaningful_touch_at")
   lastSyncedAt           DateTime? @map("last_synced_at")
   rawSourceJson          Json?     @map("raw_source_json")
