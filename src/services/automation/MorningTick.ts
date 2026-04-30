@@ -35,6 +35,7 @@ import { buildRezenPrepReport } from "@/services/core/RezenCompliancePrep";
 import { TelegramService } from "@/services/integrations/TelegramService";
 import { TimelineUpdateService } from "@/services/automation/TimelineUpdateService";
 import { AutomationAuditService } from "@/services/integrations/FollowUpBossService";
+import { autoLinkSendersForTransaction } from "@/services/core/ContactRoleInferenceService";
 import { logError } from "@/lib/log";
 
 interface MorningTickResult {
@@ -45,6 +46,11 @@ interface MorningTickResult {
     extracted: number;
     hits: number;
     skippedNoExec: number;
+  } | null;
+  autoLink: {
+    dealsScanned: number;
+    sendersScanned: number;
+    participantsAdded: number;
   } | null;
   earnestMoneyScan: {
     scanned: number;
@@ -132,6 +138,123 @@ export async function runMorningTick(
     }
   } catch (e) {
     logError(e, { route: "MorningTick.contractScan" });
+  }
+
+  /* ============================================================
+   * Step 1.4 — Auto-link senders → participants
+   * For each open deal's smart folder (or recent address-anchored
+   * inbox window), harvest unique sender emails and auto-promote
+   * any we recognize from history / domain into participants.
+   * Run BEFORE the EM scan so EM benefits from the new links.
+   * ============================================================ */
+  let autoLink: MorningTickResult["autoLink"] = null;
+  try {
+    const account = await db.account.findFirst({
+      select: { id: true, googleOauthTokensEncrypted: true },
+    });
+    if (
+      account?.googleOauthTokensEncrypted &&
+      env.GOOGLE_CLIENT_ID &&
+      env.GOOGLE_CLIENT_SECRET &&
+      env.GOOGLE_REDIRECT_URI
+    ) {
+      const oauth = new GoogleOAuthService(
+        {
+          clientId: env.GOOGLE_CLIENT_ID,
+          clientSecret: env.GOOGLE_CLIENT_SECRET,
+          redirectUri: env.GOOGLE_REDIRECT_URI,
+          scopes: DEFAULT_SCOPES,
+        },
+        db,
+        getEncryptionService(),
+      );
+      const gAuth = await oauth.createAuthenticatedClient(account.id);
+      const gmail = new GmailService(
+        account.id,
+        gAuth,
+        {
+          labelPrefix: "REOS/",
+          autoOrganizeThreads: false,
+          extractAttachments: false,
+          batchSize: 10,
+          rateLimitDelayMs: 100,
+        },
+        db,
+        new EmailTransactionMatchingService(),
+      );
+      const ownerAliases = (env.OWNER_EMAIL_ALIASES ?? "")
+        .split(",")
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean);
+
+      const openTxns = await db.transaction.findMany({
+        where: {
+          accountId: account.id,
+          status: { notIn: ["closed", "dead"] },
+          propertyAddress: { not: null },
+        },
+        select: { id: true, propertyAddress: true, smartFolderLabelId: true },
+        take: 30,
+      });
+
+      let dealsScanned = 0;
+      let sendersScanned = 0;
+      let participantsAdded = 0;
+
+      for (const t of openTxns) {
+        if (!t.propertyAddress) continue;
+        dealsScanned++;
+        // Harvest sender emails from the smart folder (preferred) or
+        // a 3-token address-anchored window over the last 30 days.
+        const tokens = t.propertyAddress
+          .replace(/^\s*(?:TBD|Lot\s*#?\s*\d+)\s*[\/-]?\s*/i, "")
+          .split(",")[0]
+          ?.trim()
+          .split(/\s+/)
+          .slice(0, 3)
+          .join(" ");
+        const q = t.smartFolderLabelId
+          ? `label:"REOS/Transactions/${t.propertyAddress.replace(/\//g, "—").trim().slice(0, 150)}" newer_than:30d`
+          : tokens
+            ? `subject:"${tokens}" newer_than:30d`
+            : null;
+        if (!q) continue;
+        try {
+          const { threads } = await gmail.searchThreadsPaged({
+            q,
+            maxTotal: 25,
+          });
+          const seen = new Set<string>();
+          for (const thread of threads) {
+            for (const m of thread.messages ?? []) {
+              const fromHeader =
+                m.payload?.headers?.find(
+                  (h) => h.name?.toLowerCase() === "from",
+                )?.value ?? "";
+              const match = fromHeader.match(/<([^>]+)>/);
+              const email = (match?.[1] ?? fromHeader).trim().toLowerCase();
+              if (email.includes("@")) seen.add(email);
+            }
+          }
+          if (seen.size === 0) continue;
+          const r = await autoLinkSendersForTransaction(db, {
+            transactionId: t.id,
+            senderEmails: [...seen],
+            ownerAliases,
+          });
+          sendersScanned += r.scanned;
+          participantsAdded += r.added;
+        } catch (e) {
+          logError(e, {
+            route: "MorningTick.autoLink",
+            transactionId: t.id,
+          });
+        }
+      }
+      autoLink = { dealsScanned, sendersScanned, participantsAdded };
+    }
+  } catch (e) {
+    logError(e, { route: "MorningTick.autoLink.outer" });
   }
 
   /* ============================================================
@@ -322,6 +445,7 @@ export async function runMorningTick(
       const tg = new TelegramService();
       const text = formatBrief({
         contractScan,
+        autoLink,
         earnestMoneyScan,
         classification,
         rezen: {
@@ -345,6 +469,7 @@ export async function runMorningTick(
     startedAt: startedAt.toISOString(),
     finishedAt: new Date().toISOString(),
     contractScan,
+    autoLink,
     earnestMoneyScan,
     classification,
     rezen: {
@@ -360,6 +485,7 @@ export async function runMorningTick(
 /** Format a tight Markdown brief. ≤ 4096 chars (Telegram limit). */
 function formatBrief(args: {
   contractScan: MorningTickResult["contractScan"];
+  autoLink: MorningTickResult["autoLink"];
   earnestMoneyScan: MorningTickResult["earnestMoneyScan"];
   classification: MorningTickResult["classification"];
   rezen: MorningTickResult["rezen"];
@@ -380,6 +506,13 @@ function formatBrief(args: {
     );
   } else {
     lines.push("📥 *Inbox*: skipped (Gmail not connected)");
+  }
+
+  // Auto-link senders → participants
+  if (args.autoLink && args.autoLink.participantsAdded > 0) {
+    lines.push(
+      `🔗 *Auto-linked*: ${args.autoLink.participantsAdded} new participant(s) added (${args.autoLink.sendersScanned} senders across ${args.autoLink.dealsScanned} deals)`,
+    );
   }
 
   // Earnest money scan
