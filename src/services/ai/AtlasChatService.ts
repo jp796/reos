@@ -17,36 +17,74 @@ const MODEL = process.env.OPENAI_CHAT_MODEL ?? "gpt-4o-mini";
 const SYSTEM = `You are Atlas, the user's real-estate transaction chief of staff inside REOS.
 You're being asked questions over Telegram by the user (an agent or coordinator).
 
+You receive a CONTEXT block with the user's open deals (each with milestones, tasks,
+documents, participants, lender/title, financials, risk score) plus the last 20 closings.
+
 Reply rules:
-- Be brief. Phone-screen friendly. Bullet points when useful.
-- Numbers tabular when relevant.
-- If the user asks about a specific deal, use the property address as the anchor.
-- If you don't have the data needed to answer, say so plainly — don't invent.
-- No pleasantries, no "I hope this helps", no "let me know if". Just the answer.
-- Telegram supports basic Markdown: *bold*, _italic_, \`mono\`. Use sparingly.
+- BE BRIEF. Phone-screen friendly. Bullet lists work.
+- Use the property address as the deal's anchor (matched flexibly — "509 Bent" matches
+  "509 Bent Avenue in Cheyenne, WY").
+- Filter by what the user asked: closing this week → openDeals where daysToClose 0-7.
+  Overdue → milestones[].overdue==true. Missing X doc → search documents[].rezenSlot
+  and fileName.
+- Match contact names loosely (case-insensitive, partial first/last).
+- If the answer needs data NOT in the CONTEXT (e.g. financial detail not loaded),
+  give what you DO have first, then note the limitation. Don't say "no data" without
+  trying.
+- No pleasantries. No "I hope this helps". No "let me know if".
+- Telegram Markdown: *bold*, _italic_, \`mono\`. Use sparingly. Plain text is fine.`;
 
-You'll receive a CONTEXT block with a snapshot of every open deal plus recent activity.
-Use only that data for facts. If the user asks something not in the context, say so.`;
-
+interface MilestoneLite {
+  type: string;
+  label: string;
+  due: string | null;
+  done: string | null;
+  overdue: boolean;
+}
+interface DocLite {
+  fileName: string;
+  category: string | null;
+  rezenSlot: string | null;
+  source: string;
+}
+interface DealLite {
+  id: string;
+  address: string;
+  city: string | null;
+  state: string | null;
+  contact: string;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  side: string | null;
+  status: string;
+  contractDate: string | null;
+  closingDate: string | null;
+  daysToClose: number | null;
+  riskScore: number;
+  lender: string | null;
+  titleCompany: string | null;
+  salePrice: number | null;
+  grossCommission: number | null;
+  milestones: MilestoneLite[];
+  openTasks: Array<{ title: string; due: string | null; priority: string }>;
+  documents: DocLite[];
+  participants: Array<{ name: string; role: string; email: string | null }>;
+}
 interface ChatContextBlob {
   account: { id: string; businessName: string };
-  openDeals: Array<{
-    id: string;
-    address: string;
-    contact: string;
-    side: string | null;
-    status: string;
-    contractDate: string | null;
-    closingDate: string | null;
-    riskScore: number;
-    overdueMilestones: number;
-    pendingMilestones: number;
-  }>;
+  todayIso: string;
+  openDeals: DealLite[];
   recentClosings: Array<{
     address: string;
+    contact: string;
     closingDate: string;
     salePrice: number | null;
+    grossCommission: number | null;
   }>;
+}
+
+function dayDiff(a: Date, b: Date): number {
+  return Math.round((a.getTime() - b.getTime()) / 86_400_000);
 }
 
 async function buildContext(
@@ -58,22 +96,57 @@ async function buildContext(
     select: { id: true, businessName: true },
   });
   const now = new Date();
+
   const open = await db.transaction.findMany({
     where: { accountId, status: { notIn: ["closed", "dead"] } },
     include: {
-      contact: { select: { fullName: true } },
+      contact: {
+        select: {
+          fullName: true,
+          primaryEmail: true,
+          primaryPhone: true,
+        },
+      },
+      financials: {
+        select: { salePrice: true, grossCommission: true },
+      },
       milestones: {
         select: {
+          type: true,
           status: true,
           completedAt: true,
           dueAt: true,
           label: true,
         },
+        orderBy: { dueAt: "asc" },
+      },
+      tasks: {
+        where: { completedAt: null },
+        select: { title: true, dueAt: true, priority: true },
+        orderBy: { dueAt: "asc" },
+        take: 5,
+      },
+      documents: {
+        select: {
+          fileName: true,
+          category: true,
+          source: true,
+          suggestedRezenSlot: true,
+        },
+        orderBy: { uploadedAt: "desc" },
+        take: 12,
+      },
+      participants: {
+        select: {
+          role: true,
+          contact: { select: { fullName: true, primaryEmail: true } },
+        },
       },
     },
-    take: 50,
+    take: 60,
     orderBy: { closingDate: "asc" },
   });
+
   const closings = await db.transaction.findMany({
     where: {
       accountId,
@@ -82,42 +155,70 @@ async function buildContext(
     },
     include: {
       contact: { select: { fullName: true } },
-      financials: { select: { salePrice: true } },
+      financials: { select: { salePrice: true, grossCommission: true } },
     },
     orderBy: { closingDate: "desc" },
-    take: 5,
+    take: 20,
   });
+
   return {
     account: {
       id: account?.id ?? accountId,
       businessName: account?.businessName ?? "REOS",
     },
-    openDeals: open.map((t) => {
-      const overdue = t.milestones.filter(
-        (m) =>
+    todayIso: now.toISOString().slice(0, 10),
+    openDeals: open.map((t): DealLite => ({
+      id: t.id,
+      address: t.propertyAddress ?? "(no address)",
+      city: t.city,
+      state: t.state,
+      contact: t.contact.fullName,
+      contactEmail: t.contact.primaryEmail,
+      contactPhone: t.contact.primaryPhone,
+      side: t.side,
+      status: t.status,
+      contractDate: t.contractDate?.toISOString().slice(0, 10) ?? null,
+      closingDate: t.closingDate?.toISOString().slice(0, 10) ?? null,
+      daysToClose: t.closingDate ? dayDiff(t.closingDate, now) : null,
+      riskScore: t.riskScore,
+      lender: t.lenderName,
+      titleCompany: t.titleCompanyName,
+      salePrice: t.financials?.salePrice ?? null,
+      grossCommission: t.financials?.grossCommission ?? null,
+      milestones: t.milestones.map((m): MilestoneLite => ({
+        type: m.type,
+        label: m.label,
+        due: m.dueAt?.toISOString().slice(0, 10) ?? null,
+        done: m.completedAt?.toISOString().slice(0, 10) ?? null,
+        overdue:
           !m.completedAt &&
           m.status === "pending" &&
           m.dueAt != null &&
           m.dueAt <= now,
-      ).length;
-      const pending = t.milestones.filter((m) => !m.completedAt).length;
-      return {
-        id: t.id,
-        address: t.propertyAddress ?? "(no address)",
-        contact: t.contact.fullName,
-        side: t.side,
-        status: t.status,
-        contractDate: t.contractDate?.toISOString().slice(0, 10) ?? null,
-        closingDate: t.closingDate?.toISOString().slice(0, 10) ?? null,
-        riskScore: t.riskScore,
-        overdueMilestones: overdue,
-        pendingMilestones: pending,
-      };
-    }),
+      })),
+      openTasks: t.tasks.map((tk) => ({
+        title: tk.title,
+        due: tk.dueAt?.toISOString().slice(0, 10) ?? null,
+        priority: tk.priority,
+      })),
+      documents: t.documents.map((d): DocLite => ({
+        fileName: d.fileName,
+        category: d.category,
+        rezenSlot: d.suggestedRezenSlot,
+        source: d.source,
+      })),
+      participants: t.participants.map((p) => ({
+        name: p.contact.fullName,
+        role: p.role,
+        email: p.contact.primaryEmail,
+      })),
+    })),
     recentClosings: closings.map((t) => ({
       address: t.propertyAddress ?? t.contact.fullName,
+      contact: t.contact.fullName,
       closingDate: t.closingDate?.toISOString().slice(0, 10) ?? "",
       salePrice: t.financials?.salePrice ?? null,
+      grossCommission: t.financials?.grossCommission ?? null,
     })),
   };
 }
