@@ -47,6 +47,12 @@ const SECTIONS = [
     desc: "Recent changes across the workspace",
     icon: ScrollText,
   },
+  {
+    href: "/settings/integrations",
+    title: "Integrations",
+    desc: "MLS photo sources + social posters (Buffer, Direct, Cowork)",
+    icon: Briefcase,
+  },
 ];
 
 export default async function SettingsIndexPage() {
