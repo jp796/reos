@@ -204,8 +204,10 @@ export async function runMorningTick(
       for (const t of openTxns) {
         if (!t.propertyAddress) continue;
         dealsScanned++;
-        // Harvest sender emails from the smart folder (preferred) or
-        // a 3-token address-anchored window over the last 30 days.
+        // 3-token street fragment as the search anchor — labels can
+        // be brittle (escaping, length caps) and the subject anchor
+        // catches what's actually in inbound mail. Strip TBD / Lot
+        // prefixes for new-construction parcels.
         const tokens = t.propertyAddress
           .replace(/^\s*(?:TBD|Lot\s*#?\s*\d+)\s*[\/-]?\s*/i, "")
           .split(",")[0]
@@ -213,12 +215,8 @@ export async function runMorningTick(
           .split(/\s+/)
           .slice(0, 3)
           .join(" ");
-        const q = t.smartFolderLabelId
-          ? `label:"REOS/Transactions/${t.propertyAddress.replace(/\//g, "—").trim().slice(0, 150)}" newer_than:30d`
-          : tokens
-            ? `subject:"${tokens}" newer_than:30d`
-            : null;
-        if (!q) continue;
+        if (!tokens) continue;
+        const q = `subject:"${tokens}" newer_than:30d`;
         try {
           const { threads } = await gmail.searchThreadsPaged({
             q,
