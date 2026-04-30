@@ -34,13 +34,29 @@ export interface TimelineScanResult {
   }>;
 }
 
-/** Patterns that indicate earnest-money receipt / deposit confirmation */
+/** Patterns that indicate earnest-money receipt / deposit confirmation.
+ * STRICT — used when we don't know who the sender is (cold inbox
+ * search). Demands a "received / receipt / confirm" follow-up word
+ * to keep precision high. */
 const EM_SUBJECT_RES: RegExp[] = [
   /\bearnest\s+money\b[^\n]{0,80}(?:receipt|received|deposited|confirm|clear)/i,
   /\bEM\s+receipt\b/i,
   /deposit\s+(?:received|confirmation)/i,
   /wire\s+(?:received|confirmation|confirm)/i,
   /earnest\s+money.*received/i,
+];
+/** LOOSE — used when the email's sender is a known participant on
+ * the deal (title coordinator, lender, agent). Just having "earnest
+ * money" / "deposit" / "wire" in the subject is enough; the sender
+ * vouches for relevance. Catches title-coordinator replies like
+ * "Re: 3327 Thomas rd earnest money?" that omit the confirmation
+ * word. */
+const EM_SUBJECT_LOOSE_RES: RegExp[] = [
+  /earnest\s+money/i,
+  /\bEM\b/i,
+  /\bdeposit\b/i,
+  /wire\s+(?:transfer|instructions|confirmation|sent)?/i,
+  /\bescrow\s+receipt\b/i,
 ];
 const EM_FILENAME_RES: RegExp[] = [
   /earnest[_\s-]*money/i,
@@ -156,7 +172,9 @@ export class TimelineUpdateService {
         for (const q of queries) {
           // First two queries already include the EM-keyword scope at
           // the call site; the participant-sender query embeds it
-          // already.
+          // already. Looser subject matching applies on the
+          // participant-sender path because the sender is already
+          // vouched for.
           const isParticipantQuery = q.includes("from:");
           const fullQuery = isParticipantQuery
             ? q
@@ -173,14 +191,29 @@ export class TimelineUpdateService {
                 m.payload?.headers?.find(
                   (h) => h.name?.toLowerCase() === "subject",
                 )?.value ?? "";
+              const fromHeader =
+                m.payload?.headers?.find(
+                  (h) => h.name?.toLowerCase() === "from",
+                )?.value ?? "";
               const dateStr =
                 m.payload?.headers?.find(
                   (h) => h.name?.toLowerCase() === "date",
                 )?.value ?? null;
               const msgDate = dateStr ? new Date(dateStr) : new Date();
 
-              // Subject match?
-              if (EM_SUBJECT_RES.some((re) => re.test(subject))) {
+              // Per-message: was this message FROM a known participant?
+              // Yes → use the loose EM patterns. No → strict.
+              const fromTrusted =
+                isParticipantQuery ||
+                [...senderEmails].some((e) =>
+                  fromHeader.toLowerCase().includes(e.toLowerCase()),
+                );
+
+              const subjectPatterns = fromTrusted
+                ? EM_SUBJECT_LOOSE_RES
+                : EM_SUBJECT_RES;
+
+              if (subjectPatterns.some((re) => re.test(subject))) {
                 found = { subject, date: msgDate, matchedVia: "subject" };
                 break;
               }
@@ -255,7 +288,13 @@ function shortAddress(address: string): string {
   // lines like "Re: 3327 Thomas rd earnest money" carry the street
   // but rarely the city — using "3327 Thomas Rd Cheyenne" as the
   // search anchor would miss the email entirely.
-  const beforeComma = address.split(",")[0]?.trim() ?? address;
+  // Also strip leading "TBD /" / "Lot #" prefixes common on
+  // new-construction parcels — what landed in subject lines is
+  // always the street component, not the placeholder.
+  const cleaned = address
+    .replace(/^\s*(?:TBD|Lot\s*#?\s*\d+)\s*[\/-]?\s*/i, "")
+    .trim();
+  const beforeComma = cleaned.split(",")[0]?.trim() ?? cleaned;
   const tokens = beforeComma.split(/\s+/);
   return tokens.slice(0, 3).join(" ");
 }
