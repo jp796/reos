@@ -251,7 +251,13 @@ function labelSegment(address: string): string {
   return address.replace(/\//g, "—").trim().slice(0, 150);
 }
 function shortAddress(address: string): string {
-  return address.split(",")[0]?.trim() ?? address;
+  // Trim to street-number + street-name + suffix (~3 tokens). Subject
+  // lines like "Re: 3327 Thomas rd earnest money" carry the street
+  // but rarely the city — using "3327 Thomas Rd Cheyenne" as the
+  // search anchor would miss the email entirely.
+  const beforeComma = address.split(",")[0]?.trim() ?? address;
+  const tokens = beforeComma.split(/\s+/);
+  return tokens.slice(0, 3).join(" ");
 }
 function formatGmailDate(d: Date): string {
   const y = d.getUTCFullYear();
