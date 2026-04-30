@@ -17,7 +17,54 @@ import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { requireSession, assertSameAccount } from "@/lib/require-session";
 import { classifyDocument } from "@/services/ai/DocumentClassifierService";
+import {
+  TRANSACTION_SLOTS,
+  LISTING_SLOTS,
+} from "@/services/core/RezenCompliancePrep";
 import { logError } from "@/lib/log";
+
+/** Build a clean filename from the AI-classified slot + the
+ * transaction's primary contact name. Skips the rename when:
+ * - confidence is too low to commit
+ * - current filename already starts with the slot prefix
+ */
+async function maybeRename(args: {
+  slotKey: string | null;
+  confidence: number;
+  currentName: string;
+  transactionId: string;
+  prisma: typeof prisma;
+}): Promise<{ fileName?: string }> {
+  if (!args.slotKey || args.confidence < 0.7) return {};
+  const slot =
+    [...TRANSACTION_SLOTS, ...LISTING_SLOTS].find((s) => s.key === args.slotKey);
+  if (!slot) return {};
+
+  // Slot prefix used in the renamed file, e.g. "09 Settlement Statement"
+  const pad = slot.number < 10 ? `0${slot.number}` : String(slot.number);
+  const labelClean = slot.label
+    .replace(/\([^)]*\)/g, "")
+    .replace(/[^A-Za-z0-9 \-&]/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 60);
+  const slotPrefix = `${pad} ${labelClean}`;
+
+  // Skip if the file is already named with this slot prefix
+  if (args.currentName.toLowerCase().startsWith(`${pad} `)) return {};
+
+  // Pull primary contact full name for the suffix
+  const txn = await args.prisma.transaction.findUnique({
+    where: { id: args.transactionId },
+    select: { contact: { select: { fullName: true } } },
+  });
+  const lastName = txn?.contact.fullName.split(/\s+/).pop() ?? "";
+  const ext = args.currentName.match(/\.[a-z0-9]+$/i)?.[0] ?? ".pdf";
+  const newName = lastName
+    ? `${slotPrefix} - ${lastName}${ext}`
+    : `${slotPrefix}${ext}`;
+  return { fileName: newName.slice(0, 200) };
+}
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -75,12 +122,26 @@ export async function POST(
         extractedText: doc.extractedText,
         openaiApiKey: env.OPENAI_API_KEY,
       });
+      // Auto-rename: if classification confidence is high enough,
+      // normalize the filename to "<slot> - <client>.<ext>" so the
+      // Documents tab + Rezen bundle stay tidy. Only renames when
+      // the current name doesn't already start with the slot label
+      // (so re-classifies don't churn the file name).
+      const renamePatch = await maybeRename({
+        slotKey: result.slotKey,
+        confidence: result.confidence,
+        currentName: doc.fileName,
+        transactionId: id,
+        prisma,
+      });
+
       await prisma.document.update({
         where: { id: doc.id },
         data: {
           suggestedRezenSlot: result.slotKey,
           suggestedRezenConfidence: result.confidence,
           classifiedAt: new Date(),
+          ...renamePatch,
         },
       });
       // Light audit so we can audit how the AI did over time.

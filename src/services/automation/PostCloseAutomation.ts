@@ -78,6 +78,26 @@ export const POST_CLOSE_RULES: PostCloseRule[] = [
       "1 day post-close. Bundle every required doc (use the Compliance panel to confirm coverage) and upload via Real Broker portal. Commission release is gated on this.",
     priority: "high",
   },
+  {
+    id: "post_close_six_month",
+    label: "6-month check-in",
+    daysAfter: 180,
+    taskTitle: "6-month check-in with {{client_name}}",
+    taskDescription:
+      "Half-year post-close. Light touch — settle in update, neighborhood news, anything they need. Bring up the home as a financial asset (equity built, market change). Most agents skip this; that's why it's worth doing.",
+    suggestedTemplateCategory: "post_close",
+    priority: "low",
+  },
+  {
+    id: "post_close_anniversary",
+    label: "Home anniversary",
+    daysAfter: 365,
+    taskTitle: "1-year anniversary with {{client_name}}",
+    taskDescription:
+      "1 year since closing. Send the home-anniversary email — congratulate them, reference the property, invite referrals. Good time for a CMA-as-gift if you want to spark a future move.",
+    suggestedTemplateCategory: "post_close",
+    priority: "normal",
+  },
 ];
 
 function mergeClientName(str: string, clientName: string): string {

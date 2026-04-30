@@ -17,6 +17,7 @@ import { prisma } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 import { requireSession, assertSameAccount } from "@/lib/require-session";
 import { AutomationAuditService } from "@/services/integrations/FollowUpBossService";
+import { recomputeOnDateShift } from "@/services/core/MilestoneRecomputeService";
 
 const VALID_SIDES = new Set(["buy", "sell", "both"]);
 const VALID_TYPES = new Set(["buyer", "seller", "investor", "wholesale", "other"]);
@@ -123,6 +124,29 @@ export async function PATCH(
     where: { id },
     data,
   });
+
+  // Date-shift cascade: when contractDate or closingDate changed,
+  // re-derive walkthrough + earnest-money + linked milestones.
+  if (body.contractDate !== undefined || body.closingDate !== undefined) {
+    try {
+      await recomputeOnDateShift(prisma, id, {
+        contractDate:
+          body.contractDate !== undefined
+            ? body.contractDate
+              ? new Date(body.contractDate)
+              : null
+            : undefined,
+        closingDate:
+          body.closingDate !== undefined
+            ? body.closingDate
+              ? new Date(body.closingDate)
+              : null
+            : undefined,
+      });
+    } catch {
+      // recompute failure should not block the primary edit
+    }
+  }
 
   // Audit: who edited what
   try {
