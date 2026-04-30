@@ -192,6 +192,33 @@ export function buildVariables(input: MergeInput): Record<string, string> {
     utility_connect_url: txn.utilityConnectReferenceCode
       ? `https://utilityconnect.net/start/${encodeURIComponent(txn.utilityConnectReferenceCode)}`
       : "",
+
+    // Agent participants — pulled from TransactionParticipant rows
+    // matching listing_agent / buyers_agent / co_*_agent. Renders
+    // empty when no participant exists in that role.
+    listing_agent_name:
+      participants.find((p) => p.role === "listing_agent")?.contact.fullName ??
+      "",
+    listing_agent_email:
+      participants.find((p) => p.role === "listing_agent")?.contact
+        .primaryEmail ?? "",
+    listing_agent_first_name: firstName(
+      participants.find((p) => p.role === "listing_agent")?.contact.fullName,
+    ),
+    buyers_agent_name:
+      participants.find((p) => p.role === "buyers_agent")?.contact.fullName ??
+      "",
+    buyers_agent_email:
+      participants.find((p) => p.role === "buyers_agent")?.contact
+        .primaryEmail ?? "",
+    buyers_agent_first_name: firstName(
+      participants.find((p) => p.role === "buyers_agent")?.contact.fullName,
+    ),
+    outside_tc_name:
+      participants.find((p) => p.role === "outside_tc")?.contact.fullName ?? "",
+    outside_tc_email:
+      participants.find((p) => p.role === "outside_tc")?.contact.primaryEmail ??
+      "",
   };
 
   return vars;

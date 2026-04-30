@@ -31,12 +31,20 @@ interface Participant {
 }
 
 const ROLE_LABELS: Record<string, string> = {
+  // Buyer side
   co_buyer: "Buyer 2 (co-buyer)",
+  buyers_agent: "Buyer's Agent",
+  co_buyers_agent: "Co-Buyer's Agent",
+  // Seller side
   co_seller: "Seller 2 (co-seller)",
+  listing_agent: "Listing Agent",
+  co_listing_agent: "Co-Listing Agent",
+  // Services
   lender: "Lender",
   attorney: "Attorney",
   inspector: "Inspector",
-  coordinator: "Coordinator",
+  coordinator: "In-house Coordinator",
+  outside_tc: "Outside TC",
   title: "Title / escrow",
   other: "Other",
 };
@@ -46,8 +54,13 @@ const ROLE_LABELS: Record<string, string> = {
  * together, everything else last. */
 const ROLE_GROUP: Record<string, "buyer" | "seller" | "service" | "other"> = {
   co_buyer: "buyer",
+  buyers_agent: "buyer",
+  co_buyers_agent: "buyer",
   co_seller: "seller",
+  listing_agent: "seller",
+  co_listing_agent: "seller",
   lender: "service",
+  outside_tc: "service",
   title: "service",
   inspector: "service",
   attorney: "service",

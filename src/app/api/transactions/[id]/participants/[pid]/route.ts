@@ -19,10 +19,15 @@ import { requireSession, assertSameAccount } from "@/lib/require-session";
 const VALID_ROLES = new Set([
   "co_buyer",
   "co_seller",
+  "buyers_agent",
+  "co_buyers_agent",
+  "listing_agent",
+  "co_listing_agent",
   "lender",
   "attorney",
   "inspector",
   "coordinator",
+  "outside_tc",
   "title",
   "other",
 ]);
