@@ -21,6 +21,7 @@ import { ParticipantsPanel } from "./ParticipantsPanel";
 import { PartiesQuickEdit } from "./PartiesQuickEdit";
 import { ProductionToggle } from "./ProductionToggle";
 import { RezenCompliancePrepPanel } from "./RezenCompliancePrepPanel";
+import { ConvertListingButton } from "./ConvertListingButton";
 import { SMART_FOLDER_CUTOFF } from "@/services/automation/SmartFolderService";
 import {
   RiskScoringService,
@@ -211,6 +212,9 @@ export default async function TransactionDetailPage({
             contractDate={txn.contractDate}
             closingDate={txn.closingDate}
           />
+          {txn.status === "listing" && (
+            <ConvertListingButton transactionId={txn.id} />
+          )}
           <PartiesQuickEdit
             transactionId={txn.id}
             primaryContact={{

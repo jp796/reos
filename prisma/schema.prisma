@@ -162,12 +162,14 @@ model Transaction {
   zip                    String?
   transactionType        String    @default("buyer") @map("transaction_type") // buyer, seller, investor, wholesale, other
   side                   String?
-  status                 String    @default("active") // active, pending, closed, dead
+  status                 String    @default("active") // listing, active, pending, closed, dead
   pipelineName           String?   @map("pipeline_name")
   stageName              String?   @map("stage_name")
   contractDate           DateTime? @map("contract_date")
   closingDate            DateTime? @map("closing_date")
   listDate               DateTime? @map("list_date")
+  listingExpirationDate  DateTime? @map("listing_expiration_date")
+  listPrice              Float?    @map("list_price")
   inspectionDate         DateTime? @map("inspection_date")
   inspectionObjectionDate DateTime? @map("inspection_objection_date")
   appraisalDate          DateTime? @map("appraisal_date")
