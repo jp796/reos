@@ -130,6 +130,60 @@ export default async function ProductionPage({
       `,
     ]);
 
+  /* ------------------------------------------------------------------
+   * PIPELINE FUNNEL — leads → active → closed by source, plus
+   * conversion% and avg days from contract to close. Used to drive
+   * the "where do my best deals come from" question.
+   * ------------------------------------------------------------------ */
+  const pipeline = await prisma.$queryRaw<
+    Array<{
+      source_name: string | null;
+      leads: bigint;
+      active: bigint;
+      closed_ytd: bigint;
+      avg_days_to_close: number | null;
+    }>
+  >`
+    WITH leads AS (
+      SELECT COALESCE(source_name, '(unknown)') AS source_name,
+             COUNT(*)::bigint AS leads
+      FROM contacts
+      GROUP BY source_name
+    ),
+    active AS (
+      SELECT COALESCE(c.source_name, '(unknown)') AS source_name,
+             COUNT(*)::bigint AS active
+      FROM transactions t
+      JOIN contacts c ON c.id = t.contact_id
+      WHERE t.status IN ('listing','active','pending')
+      GROUP BY c.source_name
+    ),
+    closed AS (
+      SELECT COALESCE(c.source_name, '(unknown)') AS source_name,
+             COUNT(*)::bigint AS closed_ytd,
+             AVG(EXTRACT(EPOCH FROM (t.closing_date - t.contract_date)) / 86400)::float AS avg_days_to_close
+      FROM transactions t
+      JOIN contacts c ON c.id = t.contact_id
+      WHERE t.status = 'closed'
+        AND t.exclude_from_production = false
+        AND t.closing_date IS NOT NULL
+        AND t.contract_date IS NOT NULL
+        AND t.closing_date >= ${yearStart}
+        AND t.closing_date <  ${yearEnd}
+      GROUP BY c.source_name
+    )
+    SELECT l.source_name,
+           l.leads,
+           COALESCE(a.active, 0)::bigint AS active,
+           COALESCE(cl.closed_ytd, 0)::bigint AS closed_ytd,
+           cl.avg_days_to_close
+    FROM leads l
+    LEFT JOIN active a ON a.source_name = l.source_name
+    LEFT JOIN closed cl ON cl.source_name = l.source_name
+    ORDER BY l.leads DESC
+    LIMIT 25
+  `;
+
   const totalClosings = closedYTD.length;
   const totalVolume = closedYTD.reduce(
     (s, t) => s + (t.financials?.salePrice ?? 0),
@@ -327,6 +381,78 @@ export default async function ProductionPage({
                     </td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {/* Pipeline funnel — leads → active → closed by source */}
+      {pipeline.length > 0 && (
+        <section className="mt-8">
+          <h2 className="mb-2 text-lg font-medium">Pipeline funnel</h2>
+          <p className="mb-3 text-xs text-text-muted">
+            How each source converts: leads in REOS → currently active deals →
+            closed YTD. Conversion = closed YTD / leads.
+          </p>
+          <div className="overflow-x-auto rounded-lg border border-border bg-surface">
+            <table className="min-w-full text-sm">
+              <thead className="border-b border-border bg-surface-2 text-left">
+                <tr>
+                  <th className="px-4 py-2 text-xs font-medium uppercase tracking-wide text-text-muted">
+                    Source
+                  </th>
+                  <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-text-muted">
+                    Leads
+                  </th>
+                  <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-text-muted">
+                    Active
+                  </th>
+                  <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-text-muted">
+                    Closed YTD
+                  </th>
+                  <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-text-muted">
+                    Conv %
+                  </th>
+                  <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-text-muted">
+                    Avg days
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {pipeline.map((row) => {
+                  const leads = Number(row.leads);
+                  const active = Number(row.active);
+                  const closed = Number(row.closed_ytd);
+                  const conv = leads > 0 ? (closed / leads) * 100 : 0;
+                  return (
+                    <tr
+                      key={row.source_name ?? "(unknown)"}
+                      className="border-t border-border"
+                    >
+                      <td className="px-4 py-2 font-medium">
+                        {row.source_name ?? "(unknown)"}
+                      </td>
+                      <td className="px-4 py-2 text-right tabular-nums text-text-muted">
+                        {leads.toLocaleString()}
+                      </td>
+                      <td className="px-4 py-2 text-right tabular-nums text-text-muted">
+                        {active.toLocaleString()}
+                      </td>
+                      <td className="px-4 py-2 text-right tabular-nums text-text">
+                        {closed.toLocaleString()}
+                      </td>
+                      <td className="px-4 py-2 text-right tabular-nums text-text-muted">
+                        {leads > 0 ? `${conv.toFixed(1)}%` : "—"}
+                      </td>
+                      <td className="px-4 py-2 text-right tabular-nums text-text-muted">
+                        {row.avg_days_to_close
+                          ? `${Math.round(row.avg_days_to_close)}d`
+                          : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

@@ -22,6 +22,7 @@ import { PartiesQuickEdit } from "./PartiesQuickEdit";
 import { ProductionToggle } from "./ProductionToggle";
 import { RezenCompliancePrepPanel } from "./RezenCompliancePrepPanel";
 import { ConvertListingButton } from "./ConvertListingButton";
+import { SocialPostsPanel } from "./SocialPostsPanel";
 import { SMART_FOLDER_CUTOFF } from "@/services/automation/SmartFolderService";
 import {
   RiskScoringService,
@@ -482,6 +483,19 @@ export default async function TransactionDetailPage({
           when the in-house compliance panel is disabled, since the
           bridge to Rezen is the whole point. */}
       <RezenCompliancePrepPanel transactionId={txn.id} />
+
+      {/* Social posts — generate ready-to-paste captions for the
+          three milestone events (listed/under-contract/sold). */}
+      <SocialPostsPanel
+        transactionId={txn.id}
+        defaultEvent={
+          txn.status === "listing"
+            ? "new_listing"
+            : txn.status === "closed"
+              ? "sold"
+              : "under_contract"
+        }
+      />
 
       {/* Wire fraud verification log — compliance record of the voice
           call confirming wire instructions before the client sends funds. */}
