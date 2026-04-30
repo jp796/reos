@@ -33,6 +33,8 @@ import { AcceptedContractScanService } from "@/services/automation/AcceptedContr
 import { classifyDocument } from "@/services/ai/DocumentClassifierService";
 import { buildRezenPrepReport } from "@/services/core/RezenCompliancePrep";
 import { TelegramService } from "@/services/integrations/TelegramService";
+import { TimelineUpdateService } from "@/services/automation/TimelineUpdateService";
+import { AutomationAuditService } from "@/services/integrations/FollowUpBossService";
 import { logError } from "@/lib/log";
 
 interface MorningTickResult {
@@ -43,6 +45,10 @@ interface MorningTickResult {
     extracted: number;
     hits: number;
     skippedNoExec: number;
+  } | null;
+  earnestMoneyScan: {
+    scanned: number;
+    completed: number;
   } | null;
   classification: {
     scanned: number;
@@ -126,6 +132,57 @@ export async function runMorningTick(
     }
   } catch (e) {
     logError(e, { route: "MorningTick.contractScan" });
+  }
+
+  /* ============================================================
+   * Step 1.5 — Earnest-money receipt scan
+   * Marks the EM milestone complete on any active deal where
+   * Gmail shows a deposit / receipt email from a known
+   * participant. New participant-sender fallback catches emails
+   * like "Deposit" / "Earnest money" that omit the address.
+   * ============================================================ */
+  let earnestMoneyScan: MorningTickResult["earnestMoneyScan"] = null;
+  try {
+    const account = await db.account.findFirst({
+      select: { id: true, googleOauthTokensEncrypted: true },
+    });
+    if (
+      account?.googleOauthTokensEncrypted &&
+      env.GOOGLE_CLIENT_ID &&
+      env.GOOGLE_CLIENT_SECRET &&
+      env.GOOGLE_REDIRECT_URI
+    ) {
+      const oauth = new GoogleOAuthService(
+        {
+          clientId: env.GOOGLE_CLIENT_ID,
+          clientSecret: env.GOOGLE_CLIENT_SECRET,
+          redirectUri: env.GOOGLE_REDIRECT_URI,
+          scopes: DEFAULT_SCOPES,
+        },
+        db,
+        getEncryptionService(),
+      );
+      const gAuth = await oauth.createAuthenticatedClient(account.id);
+      const gmail = new GmailService(
+        account.id,
+        gAuth,
+        {
+          labelPrefix: "REOS/",
+          autoOrganizeThreads: false,
+          extractAttachments: true,
+          batchSize: 10,
+          rateLimitDelayMs: 100,
+        },
+        db,
+        new EmailTransactionMatchingService(),
+      );
+      const audit = new AutomationAuditService(db);
+      const tlSvc = new TimelineUpdateService(db, gmail, audit);
+      const r = await tlSvc.scanEarnestMoney(account.id);
+      earnestMoneyScan = { scanned: r.scanned, completed: r.completed };
+    }
+  } catch (e) {
+    logError(e, { route: "MorningTick.earnestMoneyScan" });
   }
 
   /* ============================================================
@@ -265,6 +322,7 @@ export async function runMorningTick(
       const tg = new TelegramService();
       const text = formatBrief({
         contractScan,
+        earnestMoneyScan,
         classification,
         rezen: {
           activeDeals: openTxns.length,
@@ -287,6 +345,7 @@ export async function runMorningTick(
     startedAt: startedAt.toISOString(),
     finishedAt: new Date().toISOString(),
     contractScan,
+    earnestMoneyScan,
     classification,
     rezen: {
       activeDeals: openTxns.length,
@@ -301,6 +360,7 @@ export async function runMorningTick(
 /** Format a tight Markdown brief. ≤ 4096 chars (Telegram limit). */
 function formatBrief(args: {
   contractScan: MorningTickResult["contractScan"];
+  earnestMoneyScan: MorningTickResult["earnestMoneyScan"];
   classification: MorningTickResult["classification"];
   rezen: MorningTickResult["rezen"];
 }): string {
@@ -320,6 +380,13 @@ function formatBrief(args: {
     );
   } else {
     lines.push("📥 *Inbox*: skipped (Gmail not connected)");
+  }
+
+  // Earnest money scan
+  if (args.earnestMoneyScan) {
+    lines.push(
+      `💰 *Earnest money*: ${args.earnestMoneyScan.completed} EM milestone(s) auto-completed across ${args.earnestMoneyScan.scanned} deal(s)`,
+    );
   }
 
   // Classification

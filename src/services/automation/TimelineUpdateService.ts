@@ -94,17 +94,55 @@ export class TimelineUpdateService {
           ? `label:"REOS/Transactions/${labelSegment(txn.propertyAddress)}"`
           : null;
 
-      // Scope the search: either the transaction's label (if SmartFolder
-      // set up) or a looser query by property-address phrase within the
-      // last 60 days.
+      // Scope the search. Three paths in order of precision:
+      //   A. SmartFolder label   — strongest
+      //   B. Subject contains the property address
+      //   C. From: any known participant on this deal + EM keyword
+      //      ← catches title-coordinator emails like "Deposit" /
+      //         "Earnest money" that omit the address.
       const since = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
       const sinceToken = formatGmailDate(since);
-      const baseQuery = labelFilter
-        ? `${labelFilter} after:${sinceToken}`
-        : txn.propertyAddress
-          ? `subject:"${shortAddress(txn.propertyAddress)}" after:${sinceToken}`
-          : null;
-      if (!baseQuery) continue;
+      const queries: string[] = [];
+      if (labelFilter) {
+        queries.push(`${labelFilter} after:${sinceToken}`);
+      }
+      if (txn.propertyAddress) {
+        queries.push(
+          `subject:"${shortAddress(txn.propertyAddress)}" after:${sinceToken}`,
+        );
+      }
+      // Pull participant sender emails (service providers + primary
+      // contact). Cap at 12 to keep the OR clause workable.
+      const participantEmails = await this.db.transactionParticipant.findMany({
+        where: {
+          transactionId: txn.id,
+          contact: { primaryEmail: { not: null } },
+        },
+        include: { contact: { select: { primaryEmail: true } } },
+        take: 12,
+      });
+      const senderEmails = new Set<string>();
+      for (const p of participantEmails) {
+        if (p.contact.primaryEmail) senderEmails.add(p.contact.primaryEmail);
+      }
+      // Add the primary contact too — they sometimes forward EM
+      // confirmations from the title co.
+      const primary = await this.db.transaction.findUnique({
+        where: { id: txn.id },
+        select: { contact: { select: { primaryEmail: true } } },
+      });
+      if (primary?.contact?.primaryEmail) {
+        senderEmails.add(primary.contact.primaryEmail);
+      }
+      if (senderEmails.size > 0) {
+        const fromOr = [...senderEmails]
+          .map((e) => `from:"${e.replace(/"/g, "")}"`)
+          .join(" OR ");
+        queries.push(
+          `(${fromOr}) (earnest OR deposit OR wire OR escrow OR receipt) after:${sinceToken}`,
+        );
+      }
+      if (queries.length === 0) continue;
 
       // Search once per EM pattern so we catch subject-based matches
       // that don't share keywords.
@@ -115,35 +153,49 @@ export class TimelineUpdateService {
       } | null = null;
 
       try {
-        const { threads } = await this.gmail.searchThreadsPaged({
-          q: `${baseQuery} (earnest OR deposit OR wire)`,
-          maxTotal: 30,
-        });
-        for (const t of threads) {
-          if (!t.messages) continue;
-          for (const m of t.messages) {
-            if (!m.id) continue;
-            const subject =
-              m.payload?.headers?.find(
-                (h) => h.name?.toLowerCase() === "subject",
-              )?.value ?? "";
-            const dateStr =
-              m.payload?.headers?.find(
-                (h) => h.name?.toLowerCase() === "date",
-              )?.value ?? null;
-            const msgDate = dateStr ? new Date(dateStr) : new Date();
+        for (const q of queries) {
+          // First two queries already include the EM-keyword scope at
+          // the call site; the participant-sender query embeds it
+          // already.
+          const isParticipantQuery = q.includes("from:");
+          const fullQuery = isParticipantQuery
+            ? q
+            : `${q} (earnest OR deposit OR wire OR escrow OR receipt)`;
+          const { threads } = await this.gmail.searchThreadsPaged({
+            q: fullQuery,
+            maxTotal: 30,
+          });
+          for (const t of threads) {
+            if (!t.messages) continue;
+            for (const m of t.messages) {
+              if (!m.id) continue;
+              const subject =
+                m.payload?.headers?.find(
+                  (h) => h.name?.toLowerCase() === "subject",
+                )?.value ?? "";
+              const dateStr =
+                m.payload?.headers?.find(
+                  (h) => h.name?.toLowerCase() === "date",
+                )?.value ?? null;
+              const msgDate = dateStr ? new Date(dateStr) : new Date();
 
-            // Subject match?
-            if (EM_SUBJECT_RES.some((re) => re.test(subject))) {
-              found = { subject, date: msgDate, matchedVia: "subject" };
-              break;
+              // Subject match?
+              if (EM_SUBJECT_RES.some((re) => re.test(subject))) {
+                found = { subject, date: msgDate, matchedVia: "subject" };
+                break;
+              }
+              // Filename match on attachments?
+              const atts = await this.gmail.getMessageAttachments(m.id);
+              if (
+                atts.some((a) =>
+                  EM_FILENAME_RES.some((re) => re.test(a.filename)),
+                )
+              ) {
+                found = { subject, date: msgDate, matchedVia: "filename" };
+                break;
+              }
             }
-            // Filename match on attachments?
-            const atts = await this.gmail.getMessageAttachments(m.id);
-            if (atts.some((a) => EM_FILENAME_RES.some((re) => re.test(a.filename)))) {
-              found = { subject, date: msgDate, matchedVia: "filename" };
-              break;
-            }
+            if (found) break;
           }
           if (found) break;
         }
