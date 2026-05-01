@@ -28,6 +28,11 @@ model Account {
   followUpBossSystemKeyEncrypted  String?  @map("follow_up_boss_system_key_encrypted")
   googleOauthTokensEncrypted      String?  @map("google_oauth_tokens_encrypted")
   settingsJson                    Json?    @map("settings_json")
+  /// Brokerage profile this account belongs to. Drives compliance
+  /// checklist, CDA template, and default integrations. Nullable
+  /// during onboarding before the wizard runs.
+  brokerageProfileId              String?  @map("brokerage_profile_id")
+  brokerageProfile                BrokerageProfile? @relation(fields: [brokerageProfileId], references: [id])
   createdAt                       DateTime @default(now()) @map("created_at")
   updatedAt                       DateTime @updatedAt @map("updated_at")
 
@@ -800,6 +805,84 @@ model TransactionParticipant {
   @@index([transactionId])
   @@index([contactId])
   @@map("transaction_participants")
+}
+
+/// Per-brokerage configuration. Multi-tenant SaaS hook: each
+/// Account picks a profile (or creates one), which defines:
+///   - Compliance system + checklist (Rezen / Skyslope / etc.)
+///   - CDA template
+///   - Default email-template seed pack
+///   - Default trusted-sender domains (their own brokerage email)
+///
+/// State-level overrides ride on top via BrokerageStateConfig.
+/// Today: REOS ships with one row pre-seeded — "Real Broker (Rezen)".
+model BrokerageProfile {
+  id                       String   @id @default(cuid())
+  /// Stable slug, unique. e.g. "real-broker", "kw-command", "indie-default".
+  slug                     String   @unique
+  name                     String   // "Real Broker LLC"
+  /// Compliance system. Drives which checklist + CDA template apply.
+  complianceSystem         String   // rezen | skyslope | dotloop | lonewolf | inhouse | none
+  /// Trusted email domains for this brokerage's agents (used to
+  /// distinguish "our agent" from "other-side agent" on inbound mail).
+  agentEmailDomains        String[] @default([]) @map("agent_email_domains")
+  /// Optional CDA template id (FK omitted for v1 — seeded statically).
+  cdaTemplateKey           String?  @map("cda_template_key")
+  /// Free-form config bag — provider keys, defaults, etc.
+  configJson               Json?    @map("config_json")
+  isActive                 Boolean  @default(true) @map("is_active")
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @updatedAt @map("updated_at")
+
+  checklists               BrokerageChecklist[]
+  stateConfigs             BrokerageStateConfig[]
+  accounts                 Account[]
+
+  @@map("brokerage_profiles")
+}
+
+/// Compliance checklists, one row per (profile, kind, slot).
+/// Replaces the hard-coded TRANSACTION_SLOTS / LISTING_SLOTS in
+/// RezenCompliancePrep.ts — the existing 34/14 list is seeded as
+/// rows under the "Real Broker (Rezen)" profile.
+model BrokerageChecklist {
+  id              String   @id @default(cuid())
+  profileId       String   @map("profile_id")
+  /// "transaction" or "listing".
+  kind            String
+  slotNumber      Int      @map("slot_number")
+  slotKey         String   @map("slot_key")
+  label           String
+  required        String   // required | if_applicable
+  tag             String?  // cda | closing_docs | termination | null
+  requiredFor     String?  @map("required_for")
+  keywordsJson    Json     @map("keywords_json")
+  /// State-scoped override — null = applies to all states.
+  stateCode       String?  @map("state_code")
+
+  profile BrokerageProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, kind, slotKey, stateCode], map: "uniq_brokerage_checklist_slot")
+  @@index([profileId, kind])
+  @@map("brokerage_checklists")
+}
+
+/// State-specific contract rules (deadline math, default offsets).
+/// Joined to BrokerageProfile so a brokerage can override the
+/// REOS-default rules per state if their boilerplate differs.
+model BrokerageStateConfig {
+  id              String   @id @default(cuid())
+  profileId       String   @map("profile_id")
+  stateCode       String   @map("state_code") // 2-letter
+  /// Free-form overrides — { walkthroughOffsetDays: -1,
+  /// emDueBusinessDays: 3, inspectionDays: 10, ... }
+  rulesJson       Json     @map("rules_json")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  profile BrokerageProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, stateCode], map: "uniq_brokerage_state")
+  @@map("brokerage_state_configs")
 }
 
 /// History of scan runs from /scan — what type, when, how many hits.
