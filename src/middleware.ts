@@ -41,7 +41,7 @@ const WEBHOOK_PATTERNS: RegExp[] = [
 // Routes intentionally callable without a session — e.g. Cloud Run
 // health probes. Deliberately exact-match so we don't expose anything
 // under /api/health/*.
-const PUBLIC_EXACT = new Set<string>(["/api/health"]);
+const PUBLIC_EXACT = new Set<string>(["/api/health", "/"]);
 
 // NextAuth v5 session cookie names (dev vs prod secure variant).
 const SESSION_COOKIES = [

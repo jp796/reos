@@ -14,7 +14,10 @@ import { NextResponse } from "next/server";
 import JSZip from "jszip";
 import { prisma } from "@/lib/db";
 import { requireSession, assertSameAccount } from "@/lib/require-session";
-import { buildRezenPrepReport } from "@/services/core/RezenCompliancePrep";
+import {
+  buildRezenPrepReport,
+  loadSlotsForProfile,
+} from "@/services/core/RezenCompliancePrep";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,11 +38,18 @@ export async function GET(
       side: true,
       state: true,
       propertyAddress: true,
+      account: { select: { brokerageProfileId: true } },
     },
   });
   if (!txn) return NextResponse.json({ error: "not found" }, { status: 404 });
   const guard = assertSameAccount(actor, txn.accountId);
   if (guard) return guard;
+
+  const profileId = txn.account.brokerageProfileId;
+  const [transactionSlots, listingSlots] = await Promise.all([
+    loadSlotsForProfile(prisma, profileId, "transaction", txn.state),
+    loadSlotsForProfile(prisma, profileId, "listing", txn.state),
+  ]);
 
   const documents = await prisma.document.findMany({
     where: { transactionId: id },
@@ -72,6 +82,7 @@ export async function GET(
         side: txn.side,
         documents: cleanDocs,
         kind: "transaction",
+        slots: transactionSlots,
       }),
     });
   }
@@ -82,6 +93,7 @@ export async function GET(
         side: txn.side,
         documents: cleanDocs,
         kind: "listing",
+        slots: listingSlots,
       }),
     });
   }

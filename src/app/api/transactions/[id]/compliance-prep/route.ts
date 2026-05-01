@@ -11,7 +11,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSession, assertSameAccount } from "@/lib/require-session";
-import { buildRezenPrepReport } from "@/services/core/RezenCompliancePrep";
+import {
+  buildRezenPrepReport,
+  loadSlotsForProfile,
+} from "@/services/core/RezenCompliancePrep";
 
 export async function GET(
   _req: Request,
@@ -23,11 +26,25 @@ export async function GET(
   const { id } = await ctx.params;
   const txn = await prisma.transaction.findUnique({
     where: { id },
-    select: { id: true, accountId: true, side: true, state: true },
+    select: {
+      id: true,
+      accountId: true,
+      side: true,
+      state: true,
+      account: { select: { brokerageProfileId: true } },
+    },
   });
   if (!txn) return NextResponse.json({ error: "not found" }, { status: 404 });
   const guard = assertSameAccount(actor, txn.accountId);
   if (guard) return guard;
+
+  // Load the active brokerage's slot lists from DB (falls back to
+  // hard-coded Real-Broker lists when no profile is attached).
+  const profileId = txn.account.brokerageProfileId;
+  const [transactionSlots, listingSlots] = await Promise.all([
+    loadSlotsForProfile(prisma, profileId, "transaction", txn.state),
+    loadSlotsForProfile(prisma, profileId, "listing", txn.state),
+  ]);
 
   const documents = await prisma.document.findMany({
     where: { transactionId: id },
@@ -53,6 +70,7 @@ export async function GET(
         side: txn.side,
         documents,
         kind: "transaction",
+        slots: transactionSlots,
       })
     : null;
   const listing = showListing
@@ -60,6 +78,7 @@ export async function GET(
         side: txn.side,
         documents,
         kind: "listing",
+        slots: listingSlots,
       })
     : null;
 

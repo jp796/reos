@@ -90,7 +90,11 @@ export function AppShell({
   // the page render its own minimal presentation. Authenticated users
   // viewing /terms from inside the app still get the chrome (we only
   // strip it when there's no user context).
-  if (pathname?.startsWith("/share/") || pathname === "/login") {
+  if (
+    pathname?.startsWith("/share/") ||
+    pathname === "/login" ||
+    pathname === "/"
+  ) {
     return <>{children}</>;
   }
   if (pathname === "/intake") {

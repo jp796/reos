@@ -433,6 +433,48 @@ export function checklistKindFor(side: string | null): RezenChecklistKind {
   return "transaction";
 }
 
+/**
+ * Load slots for a brokerage profile + kind from the
+ * BrokerageChecklist table. Falls back to the hard-coded
+ * Real-Broker / Rezen lists when profileId is null OR no rows
+ * exist. Keeps things backward-compatible while we migrate.
+ */
+export async function loadSlotsForProfile(
+  db: import("@prisma/client").PrismaClient,
+  profileId: string | null,
+  kind: RezenChecklistKind,
+  stateCode: string | null = null,
+): Promise<RezenSlot[]> {
+  if (!profileId) {
+    return kind === "listing" ? LISTING_SLOTS : TRANSACTION_SLOTS;
+  }
+  const rows = await db.brokerageChecklist.findMany({
+    where: {
+      profileId,
+      kind,
+      OR: [{ stateCode: null }, ...(stateCode ? [{ stateCode }] : [])],
+    },
+    orderBy: { slotNumber: "asc" },
+  });
+  if (rows.length === 0) {
+    return kind === "listing" ? LISTING_SLOTS : TRANSACTION_SLOTS;
+  }
+  return rows.map((r) => ({
+    number: r.slotNumber,
+    key: r.slotKey,
+    label: r.label,
+    required: r.required as RezenRequiredness,
+    tag:
+      (r.tag as "cda" | "closing_docs" | "termination" | undefined) ?? undefined,
+    requiredFor: r.requiredFor ?? undefined,
+    keywords: Array.isArray(r.keywordsJson)
+      ? (r.keywordsJson as unknown[]).filter(
+          (x): x is string => typeof x === "string",
+        )
+      : [],
+  }));
+}
+
 /** Pad single-digit slot numbers so filenames sort lexically. */
 function pad2(n: number): string {
   return n < 10 ? `0${n}` : String(n);
@@ -494,11 +536,16 @@ export function buildRezenPrepReport(args: {
     | "suggestedRezenSlot"
     | "suggestedRezenConfidence"
   >[];
+  /** Slot list to use. When omitted, falls back to the hard-coded
+   * Real-Broker lists — backward compat for callers that haven't
+   * migrated to BrokerageChecklist DB rows yet. */
+  slots?: RezenSlot[];
   /** Override the auto-picked checklist (e.g. show both on dual). */
   kind?: RezenChecklistKind;
 }): RezenCompliancePrepReport {
   const kind = args.kind ?? checklistKindFor(args.side);
-  const slots = kind === "listing" ? LISTING_SLOTS : TRANSACTION_SLOTS;
+  const slots =
+    args.slots ?? (kind === "listing" ? LISTING_SLOTS : TRANSACTION_SLOTS);
 
   const items: RezenSlotStatus[] = slots.map((slot) => {
     const re = new RegExp(
