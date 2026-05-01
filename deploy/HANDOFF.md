@@ -43,7 +43,7 @@ take over without losing access, secrets, or running services.
 
 | Item | Location | Action on transfer |
 |---|---|---|
-| Source repo | (push to GitHub today — see §6) | GitHub `Transfer ownership` |
+| Source repo | `https://github.com/jp796/reos` (private) | GitHub `Settings → Transfer ownership` |
 | Branch | `main` | New owner clones + redeploys |
 | Build pipeline | `cloudbuild.yaml` (Cloud Build) | Migrates with GCP project |
 
