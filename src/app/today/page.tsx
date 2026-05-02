@@ -55,6 +55,22 @@ export default async function TodayPage({
   // the acting user. "all" (default) shows everything in the account.
   const scope: "mine" | "all" = sp.scope === "mine" ? "mine" : "all";
   const actor = await requireSession();
+
+  // First-time login: bounce to /onboarding when setup hasn't been
+  // marked complete yet. Skips when actor is an unauth response
+  // (middleware would have already redirected).
+  if (!(actor instanceof Response)) {
+    const onb = await prisma.account.findUnique({
+      where: { id: actor.accountId },
+      select: { settingsJson: true },
+    });
+    const settings = (onb?.settingsJson ?? {}) as Record<string, unknown>;
+    const onboarding = (settings.onboarding ?? {}) as { completedAt?: string };
+    if (!onboarding.completedAt) {
+      const { redirect } = await import("next/navigation");
+      redirect("/onboarding");
+    }
+  }
   // actor might be a Response when unauthenticated — middleware
   // redirects before we get here, so in practice this is always an
   // ActingUser. Narrow the type:
