@@ -9,7 +9,24 @@ const nextConfig = {
   },
   // Exclude native / CJS-only modules from the server bundler so Node
   // loads them normally at runtime instead of webpack re-wrapping them.
-  serverExternalPackages: ["pdf-parse"],
+  // pdfjs-dist must be external too — pdf-parse bundles it but uses
+  // a runtime dynamic import for pdf.worker.mjs that webpack can't
+  // statically resolve.
+  serverExternalPackages: ["pdf-parse", "pdfjs-dist"],
+  // Force the standalone build to copy pdfjs-dist's worker bundle
+  // into the deployed image. Without this Next's file-tracing misses
+  // the runtime dynamic import that pdfjs uses for its "fake worker"
+  // fallback in Node, and uploads fail with:
+  //   "Setting up fake worker failed: Cannot find module
+  //    '/app/node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs'"
+  outputFileTracingIncludes: {
+    "/api/**/*": [
+      "./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
+      "./node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs",
+      "./node_modules/pdfjs-dist/build/pdf.worker.mjs",
+      "./node_modules/pdfjs-dist/build/pdf.worker.min.mjs",
+    ],
+  },
   poweredByHeader: false,
 
   // Security headers applied to every response. Audit passes:
