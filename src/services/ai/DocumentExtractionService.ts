@@ -16,6 +16,13 @@
  * the common Settlement Statement templates from fste.com / firstam.com.
  */
 
+// IMPORTANT: must be a STATIC top-level import so the polyfill runs at
+// module-load time, before any code path can lazy-load pdf-parse. A
+// dynamic import inside the lazy-load block races against pdf-parse's
+// internal pdfjs-dist initialization and can lose. See
+// src/lib/pdfjs-node-polyfill.ts for what this installs and why.
+import "@/lib/pdfjs-node-polyfill";
+
 // pdf-parse v2 exports a PDFParse class (no callable default), unlike
 // v1 which was `pdfParse(buffer) -> {text}`. Lazy-load + adapt to keep
 // the callsite shape stable.
@@ -30,12 +37,6 @@ let _PDFParse: PDFParseV2Ctor | null = null;
 
 async function pdfParse(buf: Buffer): Promise<{ text: string }> {
   if (!_PDFParse) {
-    // Install Node-side polyfill for DOMMatrix / Path2D / ImageData
-    // before pdf-parse loads. pdf-parse v2 bundles pdfjs-dist v4+
-    // which references those browser-only globals during parsing —
-    // certain PDFs (rotated/transformed pages, embedded images) hit
-    // them and throw "DOMMatrix is not defined" otherwise.
-    await import("@/lib/pdfjs-node-polyfill");
     const mod = (await import("pdf-parse")) as unknown as {
       PDFParse?: PDFParseV2Ctor;
       default?: PDFParseV2Ctor | ((b: Buffer) => Promise<{ text: string }>);
