@@ -33,6 +33,15 @@ model Account {
   /// during onboarding before the wizard runs.
   brokerageProfileId              String?  @map("brokerage_profile_id")
   brokerageProfile                BrokerageProfile? @relation(fields: [brokerageProfileId], references: [id])
+  /// Subscription state — populated by Stripe webhook. Tier drives
+  /// feature gating (free=read-only, solo/team/brokerage unlock
+  /// progressively). status mirrors Stripe's subscription status
+  /// (active, trialing, past_due, canceled, incomplete).
+  subscriptionTier                String   @default("free") @map("subscription_tier")
+  subscriptionStatus              String?  @map("subscription_status")
+  stripeCustomerId                String?  @unique @map("stripe_customer_id")
+  stripeSubscriptionId            String?  @unique @map("stripe_subscription_id")
+  subscriptionRenewsAt            DateTime? @map("subscription_renews_at")
   createdAt                       DateTime @default(now()) @map("created_at")
   updatedAt                       DateTime @updatedAt @map("updated_at")
 

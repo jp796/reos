@@ -36,6 +36,7 @@ const WEBHOOK_PATTERNS: RegExp[] = [
   /^\/api\/automation\/[^/]+\/tick(\/|$)/,
   /^\/api\/automation\/morning-tick(\/|$)/,
   /^\/api\/admin\/seed-brokerage-profiles(\/|$)/,
+  /^\/api\/stripe\/webhook(\/|$)/,
 ];
 
 // Routes intentionally callable without a session — e.g. Cloud Run

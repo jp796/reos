@@ -78,6 +78,16 @@ const schema = z.object({
   /** Google AI Studio (Gemini) API key — used by AtlasChatService.
    * Free tier covers a single-user chat workload comfortably. */
   GEMINI_API_KEY: z.string().optional(),
+
+  /** Stripe — billing. All optional so the app boots even before the
+   * Stripe account is wired. Tier gating becomes active when keys
+   * are present. */
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_PUBLISHABLE_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  STRIPE_PRICE_ID_SOLO: z.string().optional(),
+  STRIPE_PRICE_ID_TEAM: z.string().optional(),
+  STRIPE_PRICE_ID_BROKERAGE: z.string().optional(),
 });
 
 // Skip validation during `next build` — Cloud Run injects secrets
