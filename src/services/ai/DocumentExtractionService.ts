@@ -30,6 +30,12 @@ let _PDFParse: PDFParseV2Ctor | null = null;
 
 async function pdfParse(buf: Buffer): Promise<{ text: string }> {
   if (!_PDFParse) {
+    // Install Node-side polyfill for DOMMatrix / Path2D / ImageData
+    // before pdf-parse loads. pdf-parse v2 bundles pdfjs-dist v4+
+    // which references those browser-only globals during parsing —
+    // certain PDFs (rotated/transformed pages, embedded images) hit
+    // them and throw "DOMMatrix is not defined" otherwise.
+    await import("@/lib/pdfjs-node-polyfill");
     const mod = (await import("pdf-parse")) as unknown as {
       PDFParse?: PDFParseV2Ctor;
       default?: PDFParseV2Ctor | ((b: Buffer) => Promise<{ text: string }>);
