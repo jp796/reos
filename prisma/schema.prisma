@@ -59,6 +59,7 @@ model Account {
   emailTemplates            EmailTemplate[]
   leadIntakes               LeadIntake[]
   scanRuns                  ScanRun[]
+  helpQuestions             HelpQuestion[]
 
   @@map("accounts")
 }
@@ -204,6 +205,10 @@ model Transaction {
   /// stamped wrong (e.g. legacy 2025 closing imported with today's date)
   /// or one-off non-production deals (referrals out, training files).
   excludeFromProduction  Boolean   @default(false) @map("exclude_from_production")
+  /// Demo / sandbox transaction — generated for testing. Excluded
+  /// from every analytics rollup; tagged with a badge in the UI.
+  /// Wiped via Settings → Demo data → Reset.
+  isDemo                 Boolean   @default(false) @map("is_demo")
 
   /// Utility Connect enrollment refs (set after a successful POST /lead).
   /// Presence of utilityConnectLeadId is the idempotency key — the
@@ -892,6 +897,28 @@ model BrokerageStateConfig {
 
   @@unique([profileId, stateCode], map: "uniq_brokerage_state")
   @@map("brokerage_state_configs")
+}
+
+/// Help questions — every /api/help call logs the question + the
+/// AI answer. Drives a weekly "what are users stuck on?" digest
+/// to Telegram so we know what features to build / clarify.
+model HelpQuestion {
+  id           String   @id @default(cuid())
+  accountId    String   @map("account_id")
+  userId       String?  @map("user_id")
+  question     String
+  answerText   String?  @map("answer_text")
+  /// Coarse topic guess from a regex match against the question —
+  /// used for grouping similar questions in the digest.
+  topic        String?
+  helpful      Boolean? // user thumb-up/down (later)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, createdAt])
+  @@index([topic])
+  @@map("help_questions")
 }
 
 /// History of scan runs from /scan — what type, when, how many hits.

@@ -53,6 +53,12 @@ const SECTIONS = [
     desc: "MLS photo sources + social posters (Buffer, Direct, Cowork)",
     icon: Briefcase,
   },
+  {
+    href: "/settings/demo-data",
+    title: "Demo data",
+    desc: "Generate / wipe sample transactions — never affects analytics",
+    icon: ScrollText,
+  },
 ];
 
 export default async function SettingsIndexPage() {

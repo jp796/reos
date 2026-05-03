@@ -60,6 +60,7 @@ export default async function DigestPage() {
       accountId: actor.accountId,
       status: "closed",
       excludeFromProduction: false,
+      isDemo: false,
       closingDate: { gte: weekAgo, lte: now },
     },
     include: { contact: true, financials: true },
@@ -127,6 +128,7 @@ export default async function DigestPage() {
     WHERE t.account_id = ${actor.accountId}
       AND t.status = 'closed'
       AND t.exclude_from_production = false
+      AND t.is_demo = false
       AND t.closing_date >= ${yearStart}
     GROUP BY c.source_name
     ORDER BY gci DESC NULLS LAST

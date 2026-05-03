@@ -64,6 +64,7 @@ export default async function ProductionPage({
         where: {
           status: "closed",
           excludeFromProduction: false,
+          isDemo: false,
           closingDate: { gte: yearStart, lt: yearEnd },
         },
         include: {
@@ -97,6 +98,7 @@ export default async function ProductionPage({
         LEFT JOIN transaction_financials f ON f.transaction_id = t.id
         WHERE t.status='closed'
           AND t.exclude_from_production = false
+          AND t.is_demo = false
           AND t.closing_date >= ${yearStart}
           AND t.closing_date <  ${yearEnd}
         GROUP BY EXTRACT(MONTH FROM t.closing_date)
@@ -120,6 +122,7 @@ export default async function ProductionPage({
         LEFT JOIN transaction_financials f ON f.transaction_id = t.id
         WHERE t.status='closed'
           AND t.exclude_from_production = false
+          AND t.is_demo = false
           AND t.closing_date >= ${yearStart}
           AND t.closing_date <  ${yearEnd}
         GROUP BY c.source_name
@@ -166,6 +169,7 @@ export default async function ProductionPage({
       JOIN contacts c ON c.id = t.contact_id
       WHERE t.status = 'closed'
         AND t.exclude_from_production = false
+        AND t.is_demo = false
         AND t.closing_date IS NOT NULL
         AND t.contract_date IS NOT NULL
         AND t.closing_date >= ${yearStart}

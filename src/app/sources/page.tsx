@@ -70,6 +70,7 @@ export default async function SourcesPage({
       LEFT JOIN transaction_financials f ON f.transaction_id = t.id
       WHERE t.status = 'closed'
         AND t.exclude_from_production = false
+        AND t.is_demo = false
         AND t.closing_date >= ${yearStart}
         AND t.closing_date <  ${yearEnd}
       GROUP BY c.source_name

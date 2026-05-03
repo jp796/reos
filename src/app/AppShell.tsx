@@ -14,6 +14,7 @@ import {
   Filter,
   Megaphone,
   Mic,
+  HelpCircle,
   UsersRound,
   Sun,
   Moon,
@@ -40,6 +41,7 @@ const NAV = [
   { href: "/sources", label: "Sources", icon: Filter },
   { href: "/marketing", label: "Marketing", icon: Megaphone },
   { href: "/contacts", label: "Contacts", icon: UsersRound },
+  { href: "/help", label: "Help", icon: HelpCircle },
   { href: "/settings", label: "Settings", icon: SettingsIcon },
 ];
 

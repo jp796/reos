@@ -435,6 +435,30 @@ export async function runMorningTick(
   const bestGap = gapList.slice(0, 5);
 
   /* ============================================================
+   * Step 3.5 — Help-question digest (top topics last 7 days)
+   * ============================================================ */
+  const helpDigest = await (async () => {
+    try {
+      const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const rows = await db.helpQuestion.groupBy({
+        by: ["topic"],
+        where: { createdAt: { gte: since } },
+        _count: { _all: true },
+        orderBy: { _count: { topic: "desc" } },
+        take: 5,
+      });
+      return rows
+        .filter((r) => (r._count?._all ?? 0) >= 2 && r.topic)
+        .map((r) => ({
+          topic: r.topic ?? "general",
+          count: r._count?._all ?? 0,
+        }));
+    } catch {
+      return [];
+    }
+  })();
+
+  /* ============================================================
    * Step 4 — Send Telegram brief
    * ============================================================ */
   const notification: MorningTickResult["notification"] = { sent: false };
@@ -446,6 +470,7 @@ export async function runMorningTick(
         autoLink,
         earnestMoneyScan,
         classification,
+        helpDigest,
         rezen: {
           activeDeals: openTxns.length,
           readyToPush,
@@ -486,6 +511,7 @@ function formatBrief(args: {
   autoLink: MorningTickResult["autoLink"];
   earnestMoneyScan: MorningTickResult["earnestMoneyScan"];
   classification: MorningTickResult["classification"];
+  helpDigest: Array<{ topic: string; count: number }>;
   rezen: MorningTickResult["rezen"];
 }): string {
   const dateStr = new Date().toLocaleDateString("en-US", {
@@ -542,6 +568,16 @@ function formatBrief(args: {
   } else if (args.rezen.activeDeals > 0) {
     lines.push("");
     lines.push("✅ Every active deal has its required Rezen docs.");
+  }
+
+  // Help-question digest — surfaces what users are stuck on so we
+  // know what to clarify in HELP_KNOWLEDGE.md or build next.
+  if (args.helpDigest.length > 0) {
+    lines.push("");
+    lines.push("*Top help questions (last 7d):*");
+    for (const d of args.helpDigest) {
+      lines.push(`• ${d.topic.replace(/_/g, " ")}: ${d.count}`);
+    }
   }
 
   lines.push("");
