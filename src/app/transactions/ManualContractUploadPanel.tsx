@@ -248,6 +248,7 @@ export function ManualContractUploadPanel() {
             disabled={uploading}
             selectedName={pendingFile?.name ?? null}
             kind="contract PDF"
+            explainer="REOS reads the contract with AI, extracts every deadline (effective, inspection, EM, financing, walkthrough, closing), parties, price + commissions, then drafts a new transaction with a full timeline. Drop a SIGNED purchase contract — not a flyer or random PDF. ~15-40s, ~$0.02 of OpenAI."
           />
           {uploading && (
             <div className="text-center text-xs text-text-muted">

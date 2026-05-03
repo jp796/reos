@@ -1,9 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, ArrowLeft, Check, Loader2, Plus, X } from "lucide-react";
+import {
+  ArrowRight,
+  ArrowLeft,
+  Check,
+  Loader2,
+  Plus,
+  X,
+  Upload,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 import { useToast } from "@/app/ToastProvider";
+
+interface ParsedSlot {
+  number: number;
+  label: string;
+  required: "required" | "if_applicable";
+  tag: "cda" | "closing_docs" | "termination" | null;
+}
 
 interface ProfileOption {
   id: string;
@@ -94,7 +111,7 @@ export function OnboardingWizard() {
     );
   }
 
-  const totalSteps = 5;
+  const totalSteps = 6;
   const pct = Math.round(((state.step + 1) / totalSteps) * 100);
 
   return (
@@ -257,7 +274,24 @@ export function OnboardingWizard() {
         </Step>
       )}
 
-      {state.step === 4 && (
+      {state.step === 4 && state.brokerageProfileId && (
+        <Step
+          title="Custom checklist (optional)"
+          sub="Drop screenshots of your transaction-software checklist (Rezen, Skyslope, Dotloop, Lone Wolf, KW Command, in-house portal — any). REOS reads them with AI and seeds your compliance slots so you don't have to type them. Skip if your brokerage profile's defaults are fine."
+        >
+          <ChecklistVisionStep
+            profileId={state.brokerageProfileId}
+            onContinue={next}
+          />
+          <Nav
+            onBack={() => persist({ step: state.step - 1 })}
+            onNext={next}
+            nextLabel="Skip — use defaults"
+          />
+        </Step>
+      )}
+
+      {state.step === 5 && (
         <Step
           title="Ready to roll"
           sub="Review and finish — you'll land on the Today dashboard."
@@ -361,6 +395,243 @@ function Row({ label, value }: { label: string; value: string }) {
     <div className="flex items-center justify-between py-1.5 text-sm">
       <span className="text-text-muted">{label}</span>
       <span className="font-medium text-text">{value}</span>
+    </div>
+  );
+}
+
+/** Optional onboarding step: drop screenshots → Vision parses → editable
+ * preview → save. Self-contained so the wizard above stays declarative. */
+function ChecklistVisionStep({
+  profileId,
+  onContinue,
+}: {
+  profileId: string;
+  onContinue: () => void;
+}) {
+  const toast = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [parsing, setParsing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [kind, setKind] = useState<"transaction" | "listing">("transaction");
+  const [slots, setSlots] = useState<ParsedSlot[] | null>(null);
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+
+  function pickFiles(picked: FileList | null) {
+    if (!picked) return;
+    const arr = Array.from(picked).filter(
+      (f) => f.type.startsWith("image/") && f.size <= 8 * 1024 * 1024,
+    );
+    if (arr.length === 0) {
+      toast.error("No usable files", "PNG/JPG up to 8MB each, max 8 files.");
+      return;
+    }
+    setFiles(arr.slice(0, 8));
+  }
+
+  async function parse() {
+    if (files.length === 0) return;
+    setParsing(true);
+    try {
+      const fd = new FormData();
+      for (const f of files) fd.append("files", f);
+      const res = await fetch("/api/onboarding/parse-checklist", {
+        method: "POST",
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "parse failed");
+      setKind(data.kind ?? "transaction");
+      setSlots(Array.isArray(data.slots) ? data.slots : []);
+      toast.success(
+        "Parsed",
+        `Read ${data.slots?.length ?? 0} slots — review and save below.`,
+      );
+    } catch (e) {
+      toast.error("Parse failed", e instanceof Error ? e.message : "unknown");
+    } finally {
+      setParsing(false);
+    }
+  }
+
+  async function save() {
+    if (!slots || slots.length === 0) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/onboarding/save-checklist", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ profileId, kind, slots }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "save failed");
+      setSavedAt(new Date().toISOString());
+      toast.success(
+        "Saved",
+        `${data.count ?? slots.length} slot${slots.length === 1 ? "" : "s"} stored.`,
+      );
+      onContinue();
+    } catch (e) {
+      toast.error("Save failed", e instanceof Error ? e.message : "unknown");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function updateSlot(idx: number, patch: Partial<ParsedSlot>) {
+    setSlots((prev) =>
+      prev ? prev.map((s, i) => (i === idx ? { ...s, ...patch } : s)) : prev,
+    );
+  }
+  function deleteSlot(idx: number) {
+    setSlots((prev) => (prev ? prev.filter((_, i) => i !== idx) : prev));
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* File drop zone */}
+      <div
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => {
+          e.preventDefault();
+          pickFiles(e.dataTransfer.files);
+        }}
+        onClick={() => fileInputRef.current?.click()}
+        className="cursor-pointer rounded-md border border-dashed border-border bg-surface-2/40 p-6 text-center hover:border-brand-500"
+      >
+        <Upload className="mx-auto h-5 w-5 text-text-muted" strokeWidth={1.8} />
+        <div className="mt-2 text-sm font-medium text-text">
+          Drop screenshots or click to choose
+        </div>
+        <div className="mt-1 text-xs text-text-muted">
+          PNG / JPG · up to 8 files · 8MB each
+        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg"
+          multiple
+          className="hidden"
+          onChange={(e) => pickFiles(e.target.files)}
+        />
+      </div>
+
+      {/* Selected files */}
+      {files.length > 0 && (
+        <div className="space-y-1.5">
+          {files.map((f) => (
+            <div
+              key={f.name + f.size}
+              className="flex items-center justify-between rounded border border-border bg-surface px-3 py-1.5 text-xs"
+            >
+              <span className="truncate font-mono">{f.name}</span>
+              <span className="text-text-muted">
+                {Math.round(f.size / 1024)} KB
+              </span>
+            </div>
+          ))}
+          <button
+            type="button"
+            disabled={parsing}
+            onClick={parse}
+            className="inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
+          >
+            {parsing ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5" strokeWidth={2} />
+            )}
+            {parsing ? "Reading screenshots…" : "Parse with AI"}
+          </button>
+        </div>
+      )}
+
+      {/* Editable preview */}
+      {slots && (
+        <div className="rounded-md border border-border bg-surface p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <div className="text-sm font-medium">
+              {slots.length} slot{slots.length === 1 ? "" : "s"} parsed
+            </div>
+            <select
+              value={kind}
+              onChange={(e) =>
+                setKind(e.target.value as "transaction" | "listing")
+              }
+              className="rounded border border-border bg-surface-2 px-2 py-1 text-xs"
+            >
+              <option value="transaction">Transaction checklist</option>
+              <option value="listing">Listing checklist</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            {slots.map((s, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-2 rounded border border-border bg-surface-2/60 px-2 py-1"
+              >
+                <input
+                  type="number"
+                  min={1}
+                  value={s.number}
+                  onChange={(e) =>
+                    updateSlot(i, {
+                      number: parseInt(e.target.value, 10) || s.number,
+                    })
+                  }
+                  className="w-12 rounded border border-border bg-surface px-1.5 py-1 text-xs"
+                />
+                <input
+                  type="text"
+                  value={s.label}
+                  onChange={(e) => updateSlot(i, { label: e.target.value })}
+                  className="flex-1 rounded border border-border bg-surface px-2 py-1 text-xs"
+                />
+                <select
+                  value={s.required}
+                  onChange={(e) =>
+                    updateSlot(i, {
+                      required: e.target.value as
+                        | "required"
+                        | "if_applicable",
+                    })
+                  }
+                  className="rounded border border-border bg-surface px-1.5 py-1 text-xs"
+                >
+                  <option value="required">Required</option>
+                  <option value="if_applicable">If applicable</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={() => deleteSlot(i)}
+                  className="rounded p-1 text-text-subtle hover:bg-surface hover:text-danger"
+                  aria-label="Remove slot"
+                >
+                  <Trash2 className="h-3.5 w-3.5" strokeWidth={2} />
+                </button>
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            disabled={saving || slots.length === 0}
+            onClick={save}
+            className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
+          >
+            {saving ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Check className="h-3.5 w-3.5" strokeWidth={2} />
+            )}
+            {saving ? "Saving…" : "Save and continue"}
+          </button>
+          {savedAt && (
+            <span className="ml-2 text-xs text-text-muted">
+              Saved {new Date(savedAt).toLocaleTimeString()}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

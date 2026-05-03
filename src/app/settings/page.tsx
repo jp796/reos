@@ -6,7 +6,15 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/require-session";
 import { redirect } from "next/navigation";
-import { Users, ScrollText, Building2, Mail, Briefcase, Inbox } from "lucide-react";
+import {
+  Users,
+  ScrollText,
+  Building2,
+  Mail,
+  Briefcase,
+  Inbox,
+  CreditCard,
+} from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +60,12 @@ const SECTIONS = [
     title: "Integrations",
     desc: "MLS photo sources + social posters (Buffer, Direct, Cowork)",
     icon: Briefcase,
+  },
+  {
+    href: "/settings/billing",
+    title: "Billing",
+    desc: "Subscription tier, payment method, invoices",
+    icon: CreditCard,
   },
   {
     href: "/settings/demo-data",

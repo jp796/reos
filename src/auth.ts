@@ -132,22 +132,55 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
      * becomes coordinator.
      */
     async createUser({ user }) {
-      const account = await prisma.account.findFirst({ select: { id: true } });
-      if (!account) return;
-
       const email = user.email?.toLowerCase() ?? "";
       const allow = allowedEmails();
-      const role = allow.indexOf(email) === 0 ? "owner" : "coordinator";
 
-      // The owner is the party who authored the terms — they don't
-      // need to agree to themselves. Coordinators DO need to click
-      // through the ToU on first sign-in.
+      // Multi-tenant routing: per-domain account map. Add new
+      // brokerages here when their email domain shows up.
+      // Falls back to the legacy "owner-account" for everyone else.
+      const DOMAIN_TO_ACCOUNT: Record<string, string> = {
+        "417realestate.com": "417realestate-mo",
+      };
+      const domain = email.split("@")[1] ?? "";
+      const explicitAccountId = DOMAIN_TO_ACCOUNT[domain];
+
+      let accountId: string;
+      let role: string;
+      if (explicitAccountId) {
+        // Tenant owner = first user signing in for that account.
+        const existingOwner = await prisma.user.findFirst({
+          where: { accountId: explicitAccountId, role: "owner" },
+          select: { id: true },
+        });
+        accountId = explicitAccountId;
+        role = existingOwner ? "coordinator" : "owner";
+      } else {
+        const fallback = await prisma.account.findFirst({
+          select: { id: true },
+        });
+        if (!fallback) return;
+        accountId = fallback.id;
+        role = allow.indexOf(email) === 0 ? "owner" : "coordinator";
+      }
+
+      // Owner skips ToU (they authored it); coordinators click
+      // through on first sign-in.
       const termsAcceptedAt = role === "owner" ? new Date() : null;
 
       await prisma.user.update({
         where: { id: user.id },
-        data: { accountId: account.id, role, termsAcceptedAt },
+        data: { accountId, role, termsAcceptedAt },
       });
+
+      // For new tenant owners, set them as the account's owner_user_id
+      // (the schema column is required; the placeholder gets replaced
+      // here on first owner sign-in).
+      if (role === "owner" && explicitAccountId) {
+        await prisma.account.update({
+          where: { id: accountId },
+          data: { ownerUserId: user.id },
+        });
+      }
     },
   },
   pages: {

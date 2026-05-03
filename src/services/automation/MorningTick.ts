@@ -571,8 +571,20 @@ function formatBrief(args: {
   }
 
   // Help-question digest — surfaces what users are stuck on so we
-  // know what to clarify in HELP_KNOWLEDGE.md or build next.
+  // know what to clarify in HELP_KNOWLEDGE.md or build next. A topic
+  // that fires 5+ times in 7 days is a build/clarify signal, not just
+  // noise — call it out separately so it doesn't get buried.
   if (args.helpDigest.length > 0) {
+    const hot = args.helpDigest.filter((d) => d.count >= 5);
+    if (hot.length > 0) {
+      lines.push("");
+      lines.push("🚨 *Build signal* — topics hit 5+ times last 7d:");
+      for (const d of hot) {
+        lines.push(
+          `• ${escapeMd(d.topic.replace(/_/g, " "))}: ${d.count} questions — consider building or clarifying`,
+        );
+      }
+    }
     lines.push("");
     lines.push("*Top help questions (last 7d):*");
     for (const d of args.helpDigest) {

@@ -307,6 +307,7 @@ export function ContractUploadPanel({
             disabled={uploading}
             selectedName={pendingFile?.name ?? null}
             kind="contract PDF"
+            explainer="REOS reads this contract or rider with AI and merges the new fields into THIS transaction's pending extraction. Use for the original contract, addendums, or compensation riders. Newest dates win. Drop a real signed PDF — random files trigger an extraction error."
           />
           {uploading && (
             <div className="text-center text-xs text-text-muted">

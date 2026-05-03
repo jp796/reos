@@ -1,8 +1,9 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Upload, FileText } from "lucide-react";
+import { Upload, FileText, Info } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { Hint } from "./Hint";
 
 interface Props {
   /** Called when the user drops or picks a valid file. */
@@ -19,6 +20,13 @@ interface Props {
   disabled?: boolean;
   /** Extra classes for the outer zone */
   className?: string;
+  /**
+   * What happens when the user drops a file. Shown as a Hint tooltip
+   * on the info icon AND inlined under the zone's prompt. Set this
+   * everywhere a non-obvious AI action runs on the upload (e.g.
+   * "Reads contract → builds timeline → preps Rezen package").
+   */
+  explainer?: string;
 }
 
 /**
@@ -34,6 +42,7 @@ export function DropZone({
   selectedName,
   disabled,
   className,
+  explainer,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [hover, setHover] = useState(false);
@@ -117,13 +126,25 @@ export function DropZone({
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         className={cn(
-          "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed p-6 text-center transition-colors",
+          "relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed p-6 text-center transition-colors",
           hover
             ? "border-brand-500 bg-brand-50 text-brand-700"
             : "border-border bg-surface-2 text-text-muted hover:border-border-strong hover:bg-surface",
           disabled && "cursor-not-allowed opacity-50",
         )}
       >
+        {explainer && (
+          <Hint label={explainer} side="top">
+            <button
+              type="button"
+              onClick={(e) => e.stopPropagation()}
+              aria-label="What happens on upload"
+              className="absolute right-2 top-2 rounded-full p-1 text-text-muted hover:bg-surface hover:text-text"
+            >
+              <Info className="h-3.5 w-3.5" strokeWidth={2} />
+            </button>
+          </Hint>
+        )}
         <input
           ref={inputRef}
           type="file"
@@ -157,6 +178,12 @@ export function DropZone({
           </>
         )}
       </div>
+      {explainer && !selectedName && (
+        <div className="mt-2 flex items-start gap-1.5 text-[11px] text-text-muted">
+          <Info className="mt-0.5 h-3 w-3 shrink-0" strokeWidth={2} />
+          <span>{explainer}</span>
+        </div>
+      )}
       {err && (
         <div className="mt-2 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700">
           {err}
