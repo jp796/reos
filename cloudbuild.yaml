@@ -35,15 +35,19 @@ steps:
   # the old revision keeps working against the new schema during the
   # blue-green flip. NEVER run `prisma migrate reset` here — that
   # drops production data.
+  #
+  # Uses a fresh node:20-alpine instead of the runtime image because
+  # the standalone runtime is stripped of dev-deps (no `prisma` CLI).
   - id: migrate
-    name: ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:${_TAG}
+    name: node:20-alpine
     entrypoint: sh
     args:
       - -c
       - |
         set -euo pipefail
-        cd /app
-        npx prisma migrate deploy
+        apk add --no-cache openssl
+        npm install --no-save --no-audit --no-fund prisma@5
+        npx prisma migrate deploy --schema=./prisma/schema.prisma
     secretEnv: ['DATABASE_URL']
   - id: deploy
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
