@@ -10,6 +10,7 @@ import { prisma } from "@/lib/db";
 import { ALL_PHOTO_SOURCES } from "@/services/integrations/listing-photos/registry";
 import { ALL_POSTERS } from "@/services/integrations/social-posters/registry";
 import { IntegrationsForm } from "./IntegrationsForm";
+import { GoogleConnectionPanel } from "./GoogleConnectionPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -19,9 +20,10 @@ export default async function IntegrationsSettingsPage() {
 
   const account = await prisma.account.findUnique({
     where: { id: actor.accountId },
-    select: { settingsJson: true },
+    select: { settingsJson: true, googleOauthTokensEncrypted: true },
   });
   const settings = (account?.settingsJson ?? {}) as Record<string, unknown>;
+  const hasGoogleBlob = !!account?.googleOauthTokensEncrypted;
 
   const photoSources = await Promise.all(
     ALL_PHOTO_SOURCES.map(async (a) => ({
@@ -47,7 +49,11 @@ export default async function IntegrationsSettingsPage() {
         social posts. Concrete adapters work today; stubs are wireup
         slots — each one tells you what credentials to drop in.
       </p>
-      <div className="mt-6">
+      <div className="mt-6 space-y-6">
+        <GoogleConnectionPanel
+          accountId={actor.accountId}
+          hasStoredBlob={hasGoogleBlob}
+        />
         <IntegrationsForm
           activePhotoProvider={
             (settings.listingPhotoProvider as string) ?? "manual_upload"
