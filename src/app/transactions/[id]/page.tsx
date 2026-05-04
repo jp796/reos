@@ -10,6 +10,7 @@ import { ForwardingPanel } from "./ForwardingPanel";
 import { TransactionTimeline } from "./TransactionTimeline";
 import { SharePanel } from "./SharePanel";
 import { EditableHeader } from "./EditableHeader";
+import { DeleteTransactionButton } from "./DeleteTransactionButton";
 import { EditablePrimaryContact } from "./EditablePrimaryContact";
 import { TaskPanel } from "./TaskPanel";
 import { CompliancePanel } from "./CompliancePanel";
@@ -237,19 +238,25 @@ export default async function TransactionDetailPage({
             }))}
           />
         </div>
-        {txn.milestones.length > 0 && (
-          <CalendarSyncButton
+        <div className="flex items-center gap-2">
+          {txn.milestones.length > 0 && (
+            <CalendarSyncButton
+              transactionId={txn.id}
+              contractStage={
+                (txn.contractStage as
+                  | "offer"
+                  | "counter"
+                  | "executed"
+                  | "unknown"
+                  | null) ?? null
+              }
+            />
+          )}
+          <DeleteTransactionButton
             transactionId={txn.id}
-            contractStage={
-              (txn.contractStage as
-                | "offer"
-                | "counter"
-                | "executed"
-                | "unknown"
-                | null) ?? null
-            }
+            propertyAddress={txn.propertyAddress}
           />
-        )}
+        </div>
       </header>
 
       {/* Facts grid */}
