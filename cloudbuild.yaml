@@ -47,7 +47,18 @@ steps:
         set -euo pipefail
         apk add --no-cache openssl
         npm install --no-save --no-audit --no-fund prisma@5
-        npx prisma migrate deploy --schema=./prisma/schema.prisma
+        # Neon serverless idles after 5 min — first connection often
+        # times out while the compute wakes up. Retry up to 4× with
+        # backoff before failing the build for real.
+        for attempt in 1 2 3 4; do
+          if npx prisma migrate deploy --schema=./prisma/schema.prisma; then
+            exit 0
+          fi
+          echo "migrate attempt $attempt failed; retrying after $((attempt * 5))s"
+          sleep $((attempt * 5))
+        done
+        echo "migrate failed after 4 attempts"
+        exit 1
     secretEnv: ['DATABASE_URL']
   - id: deploy
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
