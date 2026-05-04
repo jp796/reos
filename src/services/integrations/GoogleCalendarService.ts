@@ -150,7 +150,17 @@ export class GoogleCalendarService {
    */
   async syncTransactionMilestones(
     transaction: Transaction & { milestones: Milestone[]; contact?: { fullName: string } | null },
-    options: { calendarType?: CalendarType } = {},
+    options: {
+      calendarType?: CalendarType;
+      /**
+       * Emails to invite on every milestone event (TC, brokerage
+       * compliance, co-agent). Comes from Account.settingsJson.onboarding
+       * .calendarShareList — set during the onboarding wizard.
+       * The transaction's owning agent does NOT need to be here, the
+       * event is on their calendar already.
+       */
+      shareList?: string[];
+    } = {},
   ): Promise<MilestoneSyncResult> {
     const result: MilestoneSyncResult = {
       transactionId: transaction.id,
@@ -164,6 +174,14 @@ export class GoogleCalendarService {
 
     const calendarType = options.calendarType ?? "private_ops";
     const durationMin = this.config.defaultReminderDurationMinutes ?? 30;
+
+    // De-dupe + lowercase share list so a single typo can't repeat
+    // across events. Filter out anything that isn't a real email.
+    const attendees = (options.shareList ?? [])
+      .map((e) => e.trim().toLowerCase())
+      .filter((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e))
+      .filter((e, i, a) => a.indexOf(e) === i)
+      .map((email) => ({ email }));
 
     // Dedup by milestoneId when available; fall back to (transactionId,
     // startAt) match for legacy rows created before milestoneId existed,
@@ -269,6 +287,7 @@ export class GoogleCalendarService {
           title,
           startAt,
           endAt,
+          attendees: attendees.length > 0 ? attendees : undefined,
           description: [
             `Real Estate OS milestone: ${ms.label}`,
             `Transaction: ${transaction.id}`,

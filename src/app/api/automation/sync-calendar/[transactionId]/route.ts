@@ -73,6 +73,20 @@ export async function POST(
       ? calCfg.privateOpsCalendarId
       : undefined;
 
+  // Onboarding wizard captures a share-list (TC, brokerage compliance,
+  // co-agent emails). Every milestone event we create invites this list
+  // so they get auto-added to the agent's deal calendar without manual
+  // copy-paste. Empty list = events go on the agent's calendar only.
+  const onboardingCfg =
+    settings.onboarding && typeof settings.onboarding === "object"
+      ? (settings.onboarding as Record<string, unknown>)
+      : {};
+  const shareList = Array.isArray(onboardingCfg.calendarShareList)
+    ? (onboardingCfg.calendarShareList as unknown[]).filter(
+        (e): e is string => typeof e === "string",
+      )
+    : [];
+
   const oauth = new GoogleOAuthService(
     {
       clientId: env.GOOGLE_CLIENT_ID,
@@ -97,7 +111,7 @@ export async function POST(
       prisma,
     );
 
-    const result = await cal.syncTransactionMilestones(txn);
+    const result = await cal.syncTransactionMilestones(txn, { shareList });
     return NextResponse.json({
       ok: true,
       durationMs: Date.now() - startedAt,
