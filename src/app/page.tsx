@@ -89,20 +89,20 @@ export default async function Landing() {
       <section className="mx-auto max-w-5xl px-4 pb-12 pt-16 sm:pt-24">
         <div className="text-center">
           <span className="inline-block rounded-full bg-accent-50 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-accent-700 ring-1 ring-accent-200 dark:bg-accent-100 dark:text-accent-700">
-            Built for real-estate agents and TCs
+            Built for transaction coordinators · agents welcome
           </span>
           <h1 className="mx-auto mt-6 max-w-3xl font-display text-4xl font-bold leading-tight tracking-tight sm:text-6xl">
-            Stop drowning in transaction paperwork.
+            Run 50 deals like you run 5.
             <span className="block text-gradient-brand">
-              Let Atlas run the file.
+              Let Atlas do the paperwork.
             </span>
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-lg text-text-muted sm:text-xl">
             REOS is the{" "}
             <strong className="text-text">AI Transaction Coordinator</strong>{" "}
-            that plugs into your CRM. It reads contracts, builds timelines,
-            preps your compliance file, and texts you the daily brief — so
-            you can focus on the next deal.
+            for TCs and the agents they support. It reads contracts, builds
+            timelines, watches every inbox, preps the compliance file, and
+            sends one daily brief — so you scale without burning out.
           </p>
 
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -127,9 +127,9 @@ export default async function Landing() {
 
           <div className="mx-auto mt-12 grid max-w-3xl grid-cols-2 gap-4 text-left sm:grid-cols-4">
             {[
-              { icon: Clock, kpi: "8 hrs/wk", sub: "saved per agent" },
+              { icon: Clock, kpi: "10×", sub: "deals per TC" },
               { icon: FileCheck, kpi: "60 sec", sub: "AI contract read" },
-              { icon: ShieldCheck, kpi: "Real Broker", sub: "Rezen-ready" },
+              { icon: ShieldCheck, kpi: "Any brokerage", sub: "Rezen / Skyslope / Dotloop" },
               { icon: Lock, kpi: "Your Gmail", sub: "no AI branding" },
             ].map((s) => (
               <div
@@ -257,7 +257,7 @@ export default async function Landing() {
         </div>
       </section>
 
-      {/* ─── Demo placeholder ───────────────────────────────── */}
+      {/* ─── Demo video ─────────────────────────────────────── */}
       <section
         id="demo"
         className="border-t border-border bg-surface-2/40 py-16"
@@ -270,20 +270,15 @@ export default async function Landing() {
             From contract upload to Rezen-ready package — what normally
             takes an hour, finished while the coffee brews.
           </p>
-          <div
-            className="relative mx-auto mt-8 aspect-video w-full overflow-hidden rounded-lg border border-border shadow-md"
-            style={{ background: "var(--brand-gradient)" }}
-          >
-            <div className="absolute inset-0 flex items-center justify-center text-white">
-              <div className="text-center">
-                <div className="mx-auto inline-flex h-16 w-16 items-center justify-center rounded-full bg-white/20 backdrop-blur">
-                  <ArrowRight className="h-8 w-8" strokeWidth={2} />
-                </div>
-                <p className="mt-4 text-sm font-medium">
-                  Demo video coming soon
-                </p>
-              </div>
-            </div>
+          <div className="relative mx-auto mt-8 aspect-video w-full overflow-hidden rounded-lg border border-border shadow-md">
+            <iframe
+              src="https://www.loom.com/embed/9a0e599e98a445f9891cbe26ba1e9057"
+              title="REOS demo · contract to Rezen-ready in 90 seconds"
+              allowFullScreen
+              loading="lazy"
+              className="absolute inset-0 h-full w-full"
+              style={{ border: 0 }}
+            />
           </div>
         </div>
       </section>

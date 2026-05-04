@@ -7,6 +7,7 @@ import { ToastProvider } from "./ToastProvider";
 import { TermsAcceptModal } from "./TermsAcceptModal";
 import { auth, signOut } from "@/auth";
 import { prisma } from "@/lib/db";
+import { PwaRegister } from "./PwaRegister";
 
 // Brand typeface — Montserrat (per 2026 brand guide). One face for
 // both body + display so weight choice (Regular/Medium/Semibold/
@@ -21,6 +22,27 @@ const montserrat = Montserrat({
 export const metadata: Metadata = {
   title: "REOS · Real Estate OS",
   description: "Private AI transaction chief of staff",
+  manifest: "/manifest.json",
+  applicationName: "REOS",
+  appleWebApp: {
+    capable: true,
+    title: "REOS",
+    statusBarStyle: "black-translucent",
+  },
+  icons: {
+    icon: [
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }],
+  },
+};
+
+export const viewport = {
+  themeColor: "#0B1B3A",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover" as const,
 };
 
 export default async function RootLayout({
@@ -73,6 +95,7 @@ export default async function RootLayout({
               {children}
             </AppShell>
             {needsTerms && <TermsAcceptModal signOutAction={doSignOut} />}
+            <PwaRegister />
           </ToastProvider>
         </ThemeProvider>
       </body>

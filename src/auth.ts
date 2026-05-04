@@ -135,14 +135,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       const email = user.email?.toLowerCase() ?? "";
       const allow = allowedEmails();
 
-      // Multi-tenant routing: per-domain account map. Add new
-      // brokerages here when their email domain shows up.
-      // Falls back to the legacy "owner-account" for everyone else.
+      // Multi-tenant routing. Email-specific overrides take precedence
+      // (used when a TC's primary email is on a generic provider like
+      // gmail.com); a domain map handles whole-brokerage cases.
+      const EMAIL_TO_ACCOUNT: Record<string, string> = {
+        "clear2closetm@gmail.com": "417realestate-mo",
+      };
       const DOMAIN_TO_ACCOUNT: Record<string, string> = {
         "417realestate.com": "417realestate-mo",
       };
       const domain = email.split("@")[1] ?? "";
-      const explicitAccountId = DOMAIN_TO_ACCOUNT[domain];
+      const explicitAccountId =
+        EMAIL_TO_ACCOUNT[email] ?? DOMAIN_TO_ACCOUNT[domain];
 
       let accountId: string;
       let role: string;

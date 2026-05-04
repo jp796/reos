@@ -459,25 +459,26 @@ export async function runMorningTick(
   })();
 
   /* ============================================================
-   * Step 4 — Send Telegram brief
+   * Step 4 — Send Telegram brief + Web Push fan-out
    * ============================================================ */
   const notification: MorningTickResult["notification"] = { sent: false };
+  const text = formatBrief({
+    contractScan,
+    autoLink,
+    earnestMoneyScan,
+    classification,
+    helpDigest,
+    rezen: {
+      activeDeals: openTxns.length,
+      readyToPush,
+      missingRequired: missingRequiredCount,
+      bestGap,
+    },
+  });
+
   if (TelegramService.isConfigured()) {
     try {
       const tg = new TelegramService();
-      const text = formatBrief({
-        contractScan,
-        autoLink,
-        earnestMoneyScan,
-        classification,
-        helpDigest,
-        rezen: {
-          activeDeals: openTxns.length,
-          readyToPush,
-          missingRequired: missingRequiredCount,
-          bestGap,
-        },
-      });
       await tg.sendMessage(text);
       notification.sent = true;
     } catch (e) {
@@ -486,6 +487,34 @@ export async function runMorningTick(
     }
   } else {
     notification.reason = "telegram_not_configured";
+  }
+
+  // Web Push fan-out — runs alongside Telegram, not instead of. Each
+  // account's subscribed devices get a short preview; tapping opens
+  // /today. Failures don't roll back the tick.
+  try {
+    const { isWebPushConfigured, sendToAccount } = await import(
+      "@/services/integrations/WebPushService"
+    );
+    if (isWebPushConfigured()) {
+      const accounts = await db.account.findMany({
+        where: { pushSubscriptions: { some: { disabledAt: null } } },
+        select: { id: true },
+      });
+      const preview = buildPushPreview(text);
+      await Promise.all(
+        accounts.map((a) =>
+          sendToAccount(a.id, {
+            title: "REOS · Morning brief",
+            body: preview,
+            url: "/today",
+            tag: "morning-brief",
+          }),
+        ),
+      );
+    }
+  } catch (e) {
+    logError(e, { route: "MorningTick.webpush" });
   }
 
   return {
@@ -600,4 +629,19 @@ function formatBrief(args: {
 /** Escape Markdown-special chars in dynamic content. */
 function escapeMd(s: string): string {
   return s.replace(/([_*[\]()`])/g, "\\$1");
+}
+
+/** Strip Markdown + collapse to a 160-char preview suitable for an
+ * OS notification body. The full brief stays on Telegram; push is
+ * just a "tap to see today" prompt with the most-relevant line. */
+function buildPushPreview(text: string): string {
+  // Pull the Rezen line (the most actionable summary) if present;
+  // otherwise the first non-header non-empty line.
+  const lines = text
+    .split("\n")
+    .map((l) => l.replace(/[*_`]/g, "").trim())
+    .filter((l) => l && !l.startsWith("REOS"));
+  const rezenLine = lines.find((l) => l.includes("Rezen prep"));
+  const pick = rezenLine ?? lines[0] ?? "Open REOS for today's plan.";
+  return pick.length > 160 ? pick.slice(0, 157) + "…" : pick;
 }

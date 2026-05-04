@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>REOS — offline</title>
+    <link rel="icon" href="/icons/icon-192.png" />
+    <style>
+      body {
+        margin: 0;
+        font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        background: linear-gradient(180deg, #0b1b3a 0%, #1e2952 100%);
+        color: #e7edff;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+      }
+      .card {
+        max-width: 360px;
+        text-align: center;
+      }
+      .icon {
+        width: 64px;
+        height: 64px;
+        margin: 0 auto 16px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 22px;
+        font-weight: 600;
+      }
+      p {
+        margin: 0 0 16px;
+        opacity: 0.8;
+      }
+      a {
+        display: inline-block;
+        padding: 8px 16px;
+        background: #2563eb;
+        color: #fff;
+        border-radius: 8px;
+        text-decoration: none;
+        font-weight: 500;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <img class="icon" src="/icons/icon-192.png" alt="REOS" />
+      <h1>You're offline</h1>
+      <p>
+        REOS needs a connection to load the latest deal data. Once
+        you're back online, this page will work again.
+      </p>
+      <a href="/today">Try again</a>
+    </div>
+  </body>
+</html>

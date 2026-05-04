@@ -14,6 +14,7 @@ import {
   Briefcase,
   Inbox,
   CreditCard,
+  Bell,
 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -66,6 +67,12 @@ const SECTIONS = [
     title: "Billing",
     desc: "Subscription tier, payment method, invoices",
     icon: CreditCard,
+  },
+  {
+    href: "/settings/notifications",
+    title: "Notifications",
+    desc: "Web Push for the morning brief and deadline alerts",
+    icon: Bell,
   },
   {
     href: "/settings/demo-data",

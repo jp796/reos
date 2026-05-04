@@ -516,7 +516,7 @@ function Input({
         onChange={(e) => onChange(e.target.value)}
         required={required}
         placeholder={placeholder}
-        className="mt-1 w-full rounded border border-border bg-surface-2 px-2 py-1.5 text-sm"
+        className="mt-1 w-full rounded border border-border bg-surface-2 px-2 py-1.5 text-sm text-text placeholder:text-text-subtle focus:border-brand-500 focus:outline-none"
       />
     </label>
   );

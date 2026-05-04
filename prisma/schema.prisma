@@ -60,6 +60,7 @@ model Account {
   leadIntakes               LeadIntake[]
   scanRuns                  ScanRun[]
   helpQuestions             HelpQuestion[]
+  pushSubscriptions         PushSubscription[]
 
   @@map("accounts")
 }
@@ -129,6 +130,7 @@ model User {
   sessions     Session[]
   auditLogs    AutomationAuditLog[]
   assignedTransactions Transaction[] @relation("AssignedTransactions")
+  pushSubscriptions    PushSubscription[]
 
   @@index([accountId])
   @@map("users")
@@ -979,4 +981,30 @@ model TransactionFinancials {
   transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
 
   @@map("transaction_financials")
+}
+
+/// Browser-issued Web Push subscription. One row per (user, device).
+/// Endpoint is unique — re-subscribing from the same browser yields
+/// the same endpoint, so we upsert on it.
+model PushSubscription {
+  id            String   @id @default(cuid())
+  accountId     String   @map("account_id")
+  userId        String   @map("user_id")
+  endpoint      String   @unique
+  p256dh        String
+  auth          String
+  /// User agent string captured at subscribe time, for debugging /
+  /// "this is your iPhone 16" labelling in settings.
+  userAgent     String?  @map("user_agent")
+  createdAt     DateTime @default(now()) @map("created_at")
+  lastUsedAt    DateTime? @map("last_used_at")
+  /// Set when the push endpoint returns 404 / 410 — we keep the row
+  /// for audit but don't dispatch to it again.
+  disabledAt    DateTime? @map("disabled_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, userId])
+  @@map("push_subscriptions")
 }

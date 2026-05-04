@@ -88,6 +88,16 @@ const schema = z.object({
   STRIPE_PRICE_ID_SOLO: z.string().optional(),
   STRIPE_PRICE_ID_TEAM: z.string().optional(),
   STRIPE_PRICE_ID_BROKERAGE: z.string().optional(),
+
+  /** Web Push (VAPID). When all three are set, the in-app
+   * "Notifications" toggle subscribes the browser; MorningTick fans
+   * out to every active subscription. Public key is exposed to the
+   * client; private + subject stay server-only. */
+  NEXT_PUBLIC_VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  /** mailto:address — required by RFC 8292 so push providers can
+   * contact us about abusive subscriptions. */
+  VAPID_SUBJECT: z.string().optional(),
 });
 
 // Skip validation during `next build` — Cloud Run injects secrets

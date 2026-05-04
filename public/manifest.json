@@ -1,0 +1,61 @@
+{
+  "name": "REOS — Real Estate OS",
+  "short_name": "REOS",
+  "description": "AI Transaction Coordinator — contracts, deadlines, compliance.",
+  "start_url": "/today",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0B1B3A",
+  "theme_color": "#0B1B3A",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-256.png",
+      "sizes": "256x256",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-384.png",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Today",
+      "url": "/today",
+      "description": "Daily focus dashboard"
+    },
+    {
+      "name": "Voice intake",
+      "url": "/voice",
+      "description": "Dictate a new deal"
+    },
+    {
+      "name": "Transactions",
+      "url": "/transactions",
+      "description": "Open all deals"
+    }
+  ]
+}

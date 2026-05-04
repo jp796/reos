@@ -1,0 +1,78 @@
+name: Deploy to Cloud Run
+
+# Fires on:
+#   1. push to main          — every commit auto-deploys
+#   2. schedule 09:00 UTC    — 3am Central nightly redeploy (if any
+#                              new commits have landed since the last
+#                              successful run; otherwise no-op)
+#   3. manual workflow_dispatch — "Run workflow" button in the Actions tab
+#
+# One-time setup before this works:
+#   1. Create a deployer service account in GCP with roles:
+#        roles/cloudbuild.builds.editor
+#        roles/storage.admin (for the source bucket)
+#        roles/iam.serviceAccountUser
+#   2. Generate a JSON key, store as repo secret `GCP_SA_KEY`
+#   3. Set repo secret `GCP_PROJECT_ID` to "real-estate-os-493719"
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # 09:00 UTC = 3am Central (DST) / 4am Central (standard time)
+    # Picks the safer "3am" window for nightly redeploys when traffic
+    # is at its lowest. Skip if no commits have landed.
+    - cron: "0 9 * * *"
+  workflow_dispatch:
+
+concurrency:
+  # Cancel an in-flight deploy when a new commit lands; only the
+  # newest main should ever reach Cloud Run.
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build + deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        name: Auth to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Skip nightly when no new commits
+        # Only fires for the schedule trigger. Compares the latest
+        # successful Cloud Build commit against HEAD; if they match,
+        # exit cleanly without rebuilding the same image.
+        if: github.event_name == 'schedule'
+        id: drift
+        run: |
+          set -euo pipefail
+          HEAD=$(git rev-parse --short HEAD)
+          LAST=$(gcloud builds list --filter='status=SUCCESS' --limit=1 \
+            --format='value(substitutions.SHORT_SHA)' || echo '')
+          if [ "$HEAD" = "$LAST" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "No new commits since last build ($LAST). Skipping."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Submit Cloud Build
+        if: steps.drift.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          gcloud builds submit --config cloudbuild.yaml \
+            --substitutions=_REGION=us-central1,_REPO=reos,_SERVICE=reos,_TAG=$(git rev-parse --short HEAD) .

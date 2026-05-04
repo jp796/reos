@@ -365,7 +365,7 @@ export function ContractUploadPanel({
                   return (
                     <tr
                       key={row.key}
-                      className="border-t border-neutral-100"
+                      className="border-t border-border"
                     >
                       <td className="px-3 py-1.5 font-medium">{row.label}</td>
                       <td className="px-3 py-1.5">
@@ -376,7 +376,7 @@ export function ContractUploadPanel({
                             setEdits({ ...edits, [row.key]: e.target.value })
                           }
                           placeholder={placeholderFor(row.kind)}
-                          className="w-full rounded border border-border px-1.5 py-0.5"
+                          className="w-full rounded border border-border bg-surface px-1.5 py-0.5 text-text placeholder:text-text-subtle focus:border-brand-500 focus:outline-none"
                         />
                       </td>
                       <td className="px-3 py-1.5 text-text-muted">
