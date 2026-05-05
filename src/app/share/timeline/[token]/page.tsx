@@ -79,6 +79,7 @@ export default async function PublicTimelinePage({
     include: {
       milestones: { orderBy: { dueAt: "asc" } },
       contact: { select: { fullName: true } },
+      account: { select: { businessName: true } },
     },
   });
   if (!txn) return notFound();
@@ -220,9 +221,8 @@ export default async function PublicTimelinePage({
         <footer className="mt-12 border-t border-stone-200 pt-4 text-center text-xs text-stone-500">
           Shared by{" "}
           <span className="font-medium text-stone-700">
-            Jp Fluellen · Real Broker LLC
-          </span>{" "}
-          · Cheyenne, WY
+            {txn.account?.businessName ?? "your transaction coordinator"}
+          </span>
           <div className="mt-1">
             This timeline is view-only. Dates may change if the contract is
             amended.

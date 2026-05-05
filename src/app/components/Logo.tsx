@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * REOS logomark + wordmark.
  *
@@ -11,6 +13,8 @@
  *   <Logo size={32} showWordmark /> // mark + REOS wordmark
  */
 
+import { useId } from "react";
+
 interface LogoProps {
   size?: number;
   showWordmark?: boolean;
@@ -18,9 +22,13 @@ interface LogoProps {
 }
 
 export function Logo({ size = 32, showWordmark = false, className }: LogoProps) {
-  // Inline gradient ID kept unique per render so two <Logo> instances
-  // on the same page don't fight over the same defs.
-  const gradId = `reos-logo-grad-${Math.random().toString(36).slice(2, 8)}`;
+  // Use React's useId so the gradient ID matches between server-render
+  // and client-hydration. Math.random() here was producing different
+  // IDs on each side of the hydration boundary, throwing a runtime
+  // exception ("Application error: a client-side exception has
+  // occurred") on every page that renders <Logo>.
+  const rawId = useId();
+  const gradId = `reos-logo-grad${rawId.replace(/:/g, "_")}`;
   return (
     <span
       className={"inline-flex items-center gap-2 " + (className ?? "")}
