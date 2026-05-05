@@ -156,7 +156,8 @@ export async function POST(
       location: city || propAddress,
       description: [
         `Inspection on ${propAddress}`,
-        inspection.vendorNote ? `Vendor: ${inspection.vendorNote}` : null,
+        inspection.vendorName ? `Vendor: ${inspection.vendorName}` : null,
+        inspection.vendorNote ? `Notes: ${inspection.vendorNote}` : null,
       ]
         .filter(Boolean)
         .join("\n"),

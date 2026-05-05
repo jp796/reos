@@ -1030,7 +1030,10 @@ model TransactionInspection {
   /// When the appointment is. Nullable so a row can be created as a
   /// placeholder before the inspector confirms.
   scheduledAt     DateTime? @map("scheduled_at")
-  /// Free-form contact / vendor / notes ("Acme Inspections, John").
+  /// Vendor company name — separated from notes so we can dedupe
+  /// + autocomplete from past entries on the account ("Acme Inspections").
+  vendorName      String?  @map("vendor_name")
+  /// Free-form notes — phone, schedule details, special instructions.
   vendorNote      String?  @map("vendor_note")
   /// Linked CalendarEvent row (when the agent has hit Sync to
   /// calendar). NULL = not synced.

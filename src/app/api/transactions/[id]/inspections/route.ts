@@ -15,21 +15,25 @@ import { logError } from "@/lib/log";
 
 export const runtime = "nodejs";
 
+const KINDS = [
+  "whole_home",
+  "partial_home",
+  "plumbing",
+  "heating",
+  "electrical",
+  "foundation",
+  "sewer",
+  "roof",
+  "well_septic",
+  "survey",
+  "other",
+] as const;
+
 const create = z.object({
   label: z.string().min(1).max(120),
-  kind: z
-    .enum([
-      "general",
-      "pest",
-      "radon",
-      "sewer",
-      "chimney",
-      "pool",
-      "survey",
-      "other",
-    ])
-    .default("other"),
+  kind: z.enum(KINDS).default("whole_home"),
   scheduledAt: z.string().datetime().nullable().optional(),
+  vendorName: z.string().max(120).nullable().optional(),
   vendorNote: z.string().max(500).nullable().optional(),
   remindOnTelegram: z.boolean().optional(),
 });
@@ -97,6 +101,7 @@ export async function POST(
         kind: body.kind,
         label: body.label,
         scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null,
+        vendorName: body.vendorName ?? null,
         vendorNote: body.vendorNote ?? null,
         remindOnTelegram: body.remindOnTelegram ?? true,
       },

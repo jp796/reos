@@ -476,6 +476,7 @@ export default async function TransactionDetailPage({
             kind: i.kind,
             label: i.label,
             scheduledAt: i.scheduledAt?.toISOString() ?? null,
+            vendorName: i.vendorName,
             vendorNote: i.vendorNote,
             remindOnTelegram: i.remindOnTelegram,
             calendarEventId: i.calendarEventId,

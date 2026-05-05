@@ -14,21 +14,25 @@ import { logError } from "@/lib/log";
 
 export const runtime = "nodejs";
 
+const KINDS = [
+  "whole_home",
+  "partial_home",
+  "plumbing",
+  "heating",
+  "electrical",
+  "foundation",
+  "sewer",
+  "roof",
+  "well_septic",
+  "survey",
+  "other",
+] as const;
+
 const patch = z.object({
   label: z.string().min(1).max(120).optional(),
-  kind: z
-    .enum([
-      "general",
-      "pest",
-      "radon",
-      "sewer",
-      "chimney",
-      "pool",
-      "survey",
-      "other",
-    ])
-    .optional(),
+  kind: z.enum(KINDS).optional(),
   scheduledAt: z.string().datetime().nullable().optional(),
+  vendorName: z.string().max(120).nullable().optional(),
   vendorNote: z.string().max(500).nullable().optional(),
   remindOnTelegram: z.boolean().optional(),
   completedAt: z.string().datetime().nullable().optional(),
@@ -85,6 +89,7 @@ export async function PATCH(
         ...(body.scheduledAt !== undefined && {
           scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null,
         }),
+        ...(body.vendorName !== undefined && { vendorName: body.vendorName }),
         ...(body.vendorNote !== undefined && { vendorNote: body.vendorNote }),
         ...(body.remindOnTelegram !== undefined && {
           remindOnTelegram: body.remindOnTelegram,
