@@ -30,6 +30,13 @@ interface Props {
   initialMilestones: Milestone[];
   effectiveDate: string | null;
   closingDate: string | null;
+  /**
+   * Slot for inline panels (e.g. InspectionsPanel) that should
+   * appear INSIDE the Timeline section so they're visually part of
+   * the same module rather than a separate section below. Rendered
+   * after the milestone list, before the section close.
+   */
+  children?: React.ReactNode;
 }
 
 const OWNER_CHOICES = ["agent", "lender", "title", "inspector", "client", "coagent"];
@@ -528,6 +535,7 @@ export function TransactionTimeline(props: Props) {
           </p>
         )}
       </div>
+      {props.children && <div className="mt-6">{props.children}</div>}
     </section>
   );
 }

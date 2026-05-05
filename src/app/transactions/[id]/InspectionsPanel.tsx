@@ -183,10 +183,10 @@ export function InspectionsPanel({
   }
 
   return (
-    <section className="mt-6 rounded-md border border-border bg-surface p-4">
+    <div className="rounded-md border border-dashed border-border bg-surface-2/40 p-4">
       <header className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <div>
-          <h2 className="font-display text-base font-semibold">Inspections</h2>
+          <h3 className="text-sm font-semibold">Inspections</h3>
           <p className="text-xs text-text-muted">
             Schedule the actual inspector visit. Sync each one to your
             calendar; reminders fire in the morning brief.
@@ -377,6 +377,6 @@ export function InspectionsPanel({
           Add inspection
         </button>
       </div>
-    </section>
+    </div>
   );
 }

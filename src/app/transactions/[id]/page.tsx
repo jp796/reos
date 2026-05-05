@@ -451,26 +451,9 @@ export default async function TransactionDetailPage({
         </section>
       )}
 
-      {/* Inspections — schedule + sync to calendar */}
-      <InspectionsPanel
-        transactionId={txn.id}
-        initial={txn.inspections.map((i) => ({
-          id: i.id,
-          kind: i.kind,
-          label: i.label,
-          scheduledAt: i.scheduledAt?.toISOString() ?? null,
-          vendorNote: i.vendorNote,
-          remindOnTelegram: i.remindOnTelegram,
-          calendarEventId: i.calendarEventId,
-          completedAt: i.completedAt?.toISOString() ?? null,
-        }))}
-        inspectionDeadline={txn.inspectionDate?.toISOString() ?? null}
-        inspectionObjectionDeadline={
-          txn.inspectionObjectionDate?.toISOString() ?? null
-        }
-      />
-
-      {/* Timeline (visual milestones) */}
+      {/* Timeline (visual milestones) — Inspections panel renders
+          INSIDE this section so scheduling appointments lives next
+          to the contract deadlines, not in a separate block below. */}
       <TransactionTimeline
         transactionId={txn.id}
         initialMilestones={txn.milestones.map((m) => ({
@@ -485,7 +468,25 @@ export default async function TransactionDetailPage({
         }))}
         effectiveDate={txn.contractDate?.toISOString() ?? null}
         closingDate={txn.closingDate?.toISOString() ?? null}
-      />
+      >
+        <InspectionsPanel
+          transactionId={txn.id}
+          initial={txn.inspections.map((i) => ({
+            id: i.id,
+            kind: i.kind,
+            label: i.label,
+            scheduledAt: i.scheduledAt?.toISOString() ?? null,
+            vendorNote: i.vendorNote,
+            remindOnTelegram: i.remindOnTelegram,
+            calendarEventId: i.calendarEventId,
+            completedAt: i.completedAt?.toISOString() ?? null,
+          }))}
+          inspectionDeadline={txn.inspectionDate?.toISOString() ?? null}
+          inspectionObjectionDeadline={
+            txn.inspectionObjectionDate?.toISOString() ?? null
+          }
+        />
+      </TransactionTimeline>
 
       {/* Tasks — TC work queue, separate from milestones which track dates */}
       <TaskPanel
