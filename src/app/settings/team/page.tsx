@@ -10,6 +10,7 @@ import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/require-session";
 import { redirect } from "next/navigation";
 import { TeamRoleForm } from "./TeamRoleForm";
+import { InviteMemberForm } from "./InviteMemberForm";
 
 export const dynamic = "force-dynamic";
 
@@ -63,6 +64,16 @@ export default async function TeamSettingsPage() {
   const pending = allow.filter((e) => !existingEmails.has(e));
 
   const isOwner = actor.role === "owner";
+
+  // Cross-tenant memberships (TCs invited from outside this account
+  // who can switch into this workspace via AccountMembership).
+  const memberships = await prisma.accountMembership.findMany({
+    where: { accountId: actor.accountId, revokedAt: null },
+    orderBy: { invitedAt: "desc" },
+    include: {
+      user: { select: { id: true, name: true, email: true, image: true } },
+    },
+  });
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -170,6 +181,85 @@ export default async function TeamSettingsPage() {
             ))}
           </ul>
         </div>
+      )}
+
+      {/* Cross-tenant collaborators (TCs from another workspace) */}
+      {isOwner && (
+        <section className="mt-8">
+          <h2 className="font-display text-lg font-semibold">Collaborators</h2>
+          <p className="mt-1 text-sm text-text-muted">
+            Transaction coordinators (or agents) from outside this brokerage.
+            They keep their own workspace and switch into yours when working
+            on your deals.
+          </p>
+          <div className="mt-4">
+            <InviteMemberForm />
+          </div>
+          {memberships.length > 0 && (
+            <div className="mt-4 overflow-hidden rounded-lg border border-border bg-surface">
+              <table className="w-full text-sm">
+                <thead className="border-b border-border bg-surface-2 text-left text-xs text-text-muted">
+                  <tr>
+                    <th className="px-4 py-2.5 font-medium">Email</th>
+                    <th className="px-4 py-2.5 font-medium">Role</th>
+                    <th className="px-4 py-2.5 font-medium">Status</th>
+                    <th className="px-4 py-2.5 font-medium">Invited</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {memberships.map((m) => (
+                    <tr
+                      key={m.id}
+                      className="border-b border-border last:border-0"
+                    >
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2.5">
+                          {m.user?.image ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={m.user.image}
+                              alt=""
+                              className="h-7 w-7 rounded-full border border-border"
+                            />
+                          ) : (
+                            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-surface-2 text-[11px] font-semibold text-text-muted">
+                              {(m.user?.name ?? m.email).slice(0, 1).toUpperCase()}
+                            </div>
+                          )}
+                          <div>
+                            <div className="font-medium text-text">
+                              {m.user?.name ?? m.email}
+                            </div>
+                            {m.user?.name && (
+                              <div className="text-xs text-text-muted">
+                                {m.email}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center rounded-md bg-surface-2 px-2 py-0.5 text-xs font-medium capitalize text-text">
+                          {m.role}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-xs">
+                        {m.acceptedAt ? (
+                          <span className="text-emerald-600">Active</span>
+                        ) : (
+                          <span className="text-amber-500">Pending sign-in</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-text-muted">
+                        {m.invitedAt.toLocaleDateString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
       )}
     </div>
   );

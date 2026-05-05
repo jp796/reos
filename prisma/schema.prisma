@@ -61,6 +61,7 @@ model Account {
   scanRuns                  ScanRun[]
   helpQuestions             HelpQuestion[]
   pushSubscriptions         PushSubscription[]
+  memberships               AccountMembership[]
 
   @@map("accounts")
 }
@@ -131,6 +132,7 @@ model User {
   auditLogs    AutomationAuditLog[]
   assignedTransactions Transaction[] @relation("AssignedTransactions")
   pushSubscriptions    PushSubscription[]
+  memberships          AccountMembership[]
 
   @@index([accountId])
   @@map("users")
@@ -1046,3 +1048,39 @@ model TransactionInspection {
   @@map("transaction_inspections")
 }
 
+
+/// AccountMembership — the M:N join that lets a user belong to MORE
+/// THAN their home account. A TC like Laura keeps `User.accountId`
+/// as her own brokerage but holds AccountMembership rows for every
+/// agent/brokerage that's contracted her. The active workspace is
+/// chosen via the `reos_active_account` cookie, validated against
+/// this table on every request.
+///
+/// Roles inside a host account:
+///   - "owner"       : full admin — only the host's own User has this
+///   - "coordinator" : standard TC access — read/write transactions,
+///                     contacts, milestones; can NOT change billing /
+///                     team / brokerage profile
+///   - "agent"       : read-only for now (future: limited edit on
+///                     deals they're assigned to)
+model AccountMembership {
+  id          String   @id @default(cuid())
+  userId      String?  @map("user_id")
+  /// Email used to identify the invitee before they sign up. Once
+  /// they log in, createUser links the row by setting userId.
+  email       String
+  accountId   String   @map("account_id")
+  role        String   @default("coordinator")
+  invitedById String?  @map("invited_by_id")
+  invitedAt   DateTime @default(now()) @map("invited_at")
+  acceptedAt  DateTime? @map("accepted_at")
+  revokedAt   DateTime? @map("revoked_at")
+
+  user      User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, email], map: "uniq_membership_account_email")
+  @@index([userId])
+  @@index([email])
+  @@map("account_memberships")
+}

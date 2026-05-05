@@ -11,16 +11,35 @@
  */
 
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 
 export interface ActingUser {
   userId: string;
+  /**
+   * The account the caller is currently acting under. May differ
+   * from User.accountId when the user has switched into another
+   * workspace via AccountMembership (a TC working under their
+   * client's brokerage). Always the source of truth for tenant
+   * scoping in queries.
+   */
   accountId: string;
+  /**
+   * Role inside `accountId`. For the home account it comes from
+   * User.role; for a memberships-based switch it comes from
+   * AccountMembership.role.
+   */
   role: "owner" | "coordinator" | string;
   email: string;
   name: string | null;
+  /** True when the active account is NOT the user's home account. */
+  isImpersonating: boolean;
+  /** The user's home account (for switcher UI). */
+  homeAccountId: string;
 }
+
+const ACTIVE_ACCOUNT_COOKIE = "reos_active_account";
 
 /**
  * Resolve the current session + user. Returns the ActingUser on
@@ -71,12 +90,50 @@ export async function requireSession(): Promise<ActingUser | NextResponse> {
     );
   }
 
+  // ── Active workspace resolution ────────────────────────────────
+  // A user can hold AccountMembership rows on accounts other than
+  // their home one. The `reos_active_account` cookie selects which
+  // one is "active" right now. Validate the cookie against the user's
+  // home + accepted memberships before honoring it; an invalid value
+  // silently falls back to the home account so a stale/spoofed cookie
+  // can never escalate access.
+  let activeAccountId = user.accountId;
+  let activeRole = user.role;
+  let isImpersonating = false;
+
+  try {
+    const jar = await cookies();
+    const cookieAccount = jar.get(ACTIVE_ACCOUNT_COOKIE)?.value;
+    if (cookieAccount && cookieAccount !== user.accountId) {
+      // Verify membership exists, accepted, not revoked.
+      const m = await prisma.accountMembership.findFirst({
+        where: {
+          userId: user.id,
+          accountId: cookieAccount,
+          revokedAt: null,
+          acceptedAt: { not: null },
+        },
+        select: { role: true, accountId: true },
+      });
+      if (m) {
+        activeAccountId = m.accountId;
+        activeRole = m.role;
+        isImpersonating = true;
+      }
+    }
+  } catch {
+    // No cookie store available (edge runtime path or test shim) —
+    // stick with home account.
+  }
+
   return {
     userId: user.id,
-    accountId: user.accountId,
-    role: user.role,
+    accountId: activeAccountId,
+    role: activeRole,
     email: user.email,
     name: user.name,
+    isImpersonating,
+    homeAccountId: user.accountId,
   };
 }
 

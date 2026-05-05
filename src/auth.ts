@@ -185,6 +185,28 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           data: { ownerUserId: user.id },
         });
       }
+
+      // Auto-accept any pending AccountMembership invites that match
+      // the new user's email. This is what powers cross-tenant
+      // collaboration: a TC's home account is whatever they were
+      // routed to above, but they ALSO get access to every brokerage
+      // that invited their email — no manual "accept" step.
+      try {
+        await prisma.accountMembership.updateMany({
+          where: {
+            email: email,
+            userId: null,
+            revokedAt: null,
+          },
+          data: {
+            userId: user.id,
+            acceptedAt: new Date(),
+          },
+        });
+      } catch (err) {
+        // Non-fatal — membership linkage can be retried on next sign-in
+        console.warn("[auth.createUser] membership auto-accept failed:", err);
+      }
     },
   },
   pages: {

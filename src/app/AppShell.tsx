@@ -28,6 +28,7 @@ import { useTheme } from "./ThemeProvider";
 import { cn } from "@/lib/cn";
 import { GlobalSearch } from "./components/GlobalSearch";
 import { Logo } from "./components/Logo";
+import { AccountSwitcher } from "./components/AccountSwitcher";
 
 const NAV = [
   { href: "/", label: "Home", icon: HomeIcon },
@@ -245,6 +246,7 @@ function SidebarContents({
         })}
       </nav>
       <div className="mt-auto rounded-md bg-surface-2 p-2.5 text-xs text-text-muted">
+        <AccountSwitcher />
         {user ? (
           <>
             <div className="flex items-center gap-2">
