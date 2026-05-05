@@ -11,6 +11,7 @@ import { TransactionTimeline } from "./TransactionTimeline";
 import { SharePanel } from "./SharePanel";
 import { EditableHeader } from "./EditableHeader";
 import { DeleteTransactionButton } from "./DeleteTransactionButton";
+import { InspectionsPanel } from "./InspectionsPanel";
 import { EditablePrimaryContact } from "./EditablePrimaryContact";
 import { TaskPanel } from "./TaskPanel";
 import { CompliancePanel } from "./CompliancePanel";
@@ -115,6 +116,7 @@ export default async function TransactionDetailPage({
           },
         },
       },
+      inspections: { orderBy: [{ scheduledAt: "asc" }, { createdAt: "asc" }] },
     },
   });
 
@@ -448,6 +450,25 @@ export default async function TransactionDetailPage({
           </div>
         </section>
       )}
+
+      {/* Inspections — schedule + sync to calendar */}
+      <InspectionsPanel
+        transactionId={txn.id}
+        initial={txn.inspections.map((i) => ({
+          id: i.id,
+          kind: i.kind,
+          label: i.label,
+          scheduledAt: i.scheduledAt?.toISOString() ?? null,
+          vendorNote: i.vendorNote,
+          remindOnTelegram: i.remindOnTelegram,
+          calendarEventId: i.calendarEventId,
+          completedAt: i.completedAt?.toISOString() ?? null,
+        }))}
+        inspectionDeadline={txn.inspectionDate?.toISOString() ?? null}
+        inspectionObjectionDeadline={
+          txn.inspectionObjectionDate?.toISOString() ?? null
+        }
+      />
 
       {/* Timeline (visual milestones) */}
       <TransactionTimeline

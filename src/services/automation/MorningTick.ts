@@ -459,6 +459,169 @@ export async function runMorningTick(
   })();
 
   /* ============================================================
+   * Step 3.6 — Deadline reminders (inspection / objection / closing
+   * / walkthrough / scheduled inspection appointments). These are
+   * the "coordinator-style" nudges that fire when a deadline is
+   * inside the reminder window AND the user hasn't already been
+   * pinged. Reminder windows:
+   *   - 7 days  ahead: "first warning"
+   *   - 1 day   ahead: "tomorrow"
+   *   - 0 days  ahead: "today"
+   * Closing-date drift: any txn whose closingDate changed in the
+   * last 24h fires a "Has the close date changed?" prompt.
+   * Walkthrough: any txn with no walkthroughDate set AND closing in
+   * <= 7d fires "Has your final walkthrough been scheduled?".
+   * ============================================================ */
+  type Reminder = {
+    accountId: string;
+    line: string;
+    /** Tag used for de-duping with the morning tick on subsequent
+     * runs — written into AutomationAuditLog.beforeJson so we don't
+     * re-ping on the same day. */
+    tag: string;
+  };
+  const reminders: Reminder[] = [];
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const in7 = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    const remindable = await db.transaction.findMany({
+      where: {
+        status: { in: ["active", "listing"] },
+        isDemo: false,
+      },
+      select: {
+        id: true,
+        accountId: true,
+        propertyAddress: true,
+        inspectionDate: true,
+        inspectionObjectionDate: true,
+        closingDate: true,
+        walkthroughDate: true,
+        contractStage: true,
+        updatedAt: true,
+        inspections: {
+          select: {
+            id: true,
+            label: true,
+            scheduledAt: true,
+            remindOnTelegram: true,
+            completedAt: true,
+          },
+        },
+      },
+    });
+
+    const dayDiff = (a: Date | null, b: Date) =>
+      a
+        ? Math.round((a.getTime() - b.getTime()) / (24 * 60 * 60 * 1000))
+        : NaN;
+
+    for (const t of remindable) {
+      const addr = t.propertyAddress ?? "(no address)";
+      const insp = dayDiff(t.inspectionDate, today);
+      if ([7, 1, 0].includes(insp)) {
+        reminders.push({
+          accountId: t.accountId,
+          tag: `insp-deadline-${t.id}-${insp}`,
+          line:
+            insp === 0
+              ? `🔍 Inspection deadline TODAY — ${escapeMd(addr)}`
+              : insp === 1
+                ? `🔍 Inspection deadline tomorrow — ${escapeMd(addr)}`
+                : `🔍 Inspection deadline in 7 days — ${escapeMd(addr)}`,
+        });
+      }
+      const obj = dayDiff(t.inspectionObjectionDate, today);
+      if ([3, 1, 0].includes(obj)) {
+        reminders.push({
+          accountId: t.accountId,
+          tag: `insp-obj-${t.id}-${obj}`,
+          line:
+            obj === 0
+              ? `📝 Inspection objection deadline TODAY — ${escapeMd(addr)}`
+              : `📝 Inspection objection deadline ${obj === 1 ? "tomorrow" : "in 3 days"} — ${escapeMd(addr)}`,
+        });
+      }
+      const close = dayDiff(t.closingDate, today);
+      if ([14, 7, 3, 1, 0].includes(close)) {
+        reminders.push({
+          accountId: t.accountId,
+          tag: `closing-${t.id}-${close}`,
+          line:
+            close === 0
+              ? `🏁 Closing TODAY — ${escapeMd(addr)}`
+              : `🏁 Closing in ${close} day${close === 1 ? "" : "s"} — ${escapeMd(addr)}`,
+        });
+      }
+      // Final walkthrough nudge: closing within 7d but no walkthrough
+      // booked anywhere (Transaction.walkthroughDate column).
+      if (close >= 0 && close <= 7 && !t.walkthroughDate) {
+        reminders.push({
+          accountId: t.accountId,
+          tag: `walkthrough-q-${t.id}-${close}`,
+          line: `🚪 Has your final walkthrough been scheduled? — ${escapeMd(addr)} closes in ${close === 0 ? "TODAY" : `${close}d`}`,
+        });
+      }
+      // Scheduled inspection appointments — same 7/1/0 windows
+      for (const i of t.inspections) {
+        if (!i.remindOnTelegram || !i.scheduledAt || i.completedAt) continue;
+        const ds = dayDiff(i.scheduledAt, today);
+        if ([7, 1, 0].includes(ds)) {
+          reminders.push({
+            accountId: t.accountId,
+            tag: `insp-appt-${i.id}-${ds}`,
+            line:
+              ds === 0
+                ? `🔧 ${escapeMd(i.label)} TODAY — ${escapeMd(addr)}`
+                : `🔧 ${escapeMd(i.label)} ${ds === 1 ? "tomorrow" : "in 7 days"} — ${escapeMd(addr)}`,
+          });
+        }
+      }
+    }
+  } catch (e) {
+    logError(e, { route: "MorningTick.reminders" });
+  }
+
+  /* ============================================================
+   * Step 3.7 — Closing-date drift alert
+   * ============================================================ */
+  const closingDrift: Array<{
+    accountId: string;
+    line: string;
+    tag: string;
+  }> = [];
+  try {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const drifted = await db.pendingClosingDateUpdate.findMany({
+      where: { detectedAt: { gte: since }, status: "pending" },
+      select: {
+        id: true,
+        accountId: true,
+        transactionId: true,
+      },
+    });
+    if (drifted.length > 0) {
+      const txns = await db.transaction.findMany({
+        where: { id: { in: drifted.map((d) => d.transactionId) } },
+        select: { id: true, propertyAddress: true, accountId: true },
+      });
+      const txnMap = new Map(txns.map((t) => [t.id, t]));
+      for (const d of drifted) {
+        const t = txnMap.get(d.transactionId);
+        closingDrift.push({
+          accountId: d.accountId,
+          tag: `close-drift-${d.id}`,
+          line: `📅 Has the close date changed? Detected new closing date for ${escapeMd(t?.propertyAddress ?? "a deal")} — review in REOS`,
+        });
+      }
+    }
+  } catch (e) {
+    logError(e, { route: "MorningTick.closingDrift" });
+  }
+
+  /* ============================================================
    * Step 4 — Send Telegram brief + Web Push fan-out
    * ============================================================ */
   const notification: MorningTickResult["notification"] = { sent: false };
@@ -468,6 +631,8 @@ export async function runMorningTick(
     earnestMoneyScan,
     classification,
     helpDigest,
+    reminders: reminders.map((r) => r.line),
+    closingDrift: closingDrift.map((r) => r.line),
     rezen: {
       activeDeals: openTxns.length,
       readyToPush,
@@ -541,6 +706,8 @@ function formatBrief(args: {
   earnestMoneyScan: MorningTickResult["earnestMoneyScan"];
   classification: MorningTickResult["classification"];
   helpDigest: Array<{ topic: string; count: number }>;
+  reminders: string[];
+  closingDrift: string[];
   rezen: MorningTickResult["rezen"];
 }): string {
   const dateStr = new Date().toLocaleDateString("en-US", {
@@ -579,6 +746,17 @@ function formatBrief(args: {
   lines.push(
     `🤖 *AI sort*: ${args.classification.classified} doc(s) placed · ${args.classification.nullified} unrelated · ${args.classification.errored} errored`,
   );
+
+  // Reminders — surfaced FIRST so they don't get buried below the
+  // recap section. Time-sensitive callouts: inspection deadlines,
+  // objection deadlines, scheduled inspection appointments,
+  // walkthrough question, closing date.
+  if (args.reminders.length > 0 || args.closingDrift.length > 0) {
+    lines.push("");
+    lines.push("⏰ *Reminders*");
+    for (const l of args.reminders) lines.push(`• ${l}`);
+    for (const l of args.closingDrift) lines.push(`• ${l}`);
+  }
 
   lines.push("");
   // Rezen status

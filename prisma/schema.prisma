@@ -270,6 +270,7 @@ model Transaction {
   participants        TransactionParticipant[]
   wireVerifications   WireVerification[]
   contractVersions    ContractExtractionVersion[]
+  inspections         TransactionInspection[]
   assignedUser        User?                    @relation("AssignedTransactions", fields: [assignedUserId], references: [id], onDelete: SetNull)
 
   @@index([accountId])
@@ -457,6 +458,7 @@ model CalendarEvent {
 
   account     Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
   transaction Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  inspections TransactionInspection[]
 
   @@index([accountId])
   @@index([transactionId])
@@ -1008,3 +1010,39 @@ model PushSubscription {
   @@index([accountId, userId])
   @@map("push_subscriptions")
 }
+
+/// User-scheduled inspection appointment(s) on a transaction.
+/// Separate from Transaction.inspectionDate (which is the contract
+/// DEADLINE) — this row is the actual visit booked with the inspector,
+/// e.g. "General home — Tue 5/10 9am", "Pest — same morning",
+/// "Radon — Wed pickup". Multiple per transaction.
+model TransactionInspection {
+  id              String   @id @default(cuid())
+  transactionId   String   @map("transaction_id")
+  /// Type of inspection — "general" | "pest" | "radon" | "sewer"
+  /// | "chimney" | "pool" | "survey" | "other". UI exposes a
+  /// freeform label; this slot is for analytics / templating later.
+  kind            String   @default("other")
+  /// Human label as the user typed it ("General home inspection").
+  label           String
+  /// When the appointment is. Nullable so a row can be created as a
+  /// placeholder before the inspector confirms.
+  scheduledAt     DateTime? @map("scheduled_at")
+  /// Free-form contact / vendor / notes ("Acme Inspections, John").
+  vendorNote      String?  @map("vendor_note")
+  /// Linked CalendarEvent row (when the agent has hit Sync to
+  /// calendar). NULL = not synced.
+  calendarEventId String?  @map("calendar_event_id")
+  /// User opt-in for Telegram reminders on this specific inspection.
+  remindOnTelegram Boolean  @default(true) @map("remind_on_telegram")
+  completedAt     DateTime? @map("completed_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  transaction     Transaction    @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  calendarEvent   CalendarEvent? @relation(fields: [calendarEventId], references: [id], onDelete: SetNull)
+
+  @@index([transactionId, scheduledAt])
+  @@map("transaction_inspections")
+}
+
