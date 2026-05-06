@@ -112,6 +112,10 @@ export async function POST(
         },
       },
     });
+    // Anti-overwrite guard — adding a party is a human edit
+    await prisma.transaction
+      .update({ where: { id }, data: { manuallyEditedAt: new Date() } })
+      .catch(() => {});
     return NextResponse.json({ ok: true, participant: p });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

@@ -100,6 +100,11 @@ export async function PATCH(
     include: { contact: true },
   });
 
+  // Anti-overwrite guard — manual party edit counts as human input
+  await prisma.transaction
+    .update({ where: { id }, data: { manuallyEditedAt: new Date() } })
+    .catch(() => {});
+
   return NextResponse.json({ ok: true, participant: updated });
 }
 
@@ -120,5 +125,11 @@ export async function DELETE(
   if (acctGuard) return acctGuard;
 
   await prisma.transactionParticipant.delete({ where: { id: pid } });
+
+  // Anti-overwrite guard — manual party edit counts as human input
+  await prisma.transaction
+    .update({ where: { id }, data: { manuallyEditedAt: new Date() } })
+    .catch(() => {});
+
   return NextResponse.json({ ok: true });
 }

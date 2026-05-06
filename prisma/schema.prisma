@@ -249,6 +249,13 @@ model Transaction {
   shareToken             String?   @unique @map("share_token")
   shareCreatedAt         DateTime? @map("share_created_at")
   shareExpiresAt         DateTime? @map("share_expires_at")
+  /// Stamped every time a human edits the transaction (parties,
+  /// dates, financials, etc.). Anti-overwrite guard: when set, AI
+  /// re-extraction paths must NOT silently rewrite fields — they
+  /// queue a PendingContractUpdate / PendingClosingDateUpdate row
+  /// for human review instead. Cleared by an explicit "re-apply"
+  /// from the user.
+  manuallyEditedAt       DateTime? @map("manually_edited_at")
   // External transaction-management forwarding (Dotloop, Rezen, SkySlope)
   forwardingEmail        String?   @map("forwarding_email")
   forwardingEmailProvider String?  @map("forwarding_email_provider") // "dotloop", "rezen", "skyslope", "other"

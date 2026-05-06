@@ -94,29 +94,58 @@ export async function POST(
     );
   }
 
+  // Anti-overwrite policy: when the user has manually edited the
+  // transaction (manuallyEditedAt is set), we ONLY fill fields that
+  // are currently null. Any field the human filled by hand is
+  // preserved — the extraction's value goes into the response as a
+  // "preserved" hint but is NOT applied to the row. The user can
+  // explicitly opt back into a full re-apply by clicking
+  // "Discard my edits and re-apply" on the panel (which clears
+  // manuallyEditedAt before this route runs).
+  const preserveManual = !!txn.manuallyEditedAt;
+  const preserved: string[] = [];
+  function setIfFree<K extends keyof Prisma.TransactionUpdateInput>(
+    data: Prisma.TransactionUpdateInput,
+    key: K,
+    incoming: Prisma.TransactionUpdateInput[K] | null | undefined,
+    fieldName: string,
+    currentValue: unknown,
+  ): void {
+    if (incoming == null) return;
+    if (preserveManual && currentValue != null) {
+      preserved.push(fieldName);
+      return;
+    }
+    data[key] = incoming;
+  }
+
   // --- Transaction field updates (skip nulls; never clobber existing values
   // except when the extraction gives us a better one)
   const data: Prisma.TransactionUpdateInput = {};
   const closingDate = toDate(fieldVal(ext, "closingDate"));
-  if (closingDate) data.closingDate = closingDate;
+  setIfFree(data, "closingDate", closingDate, "closingDate", txn.closingDate);
   const possessionDate = toDate(fieldVal(ext, "possessionDate"));
-  if (possessionDate) data.possessionDate = possessionDate;
+  setIfFree(data, "possessionDate", possessionDate, "possessionDate", txn.possessionDate);
   const inspectionDeadline = toDate(fieldVal(ext, "inspectionDeadline"));
-  if (inspectionDeadline) data.inspectionDate = inspectionDeadline;
+  setIfFree(data, "inspectionDate", inspectionDeadline, "inspectionDate", txn.inspectionDate);
   const inspectionObjectionDeadline = toDate(
     fieldVal(ext, "inspectionObjectionDeadline"),
   );
-  if (inspectionObjectionDeadline) {
-    data.inspectionObjectionDate = inspectionObjectionDeadline;
-  }
+  setIfFree(
+    data,
+    "inspectionObjectionDate",
+    inspectionObjectionDeadline,
+    "inspectionObjectionDate",
+    txn.inspectionObjectionDate,
+  );
   const financingDeadline = toDate(fieldVal(ext, "financingDeadline"));
-  if (financingDeadline) data.financingDeadline = financingDeadline;
+  setIfFree(data, "financingDeadline", financingDeadline, "financingDeadline", txn.financingDeadline);
   const titleDeadline = toDate(fieldVal(ext, "titleCommitmentDeadline"));
-  if (titleDeadline) data.titleDeadline = titleDeadline;
+  setIfFree(data, "titleDeadline", titleDeadline, "titleDeadline", txn.titleDeadline);
   const titleObjectionDeadline = toDate(fieldVal(ext, "titleObjectionDeadline"));
-  if (titleObjectionDeadline) data.titleObjectionDate = titleObjectionDeadline;
+  setIfFree(data, "titleObjectionDate", titleObjectionDeadline, "titleObjectionDate", txn.titleObjectionDate);
   const effectiveDate = toDate(fieldVal(ext, "effectiveDate"));
-  if (effectiveDate) data.contractDate = effectiveDate;
+  setIfFree(data, "contractDate", effectiveDate, "contractDate", txn.contractDate);
   // Earnest money due: prefer the explicit date on the contract; if
   // absent, most state forms default to "3 business days after mutual
   // acceptance" — compute from effectiveDate + 3 biz days.
@@ -126,7 +155,7 @@ export async function POST(
     earnestDue = addBusinessDays(effectiveDate, 3);
     earnestDueDerived = true;
   }
-  if (earnestDue) data.earnestMoneyDueDate = earnestDue;
+  setIfFree(data, "earnestMoneyDueDate", earnestDue, "earnestMoneyDueDate", txn.earnestMoneyDueDate);
   // Walkthrough: prefer the explicit date on the contract. If absent,
   // apply state-default rules (e.g. Wyoming = closing − 1 calendar
   // day). State is sourced from the existing txn or from the extracted
@@ -142,13 +171,13 @@ export async function POST(
       walkthroughDerived = true;
     }
   }
-  if (walkthrough) data.walkthroughDate = walkthrough;
+  setIfFree(data, "walkthroughDate", walkthrough, "walkthroughDate", txn.walkthroughDate);
   const propertyAddress = toStr(fieldVal(ext, "propertyAddress"));
   if (propertyAddress && !txn.propertyAddress) data.propertyAddress = propertyAddress;
   const titleCo = toStr(fieldVal(ext, "titleCompanyName"));
-  if (titleCo) data.titleCompanyName = titleCo;
+  setIfFree(data, "titleCompanyName", titleCo, "titleCompanyName", txn.titleCompanyName);
   const lender = toStr(fieldVal(ext, "lenderName"));
-  if (lender) data.lenderName = lender;
+  setIfFree(data, "lenderName", lender, "lenderName", txn.lenderName);
 
   // Contract lifecycle stage + signature dates
   const stage = toStr(fieldVal(ext, "contractStage"));
@@ -348,6 +377,12 @@ export async function POST(
     appliedFields: Object.keys(data).filter(
       (k) => !["contractAppliedAt", "pendingContractJson"].includes(k),
     ),
+    /** Fields that the extraction WOULD have written, but we
+     * preserved the human-edited value because manuallyEditedAt was
+     * set. Surfaced so the UI can prompt "X fields preserved — review
+     * + force-apply if needed". */
+    preservedFields: preserved,
+    manuallyEditedAtPreserved: preserveManual,
     financials: {
       salePrice: purchasePrice,
       grossCommission: computedGross,

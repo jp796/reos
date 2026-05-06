@@ -19,7 +19,15 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Plus, Trash2, X, Check } from "lucide-react";
+import {
+  Pencil,
+  Plus,
+  Trash2,
+  X,
+  Check,
+  ArrowLeftRight,
+  ChevronDown,
+} from "lucide-react";
 import { useToast } from "@/app/ToastProvider";
 
 interface Contact {
@@ -184,6 +192,58 @@ export function PartiesQuickEdit({
     window.location.reload();
   }
 
+  /** Swap a participant's role (e.g. mis-extracted co_buyer who is
+   * actually a co_seller). Hits the existing PATCH endpoint. */
+  async function changeParticipantRole(pid: string, role: string) {
+    const res = await fetch(
+      `/api/transactions/${transactionId}/participants/${pid}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ role }),
+      },
+    );
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      toast.error("Couldn't update role", data.error ?? res.statusText);
+      return;
+    }
+    toast.success("Role changed");
+    startTransition(() => router.refresh());
+    window.location.reload();
+  }
+
+  /** Flip transaction.side. The primary contact's role label changes
+   * with side: side=buy → primary is Buyer 1; side=sell → Seller 1.
+   * Use this when the primary was wrongly set (John extracted as
+   * seller but he's a buyer). */
+  async function flipPrimaryRole() {
+    const newSide = side === "buy" ? "sell" : side === "sell" ? "buy" : "buy";
+    const newType = newSide === "buy" ? "buyer" : "seller";
+    const cur =
+      side === "buy" ? "buyer" : side === "sell" ? "seller" : "unknown";
+    const next = newSide === "buy" ? "buyer" : "seller";
+    if (
+      !window.confirm(
+        `Switch the primary contact's role from ${cur} to ${next}? This flips which side of the deal you're representing.`,
+      )
+    )
+      return;
+    const res = await fetch(`/api/transactions/${transactionId}/edit`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ side: newSide, transactionType: newType }),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      toast.error("Couldn't switch", d.error ?? res.statusText);
+      return;
+    }
+    toast.success(`Now representing the ${next}`);
+    startTransition(() => router.refresh());
+    window.location.reload();
+  }
+
   return (
     <section className="mt-4 rounded-md border border-border bg-surface p-3">
       <div className="reos-label mb-2">Parties</div>
@@ -200,6 +260,14 @@ export function PartiesQuickEdit({
                 ? () => removeParticipant(slot.participantId!)
                 : undefined
             }
+            onChangeParticipantRole={
+              slot.source === "participant" && slot.participantId
+                ? (role) => changeParticipantRole(slot.participantId!, role)
+                : undefined
+            }
+            onFlipPrimary={
+              slot.source === "primary" ? flipPrimaryRole : undefined
+            }
           />
         ))}
       </div>
@@ -207,12 +275,29 @@ export function PartiesQuickEdit({
   );
 }
 
+/** Roles a row can be quickly switched into via the dropdown. Mirrors
+ * the VALID_ROLES set in the participants PATCH endpoint, but trimmed
+ * to the ones that actually make sense to flip on the parties grid
+ * (no need to surface buyers_agent etc. here). */
+const ROLE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "co_buyer", label: "Buyer" },
+  { value: "co_seller", label: "Seller" },
+  { value: "lender", label: "Lender" },
+  { value: "title", label: "Title" },
+  { value: "inspector", label: "Inspector" },
+  { value: "buyers_agent", label: "Buyer's agent" },
+  { value: "listing_agent", label: "Listing agent" },
+  { value: "other", label: "Other" },
+];
+
 function SlotCard({
   label,
   slot,
   onSaveContact,
   onAdd,
   onRemoveParticipant,
+  onChangeParticipantRole,
+  onFlipPrimary,
 }: {
   label: string;
   slot: Slot;
@@ -222,6 +307,8 @@ function SlotCard({
   ) => Promise<void>;
   onAdd: (payload: { fullName: string; email: string; phone: string }) => Promise<void>;
   onRemoveParticipant?: () => void;
+  onChangeParticipantRole?: (role: string) => void;
+  onFlipPrimary?: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -356,6 +443,42 @@ function SlotCard({
           )}
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
+          {/* Role dropdown — for participants, lets you flip a
+              mis-extracted Buyer↔Seller (or any other role). For
+              primaries, a single "Switch role" action that flips
+              the transaction's representation side. */}
+          {onChangeParticipantRole && (
+            <details className="relative">
+              <summary className="cursor-pointer rounded p-1 text-text-subtle hover:bg-surface-2 hover:text-brand-700 [&::-webkit-details-marker]:hidden">
+                <ChevronDown className="h-3.5 w-3.5" strokeWidth={1.8} />
+              </summary>
+              <div className="absolute right-0 top-full z-20 mt-1 w-40 overflow-hidden rounded-md border border-border bg-surface shadow-md">
+                <div className="border-b border-border bg-surface-2 px-2 py-1 text-[10px] uppercase tracking-wide text-text-muted">
+                  Change role
+                </div>
+                {ROLE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => onChangeParticipantRole(opt.value)}
+                    className="flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-xs hover:bg-surface-2"
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </details>
+          )}
+          {onFlipPrimary && (
+            <button
+              type="button"
+              onClick={onFlipPrimary}
+              className="rounded p-1 text-text-subtle hover:bg-surface-2 hover:text-brand-700"
+              title="Switch primary's role (flips representation side)"
+            >
+              <ArrowLeftRight className="h-3.5 w-3.5" strokeWidth={1.8} />
+            </button>
+          )}
           <button
             type="button"
             onClick={startEdit}

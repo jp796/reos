@@ -120,9 +120,13 @@ export async function PATCH(
     data.excludeFromProduction = body.excludeFromProduction;
   }
 
+  // Anti-overwrite guard: stamp manuallyEditedAt so AI re-extraction
+  // paths (rescan, contract re-upload) know this row has had a human
+  // touch them and queue changes for review instead of silently
+  // rewriting.
   const updated = await prisma.transaction.update({
     where: { id },
-    data,
+    data: { ...data, manuallyEditedAt: new Date() },
   });
 
   // Date-shift cascade: when contractDate or closingDate changed,
