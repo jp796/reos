@@ -74,7 +74,7 @@ export function AISummaryPanel({
       </div>
 
       {err && (
-        <div className="mt-3 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+        <div className="mt-3 rounded border border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-950/40 p-2 text-xs text-red-700 dark:border-red-900/40 dark:bg-red-950/40 dark:text-red-200">
           {err}
         </div>
       )}

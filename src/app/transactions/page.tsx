@@ -57,10 +57,13 @@ function formatDate(d: Date | null | undefined) {
 
 function statusBadge(status: string) {
   const map: Record<string, string> = {
-    active: "bg-brand-50 text-brand-700 ring-brand-200",
-    pending: "bg-accent-100 text-accent-600 ring-accent-200",
-    closed: "bg-surface-2 text-text-muted ring-border",
-    dead: "bg-red-50 text-danger ring-red-200",
+    active:
+      "bg-brand-50 text-brand-700 ring-brand-200 dark:bg-brand-950/40 dark:text-brand-200 dark:ring-brand-900/40",
+    pending:
+      "bg-accent-100 text-accent-600 ring-accent-200 dark:bg-accent-950/40 dark:text-accent-200 dark:ring-accent-900/40",
+    closed:
+      "bg-surface-2 text-text-muted ring-border",
+    dead: "bg-red-50 text-danger ring-red-200 dark:bg-red-950/40 dark:text-red-300 dark:ring-red-900/40",
   };
   const cls =
     map[status] ?? "bg-surface-2 text-text-muted ring-border";

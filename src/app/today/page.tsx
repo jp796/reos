@@ -563,7 +563,14 @@ function MilestoneRow({
   };
   tone: "red" | "amber";
 }) {
-  const bg = tone === "red" ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50/50";
+  const bg =
+    tone === "red"
+      ? "border-red-200 bg-red-50 text-red-900 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-100"
+      : "border-amber-200 bg-amber-50/50 text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100";
+  const subText =
+    tone === "red"
+      ? "text-red-800/80 dark:text-red-200/80"
+      : "text-amber-800/80 dark:text-amber-200/80";
   return (
     <li
       className={`flex items-center justify-between rounded-md border p-3 ${bg}`}
@@ -575,26 +582,19 @@ function MilestoneRow({
         >
           {m.label}
         </Link>
-        <div className="text-xs text-text">
+        <div className={`text-xs ${subText}`}>
           {m.transaction.contact.fullName}
-          {m.transaction.propertyAddress && (
-            <>
-              {" · "}
-              <span className="text-text-muted">
-                {m.transaction.propertyAddress}
-              </span>
-            </>
-          )}
+          {m.transaction.propertyAddress && <> · {m.transaction.propertyAddress}</>}
         </div>
       </div>
       <div className="text-right text-sm">
         {m.dueAt ? (
           <>
             <div>{fmtDate(m.dueAt)}</div>
-            <div className="text-xs text-text-muted">{fmtRel(m.dueAt)}</div>
+            <div className={`text-xs ${subText}`}>{fmtRel(m.dueAt)}</div>
           </>
         ) : (
-          <div className="text-xs italic text-neutral-400">no date</div>
+          <div className="text-xs italic opacity-70">no date</div>
         )}
       </div>
     </li>
@@ -623,7 +623,13 @@ function TaskRow({
   tone: "red" | "amber";
 }) {
   const bg =
-    tone === "red" ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50/50";
+    tone === "red"
+      ? "border-red-200 bg-red-50 text-red-900 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-100"
+      : "border-amber-200 bg-amber-50/50 text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100";
+  const subText =
+    tone === "red"
+      ? "text-red-800/80 dark:text-red-200/80"
+      : "text-amber-800/80 dark:text-amber-200/80";
   return (
     <li
       className={`flex items-center justify-between rounded-md border p-3 ${bg}`}
@@ -635,30 +641,21 @@ function TaskRow({
         >
           {t.title}
         </Link>
-        <div className="text-xs text-text">
+        <div className={`text-xs ${subText}`}>
           {t.transaction.contact.fullName}
-          {t.transaction.propertyAddress && (
-            <>
-              {" · "}
-              <span className="text-text-muted">
-                {t.transaction.propertyAddress}
-              </span>
-            </>
-          )}
+          {t.transaction.propertyAddress && <> · {t.transaction.propertyAddress}</>}
           {" · "}
-          <span className="text-text-muted">
-            {t.assignedTo ?? "coordinator"}
-          </span>
+          {t.assignedTo ?? "coordinator"}
           {t.priority !== "normal" && (
             <>
               {" · "}
               <span
                 className={
                   t.priority === "urgent"
-                    ? "font-medium text-red-700"
+                    ? "font-medium text-red-700 dark:text-red-300"
                     : t.priority === "high"
-                      ? "font-medium text-amber-700"
-                      : "text-text-muted"
+                      ? "font-medium text-amber-700 dark:text-amber-300"
+                      : ""
                 }
               >
                 {t.priority}
@@ -671,10 +668,10 @@ function TaskRow({
         {t.dueAt ? (
           <>
             <div>{fmtDate(t.dueAt)}</div>
-            <div className="text-xs text-text-muted">{fmtRel(t.dueAt)}</div>
+            <div className={`text-xs ${subText}`}>{fmtRel(t.dueAt)}</div>
           </>
         ) : (
-          <div className="text-xs italic text-neutral-400">no date</div>
+          <div className="text-xs italic opacity-70">no date</div>
         )}
       </div>
     </li>

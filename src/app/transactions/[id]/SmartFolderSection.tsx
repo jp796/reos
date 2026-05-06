@@ -32,7 +32,7 @@ export function SmartFolderSection(props: Props) {
   // Already configured
   if (props.filterId && props.setupAt) {
     return (
-      <section className="mt-6 rounded-md border border-emerald-200 bg-emerald-50/40 p-4">
+      <section className="mt-6 rounded-md border border-emerald-200 bg-emerald-50 dark:border-emerald-900/40 dark:bg-emerald-950/40 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="text-xs uppercase tracking-wide text-emerald-700">

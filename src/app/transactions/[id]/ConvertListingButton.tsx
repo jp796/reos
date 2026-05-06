@@ -56,7 +56,7 @@ export function ConvertListingButton({
     return (
       <section
         id="convert"
-        className="mt-6 rounded-md border border-amber-200 bg-amber-50/40 p-4 dark:border-amber-900 dark:bg-amber-950/30"
+        className="mt-6 rounded-md border border-amber-200 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-950/40 p-4 dark:border-amber-900 dark:bg-amber-950/30"
       >
         <div className="flex items-center justify-between gap-2">
           <div>

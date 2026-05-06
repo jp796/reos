@@ -68,7 +68,7 @@ export function IntakeForm() {
 
   if (submitted) {
     return (
-      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-6">
+      <div className="rounded-lg border border-emerald-200 bg-emerald-50 dark:border-emerald-900/40 dark:bg-emerald-950/40 p-6">
         <h2 className="font-display text-lg font-semibold text-emerald-900">
           Got it — thank you.
         </h2>
@@ -216,7 +216,7 @@ export function IntakeForm() {
       />
 
       {err && (
-        <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+        <div className="rounded border border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-950/40 px-3 py-2 text-xs text-red-700 dark:border-red-900/40 dark:bg-red-950/40 dark:text-red-200">
           {err}
         </div>
       )}

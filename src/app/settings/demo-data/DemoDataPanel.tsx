@@ -100,7 +100,7 @@ export function DemoDataPanel({ demoCount }: { demoCount: number }) {
       </div>
 
       {demoCount > 0 && (
-        <div className="rounded-md border border-red-200 bg-red-50/40 p-4 dark:border-red-900 dark:bg-red-950/30">
+        <div className="rounded-md border border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-950/40/40 p-4 dark:border-red-900 dark:bg-red-950/30">
           <h2 className="text-sm font-medium">Wipe all demo data</h2>
           <p className="mt-1 text-xs text-text-muted">
             Permanently deletes every transaction, contact, milestone, and

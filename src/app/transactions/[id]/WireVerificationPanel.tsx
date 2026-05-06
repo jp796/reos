@@ -155,7 +155,7 @@ export function WireVerificationPanel({
       </div>
 
       {unverifiedAndClosing && (
-        <div className="mb-3 flex items-start gap-2 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+        <div className="mb-3 flex items-start gap-2 rounded border border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-950/40 p-3 text-sm text-red-800">
           <AlertOctagon
             className="mt-0.5 h-4 w-4 shrink-0 text-red-600"
             strokeWidth={2}
@@ -268,7 +268,7 @@ export function WireVerificationPanel({
           {items.map((v) => (
             <li
               key={v.id}
-              className="rounded border border-emerald-200 bg-emerald-50/40 p-3 text-sm"
+              className="rounded border border-emerald-200 bg-emerald-50 dark:border-emerald-900/40 dark:bg-emerald-950/40 p-3 text-sm"
             >
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">

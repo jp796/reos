@@ -132,7 +132,7 @@ export function PendingClosingUpdatesPanel() {
   if (loading && items === null) return null;
   if (err)
     return (
-      <div className="mt-8 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+      <div className="mt-8 rounded-md border border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-950/40 p-3 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/40 dark:text-red-200">
         {err}
       </div>
     );
@@ -175,7 +175,7 @@ export function PendingClosingUpdatesPanel() {
         </div>
       </div>
       {bulkMsg && (
-        <div className="mb-2 rounded border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-800">
+        <div className="mb-2 rounded border border-emerald-200 bg-emerald-50 dark:border-emerald-900/40 dark:bg-emerald-950/40 p-2 text-xs text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-950/40 dark:text-emerald-200">
           {bulkMsg}
         </div>
       )}
@@ -272,7 +272,7 @@ function ClosingUpdateRow({
   const disabled = busy || working;
 
   return (
-    <div className="rounded-md border border-amber-200 bg-amber-50/40 p-4">
+    <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-950/40 p-4">
       <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
         <span className="rounded bg-surface px-1.5 py-0.5 font-mono">
           {update.documentType}

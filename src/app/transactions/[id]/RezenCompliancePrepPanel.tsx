@@ -154,7 +154,7 @@ export function RezenCompliancePrepPanel({
   }
   if (err) {
     return (
-      <section className="mt-6 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+      <section className="mt-6 rounded-md border border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-950/40 p-4 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/40 dark:text-red-200">
         Couldn&rsquo;t load Rezen prep: {err}
       </section>
     );

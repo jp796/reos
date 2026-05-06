@@ -294,7 +294,7 @@ export function EditablePrimaryContact(props: Props) {
       </div>
 
       {props.referencedElsewhere && (
-        <div className="mt-2 rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+        <div className="mt-2 rounded border border-amber-200 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-950/40 px-2 py-1.5 text-xs text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-200">
           ⚠︎ This contact is linked to other transactions too — the
           rename will show up everywhere. If you want a different entity
           here only, cancel and add a new participant instead.
@@ -302,7 +302,7 @@ export function EditablePrimaryContact(props: Props) {
       )}
 
       {err && (
-        <div className="mt-2 rounded border border-red-200 bg-red-50 px-2 py-1.5 text-xs text-red-700">
+        <div className="mt-2 rounded border border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-950/40 px-2 py-1.5 text-xs text-red-700 dark:border-red-900/40 dark:bg-red-950/40 dark:text-red-200">
           {err}
         </div>
       )}

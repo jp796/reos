@@ -185,7 +185,7 @@ export function DropZone({
         </div>
       )}
       {err && (
-        <div className="mt-2 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700">
+        <div className="mt-2 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700 dark:border-red-900/40 dark:bg-red-950/40 dark:text-red-200">
           {err}
         </div>
       )}
