@@ -47,11 +47,15 @@ export async function POST(
     return NextResponse.json({ error: "label required" }, { status: 400 });
   }
   // dueAt is optional — null/empty creates a date-less checklist
-  // milestone. Validate only when a value is provided.
+  // milestone. Validate only when a value is provided. Use
+  // parseInputDate so "YYYY-MM-DD" from <input type="date"> is
+  // stored as local noon, not UTC midnight (which displays as the
+  // previous day in any negative-offset timezone).
   let due: Date | null = null;
   if (body.dueAt !== undefined && body.dueAt !== null && body.dueAt !== "") {
-    const parsed = new Date(body.dueAt);
-    if (Number.isNaN(parsed.getTime())) {
+    const { parseInputDate } = await import("@/lib/dates");
+    const parsed = parseInputDate(body.dueAt);
+    if (!parsed) {
       return NextResponse.json({ error: "invalid dueAt" }, { status: 400 });
     }
     due = parsed;

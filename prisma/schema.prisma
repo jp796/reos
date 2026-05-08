@@ -133,6 +133,7 @@ model User {
   assignedTransactions Transaction[] @relation("AssignedTransactions")
   pushSubscriptions    PushSubscription[]
   memberships          AccountMembership[]
+  authoredNotes        TransactionNote[]
 
   @@index([accountId])
   @@map("users")
@@ -280,6 +281,7 @@ model Transaction {
   wireVerifications   WireVerification[]
   contractVersions    ContractExtractionVersion[]
   inspections         TransactionInspection[]
+  notes               TransactionNote[]
   assignedUser        User?                    @relation("AssignedTransactions", fields: [assignedUserId], references: [id], onDelete: SetNull)
 
   @@index([accountId])
@@ -1093,4 +1095,32 @@ model AccountMembership {
   @@index([userId])
   @@index([email])
   @@map("account_memberships")
+}
+
+/// Free-form notes attached to a transaction. Visible under AI
+/// Summary on the detail page; the section badge shows a red dot
+/// when there are unread notes for the active user.
+///
+/// readByJson = JSON array of userIds who have viewed the note since
+/// it was created or last updated. The author is auto-marked as read.
+model TransactionNote {
+  id             String   @id @default(cuid())
+  transactionId  String   @map("transaction_id")
+  authorUserId   String?  @map("author_user_id")
+  /// Plain-text body, capped at 8KB at the API layer.
+  body           String
+  /// JSON array of userIds — `[]` means nobody has read this note yet.
+  readByJson     Json     @default("[]") @map("read_by_json")
+  /// When true on create, the API fans the note out to the share-list
+  /// emails as a transactional Gmail send. Off by default — a TC's
+  /// quick scratch notes shouldn't email everyone.
+  notifyEmail    Boolean  @default(false) @map("notify_email")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  transaction    Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  author         User?       @relation(fields: [authorUserId], references: [id], onDelete: SetNull)
+
+  @@index([transactionId, createdAt])
+  @@map("transaction_notes")
 }

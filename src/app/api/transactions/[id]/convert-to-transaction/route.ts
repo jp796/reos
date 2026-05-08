@@ -13,6 +13,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSession, assertSameAccount } from "@/lib/require-session";
+import { parseInputDate } from "@/lib/dates";
 
 export const runtime = "nodejs";
 
@@ -45,9 +46,9 @@ export async function POST(
 
   const body = (await req.json().catch(() => ({}))) as Body;
   const contractDate = body.contractDate
-    ? new Date(body.contractDate)
+    ? parseInputDate(body.contractDate) ?? new Date()
     : new Date();
-  const closingDate = body.closingDate ? new Date(body.closingDate) : undefined;
+  const closingDate = body.closingDate ? parseInputDate(body.closingDate) ?? new Date() : undefined;
 
   const updated = await prisma.transaction.update({
     where: { id },

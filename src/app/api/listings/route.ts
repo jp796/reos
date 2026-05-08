@@ -11,6 +11,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/require-session";
+import { parseInputDate } from "@/lib/dates";
 
 export const runtime = "nodejs";
 
@@ -75,9 +76,9 @@ export async function POST(req: NextRequest) {
       state: body.state?.trim().toUpperCase() || null,
       zip: body.zip?.trim() || null,
       listPrice: body.listPrice ?? null,
-      listDate: body.listDate ? new Date(body.listDate) : new Date(),
+      listDate: body.listDate ? parseInputDate(body.listDate) ?? new Date() : new Date(),
       listingExpirationDate: body.listingExpirationDate
-        ? new Date(body.listingExpirationDate)
+        ? parseInputDate(body.listingExpirationDate) ?? new Date()
         : null,
     },
     select: { id: true },

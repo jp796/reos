@@ -42,12 +42,15 @@ export async function PATCH(
   const data: Prisma.MilestoneUpdateInput = {};
   if (body.dueAt !== undefined) {
     // null = explicitly drop the date (milestone becomes a date-less
-    // checklist item). Empty string also clears.
+    // checklist item). Empty string also clears. parseInputDate
+    // makes "YYYY-MM-DD" land at local noon so the display stays on
+    // the day the user typed in any timezone.
     if (body.dueAt === null || body.dueAt === "") {
       data.dueAt = null;
     } else {
-      const d = new Date(body.dueAt);
-      if (Number.isNaN(d.getTime())) {
+      const { parseInputDate } = await import("@/lib/dates");
+      const d = parseInputDate(body.dueAt);
+      if (!d) {
         return NextResponse.json({ error: "invalid dueAt" }, { status: 400 });
       }
       data.dueAt = d;

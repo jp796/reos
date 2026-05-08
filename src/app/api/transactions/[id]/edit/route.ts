@@ -18,6 +18,7 @@ import type { Prisma } from "@prisma/client";
 import { requireSession, assertSameAccount } from "@/lib/require-session";
 import { AutomationAuditService } from "@/services/integrations/FollowUpBossService";
 import { recomputeOnDateShift } from "@/services/core/MilestoneRecomputeService";
+import { parseInputDate } from "@/lib/dates";
 
 const VALID_SIDES = new Set(["buy", "sell", "both"]);
 const VALID_TYPES = new Set(["buyer", "seller", "investor", "wholesale", "other"]);
@@ -111,10 +112,10 @@ export async function PATCH(
     }
   }
   if (body.closingDate !== undefined) {
-    data.closingDate = body.closingDate ? new Date(body.closingDate) : null;
+    data.closingDate = body.closingDate ? parseInputDate(body.closingDate) ?? new Date() : null;
   }
   if (body.contractDate !== undefined) {
-    data.contractDate = body.contractDate ? new Date(body.contractDate) : null;
+    data.contractDate = body.contractDate ? parseInputDate(body.contractDate) ?? new Date() : null;
   }
   if (body.excludeFromProduction !== undefined) {
     data.excludeFromProduction = body.excludeFromProduction;
@@ -137,13 +138,13 @@ export async function PATCH(
         contractDate:
           body.contractDate !== undefined
             ? body.contractDate
-              ? new Date(body.contractDate)
+              ? parseInputDate(body.contractDate) ?? new Date()
               : null
             : undefined,
         closingDate:
           body.closingDate !== undefined
             ? body.closingDate
-              ? new Date(body.closingDate)
+              ? parseInputDate(body.closingDate) ?? new Date()
               : null
             : undefined,
       });

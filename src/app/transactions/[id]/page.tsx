@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { requireSession } from "@/lib/require-session";
 import { CalendarSyncButton } from "../CalendarSyncButton";
 import { FinancialsForm } from "./FinancialsForm";
 import { AISummaryPanel } from "./AISummaryPanel";
@@ -12,6 +14,7 @@ import { SharePanel } from "./SharePanel";
 import { EditableHeader } from "./EditableHeader";
 import { DeleteTransactionButton } from "./DeleteTransactionButton";
 import { InspectionsPanel } from "./InspectionsPanel";
+import { NotesPanel } from "./NotesPanel";
 import { EditablePrimaryContact } from "./EditablePrimaryContact";
 import { TaskPanel } from "./TaskPanel";
 import { CompliancePanel } from "./CompliancePanel";
@@ -88,6 +91,12 @@ export default async function TransactionDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+
+  // Need the active user for the NotesPanel (track read state per
+  // user). requireSession also enforces tenancy — if the txn belongs
+  // to another account this guards before the data fetch.
+  const actor = await requireSession();
+  if (actor instanceof NextResponse) return notFound();
 
   const txn = await prisma.transaction.findUnique({
     where: { id },
@@ -312,6 +321,8 @@ export default async function TransactionDetailPage({
         initialSummary={txn.aiSummary}
         initialUpdatedAt={txn.aiSummaryUpdatedAt?.toISOString() ?? null}
       />
+
+      <NotesPanel transactionId={txn.id} currentUserId={actor.userId} />
 
       {/* Risk */}
       <section className="mt-6">

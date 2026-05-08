@@ -13,6 +13,7 @@ import { prisma } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 import { requireSession, assertSameAccount } from "@/lib/require-session";
 import { AutomationAuditService } from "@/services/integrations/FollowUpBossService";
+import { parseInputDate } from "@/lib/dates";
 
 const STATUSES = new Set(["active", "pending", "closed", "dead"]);
 
@@ -45,7 +46,7 @@ export async function PATCH(
     if (body.closingDate === null) {
       data.closingDate = null;
     } else {
-      const d = new Date(body.closingDate);
+      const d = parseInputDate(body.closingDate) ?? new Date();
       if (Number.isNaN(d.getTime())) {
         return NextResponse.json(
           { error: "invalid closingDate" },
