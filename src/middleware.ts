@@ -23,6 +23,7 @@ const PUBLIC_PREFIXES = [
   "/terms",
   "/intake", // public lead-capture form + POST
   "/api/intake",
+  "/demo", // public clickable sandbox — no DB writes, mock data only
 ];
 
 // Webhook + automation-tick endpoints — third parties (Google Pub/Sub,

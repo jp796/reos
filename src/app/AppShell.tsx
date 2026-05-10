@@ -97,6 +97,7 @@ export function AppShell({
   // strip it when there's no user context).
   if (
     pathname?.startsWith("/share/") ||
+    pathname?.startsWith("/demo") ||
     pathname === "/login" ||
     pathname === "/"
   ) {

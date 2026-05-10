@@ -120,6 +120,13 @@ export default async function Landing() {
             >
               Watch the demo (90 sec)
             </a>
+            <Link
+              href="/demo"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-brand-300 bg-brand-50 px-6 py-3 text-base font-semibold text-brand-700 hover:border-brand-500 hover:bg-brand-100 dark:border-brand-900/40 dark:bg-brand-950/30 dark:text-brand-200 sm:w-auto"
+            >
+              Try the demo
+              <ArrowRight className="h-4 w-4" strokeWidth={2} />
+            </Link>
           </div>
           <p className="mt-3 text-xs text-text-subtle">
             No credit card. Connect Gmail in under a minute.
