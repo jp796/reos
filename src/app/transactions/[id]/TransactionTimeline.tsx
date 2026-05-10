@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { toDateInputValue } from "@/lib/dates";
 
 interface Milestone {
   id: string;
@@ -556,7 +557,10 @@ function EditRow({
   onDelete: () => void;
 }) {
   const [label, setLabel] = useState(milestone.label);
-  const [dueAt, setDueAt] = useState(milestone.dueAt?.slice(0, 10) ?? "");
+  // Use toDateInputValue (not raw slice) so legacy UTC-midnight values
+  // hydrate to the same day fmtLocalDate displays — otherwise the input
+  // shows May 19 while the timeline shows May 18.
+  const [dueAt, setDueAt] = useState(toDateInputValue(milestone.dueAt));
   const [ownerRole, setOwnerRole] = useState(milestone.ownerRole);
 
   return (

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { DropZone } from "@/app/components/DropZone";
 import { MoneyInput } from "@/app/components/MoneyInput";
+import { toDateInputValue } from "@/lib/dates";
 
 interface Field<T = unknown> {
   value: T | null;
@@ -88,8 +89,10 @@ const EMPTY_FORM: FormState = {
 };
 
 function iso(s: string | null | undefined): string {
-  if (!s) return "";
-  return s.slice(0, 10);
+  // Was: s.slice(0, 10) — that returns the UTC date, which can be one
+  // day off from what the user sees. toDateInputValue rounds-trips
+  // legacy UTC-midnight and live local-noon Dates to the local day.
+  return toDateInputValue(s);
 }
 function num(n: number | null | undefined): string {
   return n != null ? String(n) : "";

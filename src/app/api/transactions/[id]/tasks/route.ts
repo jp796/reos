@@ -11,6 +11,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSession, assertSameAccount } from "@/lib/require-session";
 import { applyChecklist } from "@/services/core/TaskTemplates";
+import { parseInputDate } from "@/lib/dates";
 
 const VALID_ASSIGNEES = new Set([
   "coordinator",
@@ -88,7 +89,10 @@ export async function POST(
 
   let due: Date | null = null;
   if (body.dueAt) {
-    const d = new Date(body.dueAt);
+    // parseInputDate maps YYYY-MM-DD to local noon, so the displayed
+    // day matches what the user typed (raw `new Date("2026-05-19")`
+    // parses as UTC midnight = previous day in any US timezone).
+    const d = parseInputDate(body.dueAt) ?? new Date(NaN);
     if (Number.isNaN(d.getTime())) {
       return NextResponse.json({ error: "invalid dueAt" }, { status: 400 });
     }

@@ -13,6 +13,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/app/ToastProvider";
+import { toDateInputValue } from "@/lib/dates";
 
 export function ProductionToggle({
   transactionId,
@@ -28,7 +29,7 @@ export function ProductionToggle({
   const router = useRouter();
   const toast = useToast();
   const [enabled, setEnabled] = useState(initial);
-  const [closing, setClosing] = useState(closingDateIso?.slice(0, 10) ?? "");
+  const [closing, setClosing] = useState(toDateInputValue(closingDateIso));
   const [busy, setBusy] = useState(false);
   const [, startTransition] = useTransition();
 
@@ -84,7 +85,7 @@ export function ProductionToggle({
               value={closing}
               onChange={(e) => setClosing(e.target.value)}
               onBlur={() =>
-                closing !== (closingDateIso?.slice(0, 10) ?? "") &&
+                closing !== toDateInputValue(closingDateIso) &&
                 patch({ closingDate: closing || null })
               }
               disabled={busy}

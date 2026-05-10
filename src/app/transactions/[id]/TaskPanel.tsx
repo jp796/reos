@@ -1,5 +1,7 @@
 "use client";
 
+import { toDateInputValue } from "@/lib/dates";
+
 /**
  * TaskPanel
  *
@@ -336,7 +338,7 @@ function TaskRow({
 }) {
   const overdue = isOverdue(task);
   const [editingDate, setEditingDate] = useState(false);
-  const [dateVal, setDateVal] = useState(task.dueAt?.slice(0, 10) ?? "");
+  const [dateVal, setDateVal] = useState(toDateInputValue(task.dueAt));
 
   function toggleComplete() {
     onPatch({
@@ -421,7 +423,7 @@ function TaskRow({
               type="button"
               onClick={() => {
                 setEditingDate(false);
-                setDateVal(task.dueAt?.slice(0, 10) ?? "");
+                setDateVal(toDateInputValue(task.dueAt));
               }}
               className="text-[11px] text-text-muted hover:text-text"
             >

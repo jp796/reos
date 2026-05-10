@@ -8,6 +8,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 import { requireSession, assertSameAccount } from "@/lib/require-session";
+import { parseInputDate } from "@/lib/dates";
 
 const VALID_ASSIGNEES = new Set([
   "coordinator",
@@ -54,7 +55,10 @@ export async function PATCH(
     if (body.dueAt === null || body.dueAt === "") {
       data.dueAt = null;
     } else {
-      const d = new Date(body.dueAt);
+      // parseInputDate handles YYYY-MM-DD → local noon (avoids the
+      // UTC-midnight off-by-one that bit the timeline). ISO datetimes
+      // pass through unchanged.
+      const d = parseInputDate(body.dueAt) ?? new Date(NaN);
       if (Number.isNaN(d.getTime())) {
         return NextResponse.json({ error: "invalid dueAt" }, { status: 400 });
       }
