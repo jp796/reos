@@ -43,7 +43,20 @@ export async function GET(req: NextRequest) {
   }
 
   const cookieNonce = req.cookies.get(STATE_COOKIE)?.value;
-  if (!cookieNonce || !EncryptionService.constantTimeEqual(cookieNonce, parsedState.nonce)) {
+  if (!cookieNonce) {
+    // Cookie absent → almost always means it expired (the
+    // /api/auth/google start sets it with a 30-min TTL). Could also
+    // mean the user finished the flow in a different browser. Either
+    // way, surface a friendly redirect to /settings/integrations with
+    // a flag the panel can show as a banner.
+    return NextResponse.redirect(
+      new URL("/settings/integrations?google_error=expired", req.url),
+    );
+  }
+  if (!EncryptionService.constantTimeEqual(cookieNonce, parsedState.nonce)) {
+    // Nonce present but doesn't match — usually caused by opening the
+    // OAuth flow in two tabs (second tab overwrites the first cookie,
+    // first tab's callback fails). Genuine CSRF would also land here.
     return NextResponse.json(
       { error: "State nonce mismatch (CSRF guard)" },
       { status: 400 },

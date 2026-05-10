@@ -65,7 +65,11 @@ export async function GET(req: NextRequest) {
     httpOnly: true,
     secure: env.NODE_ENV === "production",
     sameSite: "lax",
-    maxAge: 60 * 10, // 10 min
+    // 30 min — covers the "click Connect, bounce to GCP Console to
+    // tweak something, come back, hit Allow" flow that bit JP. The
+    // nonce stays single-use (callback validates and clears the
+    // cookie), so a longer TTL doesn't weaken CSRF protection.
+    maxAge: 60 * 30,
     path: "/",
   });
   return res;

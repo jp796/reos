@@ -17,6 +17,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   CheckCircle2,
   AlertCircle,
@@ -39,6 +40,13 @@ export function GoogleConnectionPanel({
   hasStoredBlob: boolean;
 }) {
   const toast = useToast();
+  const params = useSearchParams();
+  // Callback can redirect here with ?google_error=expired when the
+  // 30-min state-cookie window elapsed before consent finished. Show
+  // a one-line banner so the user knows what happened instead of
+  // staring at a "disconnected" panel that looks no different from
+  // the steady state.
+  const expiredBanner = params.get("google_error") === "expired";
   const [status, setStatus] = useState<Status>({ state: "loading" });
   const [busy, setBusy] = useState<"disconnect" | null>(null);
 
@@ -104,6 +112,18 @@ export function GoogleConnectionPanel({
           Powers inbox scans, calendar sync, contract auto-extraction
         </span>
       </header>
+
+      {expiredBanner && (
+        <div className="mb-3 flex items-start gap-2 rounded border border-amber-300 bg-amber-50 p-2.5 text-sm text-amber-900">
+          <AlertCircle className="mt-0.5 h-4 w-4 flex-none" aria-hidden="true" />
+          <span>
+            <span className="font-medium">Sign-in took too long.</span>{" "}
+            The Google consent flow timed out before you finished — click{" "}
+            <span className="font-medium">Connect Google</span> below and
+            complete the steps in one go.
+          </span>
+        </div>
+      )}
 
       {status.state === "loading" ? (
         <div className="flex items-center gap-2 text-sm text-text-muted">
