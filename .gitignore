@@ -38,3 +38,6 @@ prisma/dev.db*
 # editor
 .vscode/
 .idea/
+
+# Agent worktrees (PAI Delegation isolation)
+.claude/worktrees/

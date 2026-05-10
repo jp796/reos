@@ -18,6 +18,8 @@ import { NotesPanel } from "./NotesPanel";
 import { EditablePrimaryContact } from "./EditablePrimaryContact";
 import { TaskPanel } from "./TaskPanel";
 import { CompliancePanel } from "./CompliancePanel";
+import { MissingItemsAlert } from "./MissingItemsAlert";
+import { auditTransactionCompliance } from "@/services/core/ComplianceChecklist";
 import { CdaButton } from "./CdaButton";
 import { SendPanel } from "./SendPanel";
 import { WireVerificationPanel } from "./WireVerificationPanel";
@@ -155,6 +157,14 @@ export default async function TransactionDetailPage({
   });
   const accountSettings = (account?.settingsJson ?? {}) as Record<string, unknown>;
   const complianceAuditEnabled = accountSettings.complianceAuditEnabled !== false;
+
+  // Run the file audit server-side so MissingItemsAlert renders
+  // synchronously with the page (no spinner, no flicker). Skip when
+  // disabled — saves the Document scan for brokerages running their
+  // own audit outside REOS.
+  const complianceAudit = complianceAuditEnabled
+    ? await auditTransactionCompliance(prisma, txn.id)
+    : { items: [], missing: 0, present: 0, total: 0 };
   const tags: string[] = Array.isArray(contact?.tagsJson)
     ? (contact.tagsJson as string[])
     : [];
@@ -315,6 +325,27 @@ export default async function TransactionDetailPage({
           contact: p.contact,
         }))}
       />
+
+      {/* Compliance alert — one-glance status surfaced above the AI
+          summary so TCs see "3 items missing" before they read prose.
+          Full per-row audit lives in CompliancePanel further down
+          (anchor: #compliance-audit). Gated by the same brokerage
+          opt-out flag so a brokerage running its own audit isn't
+          double-nagged. */}
+      {complianceAuditEnabled && (
+        <MissingItemsAlert
+          missing={complianceAudit.missing}
+          total={complianceAudit.total}
+          topMissing={complianceAudit.items
+            .filter((i) => i.status === "missing")
+            .slice(0, 3)
+            .map((i) => ({
+              key: i.requirement.key,
+              label: i.requirement.label,
+              stage: i.requirement.stage,
+            }))}
+        />
+      )}
 
       <AISummaryPanel
         transactionId={txn.id}
@@ -516,8 +547,14 @@ export default async function TransactionDetailPage({
       />
 
       {/* Compliance file audit — required docs per side + state.
-          Hidden when the brokerage runs its own audit (Settings → Brokerage). */}
-      {complianceAuditEnabled && <CompliancePanel transactionId={txn.id} />}
+          Hidden when the brokerage runs its own audit (Settings → Brokerage).
+          The #compliance-audit anchor is the scroll target from
+          MissingItemsAlert's "View full audit ↓" link. */}
+      {complianceAuditEnabled && (
+        <div id="compliance-audit" className="scroll-mt-20">
+          <CompliancePanel transactionId={txn.id} />
+        </div>
+      )}
 
       {/* Rezen prep — slot-by-slot status + downloadable package
           renamed for Rezen's file UI. Always shown — runs even
