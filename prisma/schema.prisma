@@ -33,6 +33,7 @@ model Account {
   /// page-scoped long-lived token and optional linked Instagram
   /// Business account). Shape: StoredMetaTokens (MetaOAuthService.ts).
   metaOauthTokensEncrypted        String?  @map("meta_oauth_tokens_encrypted")
+  socialPostTemplates             SocialPostTemplate[]
   settingsJson                    Json?    @map("settings_json")
   /// Brokerage profile this account belongs to. Drives compliance
   /// checklist, CDA template, and default integrations. Nullable
@@ -702,6 +703,35 @@ model EmailTemplate {
 
   @@index([accountId, category])
   @@map("email_templates")
+}
+
+/// Per-account social-post caption templates. One row per
+/// (event × platform) — when present, SocialPostService renders the
+/// template (variable substitution) instead of calling OpenAI for
+/// that slot. Empty/missing rows fall back to AI generation.
+///
+/// Variables supported: {{address}}, {{city}}, {{state}}, {{price}},
+/// {{beds}}, {{baths}}, {{sqft}}, {{agent_name}}, {{brokerage_name}},
+/// {{event_label}}, {{side_verb}}, {{hashtags}}.
+model SocialPostTemplate {
+  id           String   @id @default(cuid())
+  accountId    String   @map("account_id")
+  /// new_listing | under_contract | sold
+  event        String
+  /// instagram | facebook | linkedin
+  platform     String
+  body         String   @db.Text
+  /// Seeded by the system on first edit; editable but flagged so a
+  /// future re-seed can skip user-customized rows.
+  isStarter    Boolean  @default(false) @map("is_starter")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, event, platform], map: "uniq_social_post_template_slot")
+  @@index([accountId])
+  @@map("social_post_templates")
 }
 
 /// Pre-listing / pre-offer structured intake. Public `/intake` form

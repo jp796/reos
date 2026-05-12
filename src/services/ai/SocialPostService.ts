@@ -11,10 +11,12 @@
  */
 
 import type { PrismaClient } from "@prisma/client";
+import { renderTemplate, type TemplateContext } from "./SocialTemplateRenderer";
 
 const MODEL = process.env.OPENAI_CHAT_MODEL ?? "gpt-4o-mini";
 
 export type SocialEvent = "new_listing" | "under_contract" | "sold";
+type Platform = "instagram" | "facebook" | "linkedin";
 
 export interface SocialPostBundle {
   event: SocialEvent;
@@ -79,6 +81,52 @@ export async function generateSocialPosts(
       ? (txn.listPrice ?? txn.financials?.salePrice ?? null)
       : (txn.financials?.salePrice ?? null);
 
+  // ── Template resolution: per-account user templates take priority.
+  // For each platform with a saved template, we render that instead
+  // of calling OpenAI. Slots without a template still go to the AI
+  // path so users can mix-and-match (custom IG, AI FB + LI, etc.).
+  const userTemplates = await db.socialPostTemplate.findMany({
+    where: { accountId: txn.accountId, event },
+  });
+  const templateContext: TemplateContext = {
+    event,
+    address: txn.propertyAddress,
+    city: txn.city,
+    state: txn.state,
+    price: price ? Number(price) : null,
+    // bedrooms/bathrooms/squareFeet aren't yet columns on the schema —
+    // the template variables resolve to "[beds]" / "[baths]" / "[sqft]"
+    // placeholders so users see what they could populate. When we add
+    // those columns to Transaction (or TransactionFinancials), drop the
+    // null assignment and read from txn directly.
+    beds: null,
+    baths: null,
+    sqft: null,
+    agentName,
+    brokerageName,
+    side: txn.side,
+  };
+  const rendered: Partial<Record<Platform, string>> = {};
+  for (const t of userTemplates) {
+    if (t.platform === "instagram" || t.platform === "facebook" || t.platform === "linkedin") {
+      rendered[t.platform as Platform] = renderTemplate(t.body, templateContext);
+    }
+  }
+  // If every platform is templated, skip the OpenAI call entirely.
+  const allCovered =
+    rendered.instagram !== undefined &&
+    rendered.facebook !== undefined &&
+    rendered.linkedin !== undefined;
+  if (allCovered) {
+    return {
+      event,
+      instagram: rendered.instagram ?? "",
+      facebook: rendered.facebook ?? "",
+      linkedin: rendered.linkedin ?? "",
+      hashtags: [], // user templates embed hashtags via {{hashtags}}; no separate array
+    };
+  }
+
   const userPrompt = JSON.stringify({
     event: EVENT_LABEL[event],
     propertyAddress: txn.propertyAddress ?? "(no address)",
@@ -119,11 +167,14 @@ export async function generateSocialPosts(
   const content = data.choices?.[0]?.message?.content?.trim();
   if (!content) throw new Error("empty response from OpenAI");
   const parsed = JSON.parse(content) as Partial<SocialPostBundle>;
+  // User-template captions (if any) override the AI output per-platform.
+  // Lets a user customize one platform while letting AI handle the
+  // others on the same generation pass.
   return {
     event,
-    instagram: parsed.instagram ?? "",
-    facebook: parsed.facebook ?? "",
-    linkedin: parsed.linkedin ?? "",
+    instagram: rendered.instagram ?? parsed.instagram ?? "",
+    facebook: rendered.facebook ?? parsed.facebook ?? "",
+    linkedin: rendered.linkedin ?? parsed.linkedin ?? "",
     hashtags: Array.isArray(parsed.hashtags) ? parsed.hashtags : [],
   };
 }

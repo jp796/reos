@@ -21,7 +21,15 @@ export default async function TemplatesSettingsPage() {
 
   return (
     <div className="mx-auto max-w-5xl">
-      <h1 className="font-display text-h1 font-semibold">Email templates</h1>
+      <div className="flex items-baseline justify-between gap-3">
+        <h1 className="font-display text-h1 font-semibold">Email templates</h1>
+        <a
+          href="/settings/templates/social"
+          className="text-xs font-medium text-brand-700 underline hover:text-brand-600"
+        >
+          Social-post templates →
+        </a>
+      </div>
       <p className="mt-1 text-sm text-text-muted">
         Canned messages with <code>{`{{variable}}`}</code> tokens that
         resolve from the transaction at send time. These live account-
