@@ -54,7 +54,7 @@ export async function POST(
   //   2. publicScrape (Homes.com → Redfin) — free fallback. Currently
   //      403s from Cloud Run IPs but stays in place for dev /
   //      non-blocked environments.
-  let photos = (await apifyZillowPhotoSource.isConfigured())
+  let photos = (await apifyZillowPhotoSource.isConfigured(actor.accountId))
     ? await apifyZillowPhotoSource.fetch({
         accountId: actor.accountId,
         transactionId: txn.id,

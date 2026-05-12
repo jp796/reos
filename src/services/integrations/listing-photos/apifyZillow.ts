@@ -29,7 +29,8 @@ const FETCH_TIMEOUT_MS = 25_000;
 export const apifyZillowPhotoSource: ListingPhotoSource = {
   id: "public_scrape", // shares the registry slot with publicScrape; the route picks at runtime
   label: "Zillow via Apify",
-  async isConfigured() {
+  async isConfigured(_accountId: string) {
+    void _accountId; // future: per-account Apify tokens; today it's account-wide
     return !!process.env.APIFY_API_TOKEN;
   },
   async fetch({ transactionId }): Promise<ListingPhoto[]> {
