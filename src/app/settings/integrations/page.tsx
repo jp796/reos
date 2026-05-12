@@ -12,6 +12,7 @@ import { ALL_POSTERS } from "@/services/integrations/social-posters/registry";
 import { IntegrationsForm } from "./IntegrationsForm";
 import { GoogleConnectionPanel } from "./GoogleConnectionPanel";
 import { MetaConnectionPanel } from "./MetaConnectionPanel";
+import { LinkedInConnectionPanel } from "./LinkedInConnectionPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +57,7 @@ export default async function IntegrationsSettingsPage() {
           hasStoredBlob={hasGoogleBlob}
         />
         <MetaConnectionPanel />
+        <LinkedInConnectionPanel />
         <IntegrationsForm
           activePhotoProvider={
             (settings.listingPhotoProvider as string) ?? "manual_upload"

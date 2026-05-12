@@ -7,9 +7,11 @@
  * Instagram / Facebook / LinkedIn / etc.
  */
 
-import { useState } from "react";
-import { Sparkles, Copy, Check, Megaphone, ImageIcon } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Sparkles, Copy, Check, Megaphone, ImageIcon, Send } from "lucide-react";
 import { useToast } from "@/app/ToastProvider";
+
+type PostPlatform = "instagram" | "facebook" | "linkedin";
 
 type EventKey = "new_listing" | "under_contract" | "sold";
 
@@ -46,6 +48,87 @@ export function SocialPostsPanel({
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [photoSource, setPhotoSource] = useState<string | null>(null);
+
+  // Editable copy of the generated captions. We hydrate from `bundle`
+  // each time it changes; the user can tweak before clicking Post.
+  const [drafts, setDrafts] = useState<Record<PostPlatform, string>>({
+    instagram: "",
+    facebook: "",
+    linkedin: "",
+  });
+  useEffect(() => {
+    if (bundle) {
+      setDrafts({
+        instagram: bundle.instagram,
+        facebook: bundle.facebook,
+        linkedin: bundle.linkedin,
+      });
+    }
+  }, [bundle]);
+
+  // Per-platform connection state — drives the "Connect" vs "Post"
+  // vs "Pending scope" rendering on each row's Post button.
+  const [metaConnected, setMetaConnected] = useState<boolean | null>(null);
+  const [liConnected, setLiConnected] = useState<boolean | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [meta, li] = await Promise.all([
+          fetch("/api/auth/meta/status").then((r) => r.json()),
+          fetch("/api/auth/linkedin/status").then((r) => r.json()),
+        ]);
+        if (cancelled) return;
+        setMetaConnected(!!meta.connected);
+        setLiConnected(!!li.connected);
+      } catch {
+        if (!cancelled) {
+          setMetaConnected(false);
+          setLiConnected(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const [postingPlatform, setPostingPlatform] = useState<PostPlatform | null>(null);
+
+  async function postTo(platform: PostPlatform) {
+    const text = drafts[platform]?.trim();
+    if (!text) {
+      toast.error("Nothing to post", "Caption is empty.");
+      return;
+    }
+    setPostingPlatform(platform);
+    try {
+      const res = await fetch(
+        `/api/transactions/${transactionId}/social-post/${platform}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ text, photoUrl: photoUrl ?? undefined }),
+        },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 501 && data.reason === "scope_not_granted") {
+          toast.info("Pending scope unlock", data.message ?? "");
+        } else {
+          toast.error("Post failed", data.error ?? data.message ?? res.statusText);
+        }
+        return;
+      }
+      const label = platform === "linkedin" ? "LinkedIn" : platform === "facebook" ? "Facebook" : "Instagram";
+      toast.success(`Posted to ${label}`, data.postUrl ? "Click toast to open" : "");
+      if (data.postUrl) window.open(data.postUrl, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      toast.error("Post failed", e instanceof Error ? e.message : "unknown");
+    } finally {
+      setPostingPlatform(null);
+    }
+  }
 
   async function findPhoto() {
     setPhotoBusy(true);
@@ -202,35 +285,88 @@ export function SocialPostsPanel({
         <div className="space-y-3">
           {(
             [
-              { key: "instagram", label: "Instagram", text: bundle.instagram },
-              { key: "facebook", label: "Facebook", text: bundle.facebook },
-              { key: "linkedin", label: "LinkedIn", text: bundle.linkedin },
+              { key: "instagram", label: "Instagram" },
+              { key: "facebook", label: "Facebook" },
+              { key: "linkedin", label: "LinkedIn" },
             ] as const
-          ).map((p) => (
-            <div
-              key={p.key}
-              className="rounded-md border border-border bg-surface-2/40 p-3"
-            >
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-                  {p.label}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => copy(p.text, p.key)}
-                  className="inline-flex items-center gap-1 rounded border border-border bg-surface px-2 py-1 text-[11px] hover:border-brand-500"
-                >
-                  {copiedKey === p.key ? (
-                    <Check className="h-3 w-3 text-emerald-600" strokeWidth={2} />
-                  ) : (
-                    <Copy className="h-3 w-3" strokeWidth={2} />
-                  )}
-                  {copiedKey === p.key ? "Copied" : "Copy"}
-                </button>
+          ).map((p) => {
+            // Per-platform Post-button state. FB + IG depend on
+            // Meta connection AND pages_manage_posts /
+            // instagram_content_publish (still pending Meta review).
+            // We render the button anyway and let the endpoint
+            // surface the "pending scope" reason via toast.
+            const connected =
+              p.key === "linkedin" ? liConnected : metaConnected;
+            const platformLabel =
+              p.key === "linkedin" ? "LinkedIn" : p.key === "facebook" ? "Facebook" : "Instagram";
+            const pendingScope = p.key === "facebook" || p.key === "instagram";
+            return (
+              <div
+                key={p.key}
+                className="rounded-md border border-border bg-surface-2/40 p-3"
+              >
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                    {p.label}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => copy(drafts[p.key], p.key)}
+                      className="inline-flex items-center gap-1 rounded border border-border bg-surface px-2 py-1 text-[11px] hover:border-brand-500"
+                    >
+                      {copiedKey === p.key ? (
+                        <Check className="h-3 w-3 text-emerald-600" strokeWidth={2} />
+                      ) : (
+                        <Copy className="h-3 w-3" strokeWidth={2} />
+                      )}
+                      {copiedKey === p.key ? "Copied" : "Copy"}
+                    </button>
+                    {connected === false ? (
+                      <a
+                        href={p.key === "linkedin" ? "/api/auth/linkedin" : "/api/auth/meta"}
+                        className="inline-flex items-center gap-1 rounded border border-brand-500 bg-brand-50 px-2 py-1 text-[11px] font-medium text-brand-700 hover:bg-brand-100"
+                        title={`Connect ${platformLabel} to enable posting`}
+                      >
+                        Connect {platformLabel}
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => postTo(p.key)}
+                        disabled={postingPlatform !== null || connected === null}
+                        title={
+                          pendingScope
+                            ? `${platformLabel} posting requires app-review scope (pending). Button works once approved.`
+                            : `Publish to ${platformLabel}`
+                        }
+                        className={`inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium ${
+                          pendingScope
+                            ? "border border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100"
+                            : "bg-brand-600 text-white hover:bg-brand-500"
+                        } disabled:opacity-50`}
+                      >
+                        <Send className="h-3 w-3" strokeWidth={2} />
+                        {postingPlatform === p.key
+                          ? "Posting…"
+                          : pendingScope
+                            ? `Post (pending review)`
+                            : `Post to ${platformLabel}`}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <textarea
+                  value={drafts[p.key]}
+                  onChange={(e) =>
+                    setDrafts((d) => ({ ...d, [p.key]: e.target.value }))
+                  }
+                  rows={4}
+                  className="w-full resize-y rounded border border-border bg-surface px-2.5 py-2 text-sm leading-relaxed text-text focus:border-brand-500 focus:outline-none"
+                />
               </div>
-              <p className="whitespace-pre-wrap text-sm text-text">{p.text}</p>
-            </div>
-          ))}
+            );
+          })}
 
           {bundle.hashtags.length > 0 && (
             <div className="rounded-md border border-border bg-surface-2/40 p-3">

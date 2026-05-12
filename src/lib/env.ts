@@ -30,6 +30,14 @@ const schema = z.object({
   META_APP_SECRET: z.string().optional(),
   META_REDIRECT_URI: z.string().url().optional(),
 
+  // LinkedIn OAuth — used by /api/auth/linkedin and the LinkedIn
+  // posting flow. Standard "Sign In with LinkedIn" + "Share on
+  // LinkedIn" scopes are self-service (no app review). Optional
+  // until JP creates the LinkedIn app.
+  LINKEDIN_CLIENT_ID: z.string().optional(),
+  LINKEDIN_CLIENT_SECRET: z.string().optional(),
+  LINKEDIN_REDIRECT_URI: z.string().url().optional(),
+
   // NextAuth v5 — these gate multi-user sign-in. Marked optional so
   // the app can still boot in single-user dev without auth wired up,
   // but `src/auth.ts` warns on startup if any are missing in prod.

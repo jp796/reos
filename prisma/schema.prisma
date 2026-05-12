@@ -33,6 +33,10 @@ model Account {
   /// page-scoped long-lived token and optional linked Instagram
   /// Business account). Shape: StoredMetaTokens (MetaOAuthService.ts).
   metaOauthTokensEncrypted        String?  @map("meta_oauth_tokens_encrypted")
+  /// LinkedIn OAuth payload — encrypted JSON containing the access
+  /// token, refresh token (when granted), and the LinkedIn member URN
+  /// we POST as. Shape: StoredLinkedInTokens (LinkedInOAuthService.ts).
+  linkedinOauthTokensEncrypted    String?  @map("linkedin_oauth_tokens_encrypted")
   socialPostTemplates             SocialPostTemplate[]
   settingsJson                    Json?    @map("settings_json")
   /// Brokerage profile this account belongs to. Drives compliance
