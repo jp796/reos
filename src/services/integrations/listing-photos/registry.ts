@@ -12,10 +12,12 @@ import {
   coworkBrowserPhotoSource,
   photographerEmailPhotoSource,
 } from "./stubs";
+import { publicScrapePhotoSource } from "./publicScrape";
 import type { ListingPhotoProviderId, ListingPhotoSource } from "./types";
 
 export const ALL_PHOTO_SOURCES: ListingPhotoSource[] = [
   manualUploadPhotoSource,
+  publicScrapePhotoSource,
   resoWebApiPhotoSource,
   retsPhotoSource,
   coworkBrowserPhotoSource,
@@ -24,6 +26,7 @@ export const ALL_PHOTO_SOURCES: ListingPhotoSource[] = [
 
 const BY_ID: Record<ListingPhotoProviderId, ListingPhotoSource> = {
   manual_upload: manualUploadPhotoSource,
+  public_scrape: publicScrapePhotoSource,
   reso_web_api: resoWebApiPhotoSource,
   rets: retsPhotoSource,
   cowork_browser: coworkBrowserPhotoSource,

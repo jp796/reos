@@ -23,7 +23,8 @@ export type ListingPhotoProviderId =
   | "reso_web_api"
   | "rets"
   | "cowork_browser"
-  | "photographer_email";
+  | "photographer_email"
+  | "public_scrape";
 
 export interface ListingPhoto {
   /** Public URL or signed URL to display the photo. */

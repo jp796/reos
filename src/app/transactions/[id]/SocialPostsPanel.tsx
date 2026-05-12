@@ -8,7 +8,7 @@
  */
 
 import { useState } from "react";
-import { Sparkles, Copy, Check, Megaphone } from "lucide-react";
+import { Sparkles, Copy, Check, Megaphone, ImageIcon } from "lucide-react";
 import { useToast } from "@/app/ToastProvider";
 
 type EventKey = "new_listing" | "under_contract" | "sold";
@@ -39,6 +39,44 @@ export function SocialPostsPanel({
   const [bundle, setBundle] = useState<Bundle | null>(null);
   const [busy, setBusy] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // Listing-photo state — lookup is async, may take 5-15s. We show
+  // a thumbnail preview when found; user can copy the URL or upload
+  // it manually through the existing photo flow.
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [photoSource, setPhotoSource] = useState<string | null>(null);
+
+  async function findPhoto() {
+    setPhotoBusy(true);
+    setPhotoUrl(null);
+    setPhotoSource(null);
+    try {
+      const res = await fetch(
+        `/api/transactions/${transactionId}/find-photo`,
+        { method: "POST" },
+      );
+      const data = await res.json();
+      if (!data.ok) {
+        toast.info(
+          "No photo found",
+          data.message ??
+            "The public listing sites didn't return a match — upload manually.",
+        );
+        return;
+      }
+      setPhotoUrl(data.photoUrl);
+      setPhotoSource(data.caption ?? data.source);
+      toast.success("Photo found", `Source: ${data.caption ?? data.source}`);
+    } catch (e) {
+      toast.error(
+        "Photo lookup failed",
+        e instanceof Error ? e.message : "unknown",
+      );
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
 
   async function generate() {
     setBusy(true);
@@ -88,6 +126,20 @@ export function SocialPostsPanel({
             <option value="under_contract">Under Contract</option>
             <option value="sold">Just Sold</option>
           </select>
+          {/* Find listing photo — best-effort Homes.com → Redfin
+              scrape. Returns a preview the user can adopt manually
+              or copy. Doesn't auto-persist (avoids ghost-attaching
+              the wrong house if scraping picks a near-match). */}
+          <button
+            type="button"
+            onClick={findPhoto}
+            disabled={photoBusy}
+            title="Try to find a listing photo from Homes.com or Redfin"
+            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs font-medium hover:border-brand-500 disabled:opacity-50"
+          >
+            <ImageIcon className="h-3.5 w-3.5" strokeWidth={2} />
+            {photoBusy ? "Searching…" : "Find photo"}
+          </button>
           <button
             type="button"
             onClick={generate}
@@ -99,6 +151,46 @@ export function SocialPostsPanel({
           </button>
         </div>
       </header>
+
+      {/* Photo preview when found. Shows a small thumbnail, the
+          source attribution, and copy / open buttons. The user
+          decides what to do with it — caching it on the transaction
+          is a future enhancement. */}
+      {photoUrl && (
+        <div className="mb-3 flex items-start gap-3 rounded border border-border bg-surface-2 p-2">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={photoUrl}
+            alt="Listing photo"
+            className="h-20 w-28 flex-none rounded object-cover"
+          />
+          <div className="flex-1 min-w-0 text-xs">
+            <div className="text-text">
+              <span className="font-medium">Found via {photoSource}.</span>{" "}
+              <span className="text-text-muted">
+                Open to verify it&rsquo;s the right house.
+              </span>
+            </div>
+            <div className="mt-1.5 flex flex-wrap gap-2">
+              <a
+                href={photoUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-brand-700 underline hover:text-brand-600"
+              >
+                Open full-size
+              </a>
+              <button
+                type="button"
+                onClick={() => copy(photoUrl, "photo-url")}
+                className="text-brand-700 underline hover:text-brand-600"
+              >
+                {copiedKey === "photo-url" ? "Copied!" : "Copy URL"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {!bundle ? (
         <p className="text-xs text-text-muted">
