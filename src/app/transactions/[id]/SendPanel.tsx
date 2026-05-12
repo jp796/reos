@@ -24,7 +24,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Mail, Send } from "lucide-react";
+import { Mail, Send, Sparkles } from "lucide-react";
 import { useToast } from "@/app/ToastProvider";
 
 interface Template {
@@ -70,6 +70,44 @@ export function SendPanel({
   const [body, setBody] = useState("");
   const [pending, startTransition] = useTransition();
   const [sending, setSending] = useState(false);
+  const [drafting, setDrafting] = useState(false);
+
+  /**
+   * AI draft reply — calls /api/transactions/[id]/ai-draft-reply
+   * which picks the most recent inbound thread for this txn, asks
+   * Claude/OpenAI to draft a reply against the transaction context,
+   * and saves it as a Gmail draft. Toast deep-links to Gmail so the
+   * TC can review + send manually. Never autosends.
+   */
+  async function aiDraftReply() {
+    setDrafting(true);
+    try {
+      const res = await fetch(
+        `/api/transactions/${transactionId}/ai-draft-reply`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({}),
+        },
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? res.statusText);
+      const gmailDraftsUrl = "https://mail.google.com/mail/u/0/#drafts";
+      toast.success(
+        "Draft saved to Gmail",
+        `Subject: ${(data.subject ?? "").slice(0, 60)} — review in Gmail before sending.`,
+      );
+      // Open Gmail drafts in a new tab so the TC can finalize.
+      window.open(gmailDraftsUrl, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      toast.error(
+        "AI draft failed",
+        e instanceof Error ? e.message : "unknown",
+      );
+    } finally {
+      setDrafting(false);
+    }
+  }
 
   useEffect(() => {
     let done = false;
@@ -176,6 +214,20 @@ export function SendPanel({
           <Mail className="h-4 w-4 text-text-muted" strokeWidth={1.8} />
           Send from template
         </h2>
+        {/* AI draft reply — picks the latest inbound thread for this
+            txn, drafts a reply with full transaction context, saves
+            to Gmail drafts. Never sends on its own. Reviewed +
+            finalized by the TC in Gmail. */}
+        <button
+          type="button"
+          onClick={aiDraftReply}
+          disabled={drafting || sending}
+          title="Draft a reply to the latest inbound email on this transaction. Saved as a Gmail draft for you to review and send."
+          className="inline-flex items-center gap-1.5 rounded-md border border-brand-300 bg-gradient-to-r from-brand-50 to-purple-50 px-3 py-1.5 text-xs font-semibold text-brand-700 transition hover:border-brand-500 hover:from-brand-100 hover:to-purple-100 disabled:opacity-50 dark:border-brand-900/40 dark:from-brand-950/30 dark:to-purple-950/30 dark:text-brand-200"
+        >
+          <Sparkles className="h-3.5 w-3.5" strokeWidth={2} />
+          {drafting ? "Drafting…" : "AI draft reply"}
+        </button>
       </div>
 
       {loadingTpl ? (
