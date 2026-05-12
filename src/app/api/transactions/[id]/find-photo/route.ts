@@ -19,6 +19,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSession, assertSameAccount } from "@/lib/require-session";
 import { publicScrapePhotoSource } from "@/services/integrations/listing-photos/publicScrape";
+import { apifyZillowPhotoSource } from "@/services/integrations/listing-photos/apifyZillow";
 
 export const runtime = "nodejs";
 
@@ -47,10 +48,24 @@ export async function POST(
     );
   }
 
-  const photos = await publicScrapePhotoSource.fetch({
-    accountId: actor.accountId,
-    transactionId: txn.id,
-  });
+  // Resolution order:
+  //   1. Apify Zillow scraper — reliable, Apify handles the bot
+  //      detection layer. Skipped when APIFY_API_TOKEN isn't set.
+  //   2. publicScrape (Homes.com → Redfin) — free fallback. Currently
+  //      403s from Cloud Run IPs but stays in place for dev /
+  //      non-blocked environments.
+  let photos = (await apifyZillowPhotoSource.isConfigured())
+    ? await apifyZillowPhotoSource.fetch({
+        accountId: actor.accountId,
+        transactionId: txn.id,
+      })
+    : [];
+  if (photos.length === 0) {
+    photos = await publicScrapePhotoSource.fetch({
+      accountId: actor.accountId,
+      transactionId: txn.id,
+    });
+  }
 
   if (photos.length === 0) {
     return NextResponse.json({

@@ -38,6 +38,11 @@ const schema = z.object({
   LINKEDIN_CLIENT_SECRET: z.string().optional(),
   LINKEDIN_REDIRECT_URI: z.string().url().optional(),
 
+  // Apify — listing-photo lookup via maintained Zillow scrapers.
+  // Optional; when unset the publicScrape adapter (Homes / Redfin)
+  // runs alone (and currently 403s from Cloud Run IPs).
+  APIFY_API_TOKEN: z.string().optional(),
+
   // NextAuth v5 — these gate multi-user sign-in. Marked optional so
   // the app can still boot in single-user dev without auth wired up,
   // but `src/auth.ts` warns on startup if any are missing in prod.
