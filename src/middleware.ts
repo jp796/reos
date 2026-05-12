@@ -23,6 +23,8 @@ const PUBLIC_PREFIXES = [
   "/terms",
   "/privacy", // public privacy policy — required by Meta / LinkedIn OAuth reviews
   "/data-deletion", // data-deletion instructions — Meta app-review requirement
+  "/data-deletion-status", // status page returned by the Meta data-deletion callback
+  "/api/data-deletion", // Meta data-deletion callback (POST signed_request)
   "/intake", // public lead-capture form + POST
   "/api/intake",
   "/demo", // public clickable sandbox — no DB writes, mock data only
