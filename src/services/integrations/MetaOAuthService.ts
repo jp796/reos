@@ -27,20 +27,24 @@ const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
 const AUTH_BASE = `https://www.facebook.com/${GRAPH_API_VERSION}/dialog/oauth`;
 
 /**
- * Default scopes. JP's Meta app is in Dev mode for now — these scopes
- * work for the app owner + listed test users without going through
- * App Review. Going Live requires submitting each non-default scope
- * for review at developers.facebook.com → App Review → Permissions
- * and Features.
+ * Default scopes — minimal set that works without app-dashboard
+ * configuration. As you enable additional scopes in
+ * developers.facebook.com → App Review → Permissions and Features
+ * (or via the use-case customization), uncomment them below and
+ * redeploy.
+ *
+ * The OAuth dialog rejects ("Invalid Scopes") any scope that isn't
+ * declared on the app. Starting minimal lets the round-trip succeed
+ * end-to-end on day one; we expand as the dashboard catches up.
  */
 export const DEFAULT_META_SCOPES = [
   "public_profile",
-  "email",
-  "pages_show_list",
-  "pages_manage_posts",
-  "pages_read_engagement",
-  "instagram_basic",
-  "instagram_content_publish",
+  // "email",                       // enable in Use Cases → Authenticate → Customize → Permissions
+  // "pages_show_list",             // enable in Use Cases → Manage Pages, or App Review for prod
+  // "pages_manage_posts",          // App Review (Advanced Access)
+  // "pages_read_engagement",       // App Review (Advanced Access)
+  // "instagram_basic",             // enable in Use Cases → Instagram, or App Review
+  // "instagram_content_publish",   // App Review (Advanced Access)
 ];
 
 // =================================================================
