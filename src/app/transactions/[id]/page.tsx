@@ -153,10 +153,24 @@ export default async function TransactionDetailPage({
   // duplicate the file-completeness signal.
   const account = await prisma.account.findUnique({
     where: { id: txn.accountId },
-    select: { settingsJson: true },
+    select: {
+      settingsJson: true,
+      // Multi-tenant compliance: each account is linked to a brokerage
+      // profile that declares which compliance system its TCs use.
+      // The Rezen-specific UI (file naming, submission ZIP bundle)
+      // only renders when complianceSystem === "rezen". Brokerages on
+      // Skyslope / Dotloop / Lone Wolf / in-house get the generic
+      // CompliancePanel + missing-items alert, but not the Rezen prep
+      // flow they don't need.
+      brokerageProfile: {
+        select: { complianceSystem: true },
+      },
+    },
   });
   const accountSettings = (account?.settingsJson ?? {}) as Record<string, unknown>;
   const complianceAuditEnabled = accountSettings.complianceAuditEnabled !== false;
+  const complianceSystem = account?.brokerageProfile?.complianceSystem ?? null;
+  const isRezenShop = complianceSystem === "rezen";
 
   // Run the file audit server-side so MissingItemsAlert renders
   // synchronously with the page (no spinner, no flicker). Skip when
@@ -557,10 +571,14 @@ export default async function TransactionDetailPage({
       )}
 
       {/* Rezen prep — slot-by-slot status + downloadable package
-          renamed for Rezen's file UI. Always shown — runs even
-          when the in-house compliance panel is disabled, since the
-          bridge to Rezen is the whole point. */}
-      <RezenCompliancePrepPanel transactionId={txn.id} />
+          renamed for Rezen's file UI. Gated to Rezen shops only:
+          a Skyslope / Dotloop / Lone Wolf / in-house TC has no need
+          for the "01 - " filename prefixing or the Rezen-shaped ZIP
+          bundle. They still get the generic per-row CompliancePanel
+          above plus the MissingItemsAlert summary near the AI summary.
+          Track 2 (later) adds per-system adapters so we can bundle
+          for Skyslope/Dotloop/etc. directly. */}
+      {isRezenShop && <RezenCompliancePrepPanel transactionId={txn.id} />}
 
       {/* Social posts — generate ready-to-paste captions for the
           three milestone events (listed/under-contract/sold). */}
