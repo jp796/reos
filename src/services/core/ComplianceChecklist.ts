@@ -269,6 +269,103 @@ export function computeCompliance(
   });
 }
 
+/**
+ * Map a BrokerageChecklist row to a ComplianceRequirement.
+ *
+ * The DB schema covers the same surface as the hardcoded UNIVERSAL
+ * array except for `stage` (no column for it yet). For DB-sourced
+ * items we leave `stage` undefined — the UI degrades gracefully
+ * (the MissingItemsAlert stage pill just won't render). Adding a
+ * `stage` column to BrokerageChecklist is a Phase B follow-up.
+ */
+function brokerageRowToRequirement(row: {
+  slotKey: string;
+  label: string;
+  keywordsJson: unknown;
+  requiredFor: string | null;
+  tag: string | null;
+}): ComplianceRequirement {
+  const keywords = Array.isArray(row.keywordsJson)
+    ? (row.keywordsJson as unknown[]).filter(
+        (k): k is string => typeof k === "string",
+      )
+    : [];
+  // requiredFor in the DB is a single string ("buy" | "sell" | "both" | null).
+  // Map to ComplianceRequirement.sides for the side filter in
+  // requirementsFor-style logic. Null/empty = applies to both sides.
+  const sides: ComplianceRequirement["sides"] | undefined =
+    row.requiredFor === "buy" || row.requiredFor === "sell" || row.requiredFor === "both"
+      ? [row.requiredFor]
+      : undefined;
+  return {
+    key: row.slotKey,
+    label: row.label,
+    keywords,
+    sides,
+    // Surface the brokerage's tag (cda / closing_docs / termination)
+    // as detail text — gives the TC a hint about WHY this item is on
+    // the list, especially useful for unfamiliar slots.
+    detail: row.tag ? `Tag: ${row.tag}` : undefined,
+  };
+}
+
+/**
+ * Resolve the checklist for an account + transaction.
+ *
+ * Three-tier resolution (matches Rezen prep's loadSlotsForProfile shape):
+ *   1. If account is linked to a BrokerageProfile and that profile has
+ *      transaction-kind rows, use them. State-scoped rows are layered
+ *      in when txn.state matches; stateCode=null rows always apply.
+ *   2. If the profile exists but has zero rows, fall back to UNIVERSAL.
+ *   3. If the account has no profile at all (legacy / pre-onboarding),
+ *      fall back to UNIVERSAL.
+ *
+ * This is the single entry point Phase A swaps in — the audit reader
+ * goes from "hardcoded for everyone" to "your brokerage's rules,
+ * with global defaults if you haven't customized."
+ */
+export async function resolveChecklistForAccount(
+  db: import("@prisma/client").PrismaClient,
+  accountId: string,
+  side: string | null,
+  state: string | null,
+): Promise<ComplianceRequirement[]> {
+  const account = await db.account.findUnique({
+    where: { id: accountId },
+    select: { brokerageProfileId: true },
+  });
+  const profileId = account?.brokerageProfileId ?? null;
+
+  if (profileId) {
+    const stateCode = (state ?? "").toUpperCase() || null;
+    const rows = await db.brokerageChecklist.findMany({
+      where: {
+        profileId,
+        kind: "transaction",
+        OR: [
+          { stateCode: null },
+          ...(stateCode ? [{ stateCode }] : []),
+        ],
+      },
+      orderBy: { slotNumber: "asc" },
+    });
+    if (rows.length > 0) {
+      const reqs = rows.map(brokerageRowToRequirement);
+      // Side filter — same logic that requirementsFor uses for the
+      // hardcoded path. Keeps behaviour consistent across both
+      // resolution branches.
+      return reqs.filter((r) => {
+        if (!r.sides || r.sides.length === 0) return true;
+        if (!side) return true;
+        return r.sides.includes(side as "buy" | "sell" | "both");
+      });
+    }
+    // Profile exists but no rows — fall through to hardcoded defaults.
+  }
+
+  return requirementsFor({ side, state });
+}
+
 /** One-shot: load docs, compute coverage, return it. */
 export async function auditTransactionCompliance(
   db: import("@prisma/client").PrismaClient,
@@ -281,7 +378,7 @@ export async function auditTransactionCompliance(
 }> {
   const txn = await db.transaction.findUnique({
     where: { id: transactionId },
-    select: { side: true, state: true },
+    select: { side: true, state: true, accountId: true },
   });
   if (!txn) {
     return { missing: 0, present: 0, total: 0, items: [] };
@@ -296,7 +393,15 @@ export async function auditTransactionCompliance(
       source: true,
     },
   });
-  const reqs = requirementsFor({ side: txn.side, state: txn.state });
+  // Phase A: per-account checklist resolution. Falls back to the
+  // hardcoded UNIVERSAL+state-addons list when an account has no
+  // brokerage profile assigned (legacy data, fresh installs).
+  const reqs = await resolveChecklistForAccount(
+    db,
+    txn.accountId,
+    txn.side,
+    txn.state,
+  );
   const items = computeCompliance(reqs, docs);
   const present = items.filter((i) => i.status === "present").length;
   const missing = items.length - present;
