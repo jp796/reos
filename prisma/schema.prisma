@@ -27,6 +27,12 @@ model Account {
   followUpBossApiKeyEncrypted     String?  @map("follow_up_boss_api_key_encrypted")
   followUpBossSystemKeyEncrypted  String?  @map("follow_up_boss_system_key_encrypted")
   googleOauthTokensEncrypted      String?  @map("google_oauth_tokens_encrypted")
+  /// Meta (Facebook + Instagram) OAuth payload — encrypted JSON
+  /// containing the user-level long-lived token, the user's email,
+  /// and the list of Pages they granted access to (each with its own
+  /// page-scoped long-lived token and optional linked Instagram
+  /// Business account). Shape: StoredMetaTokens (MetaOAuthService.ts).
+  metaOauthTokensEncrypted        String?  @map("meta_oauth_tokens_encrypted")
   settingsJson                    Json?    @map("settings_json")
   /// Brokerage profile this account belongs to. Drives compliance
   /// checklist, CDA template, and default integrations. Nullable

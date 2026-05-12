@@ -23,6 +23,13 @@ const schema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_REDIRECT_URI: z.string().url().optional(),
 
+  // Meta (Facebook + Instagram) OAuth — used by /api/auth/meta and
+  // the social-posting flow. Optional so the app boots fine before
+  // the Meta app is wired; Meta features no-op until all three are set.
+  META_APP_ID: z.string().optional(),
+  META_APP_SECRET: z.string().optional(),
+  META_REDIRECT_URI: z.string().url().optional(),
+
   // NextAuth v5 — these gate multi-user sign-in. Marked optional so
   // the app can still boot in single-user dev without auth wired up,
   // but `src/auth.ts` warns on startup if any are missing in prod.
