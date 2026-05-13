@@ -89,49 +89,64 @@ export const apifyZillowPhotoSource: ListingPhotoSource = {
 
     if (!Array.isArray(items) || items.length === 0) return [];
     const first = items[0] as Record<string, unknown>;
-    const photoUrl = pickPhotoUrl(first);
-    if (!photoUrl) return [];
+    // Collect up to 8 photos — caller decides how many to use.
+    // Visual-card template wants 4 (hero + 3 thumbs); social post
+    // attachments may want just 1.
+    const photoUrls = pickAllPhotoUrls(first);
+    if (photoUrls.length === 0) return [];
 
-    return [
-      {
-        url: photoUrl,
-        source: "public_scrape",
-        caption: "Zillow",
-      },
-    ];
+    return photoUrls.slice(0, 8).map((url, i) => ({
+      url,
+      source: "public_scrape" as const,
+      caption: i === 0 ? "Zillow (primary)" : `Zillow (${i + 1})`,
+    }));
   },
 };
 
 /**
- * The actor returns different shapes depending on which Zillow page
- * yielded the match. Cover the common fields; null-safe so a schema
- * change doesn't crash the lookup.
+ * Walk every photo-bearing field the actor returns and produce a
+ * de-duplicated list of full-resolution URLs. Order: primary image
+ * first, then the photo gallery in the order Zillow returned it.
+ *
+ * The shape varies by which Zillow surface the actor scraped — the
+ * function is null-safe so a schema change doesn't crash the lookup.
  */
-function pickPhotoUrl(item: Record<string, unknown>): string | null {
-  // Direct field on listing-detail responses.
-  if (typeof item.imgSrc === "string" && item.imgSrc.startsWith("http")) {
-    return item.imgSrc;
-  }
-  if (typeof item.image === "string" && item.image.startsWith("http")) {
-    return item.image;
-  }
-  // Photo gallery is sometimes an array of { url } or strings.
-  const photos = item.photos as unknown;
-  if (Array.isArray(photos) && photos.length > 0) {
-    const first = photos[0];
-    if (typeof first === "string" && first.startsWith("http")) return first;
-    if (typeof first === "object" && first !== null) {
-      const url = (first as Record<string, unknown>).url;
-      if (typeof url === "string" && url.startsWith("http")) return url;
+function pickAllPhotoUrls(item: Record<string, unknown>): string[] {
+  const urls: string[] = [];
+  const add = (u: unknown) => {
+    if (typeof u === "string" && u.startsWith("http") && !urls.includes(u)) {
+      urls.push(u);
     }
-  }
-  // Some shapes nest under hdpData / listing media.
+  };
+  // Top-level primary fields.
+  add(item.imgSrc);
+  add(item.image);
+  // hdpData.homeInfo.imgSrc — listing-detail primary.
   const hdp = item.hdpData as Record<string, unknown> | undefined;
   if (hdp && typeof hdp === "object") {
     const homeInfo = hdp.homeInfo as Record<string, unknown> | undefined;
-    if (homeInfo && typeof homeInfo.imgSrc === "string") {
-      return homeInfo.imgSrc;
+    if (homeInfo && typeof homeInfo === "object") add(homeInfo.imgSrc);
+  }
+  // photos[] — gallery of { url } or strings.
+  const photos = item.photos as unknown;
+  if (Array.isArray(photos)) {
+    for (const p of photos) {
+      if (typeof p === "string") add(p);
+      else if (typeof p === "object" && p !== null) {
+        const rec = p as Record<string, unknown>;
+        add(rec.url);
+        // Some shapes nest under `mixedSources.jpeg[].url`.
+        const mixed = rec.mixedSources as Record<string, unknown> | undefined;
+        const jpegs = mixed?.jpeg as unknown;
+        if (Array.isArray(jpegs)) {
+          for (const j of jpegs) {
+            if (typeof j === "object" && j !== null) {
+              add((j as Record<string, unknown>).url);
+            }
+          }
+        }
+      }
     }
   }
-  return null;
+  return urls;
 }

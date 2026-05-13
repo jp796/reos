@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Sparkles, Copy, Check, Megaphone, ImageIcon, Send } from "lucide-react";
+import { Sparkles, Copy, Check, Megaphone, ImageIcon, Send, Wand2 } from "lucide-react";
 import { useToast } from "@/app/ToastProvider";
 
 type PostPlatform = "instagram" | "facebook" | "linkedin";
@@ -94,6 +94,13 @@ export function SocialPostsPanel({
   }, []);
 
   const [postingPlatform, setPostingPlatform] = useState<PostPlatform | null>(null);
+
+  // Visual-card state — points at the API endpoint with a cache-bust
+  // query so the user can re-render after editing brand/facts.
+  const [cardCacheBust, setCardCacheBust] = useState<number | null>(null);
+  const cardUrl = cardCacheBust
+    ? `/api/transactions/${transactionId}/visual-card?event=${event}&cache-bust=${cardCacheBust}`
+    : null;
 
   async function postTo(platform: PostPlatform) {
     const text = drafts[platform]?.trim();
@@ -223,6 +230,19 @@ export function SocialPostsPanel({
             <ImageIcon className="h-3.5 w-3.5" strokeWidth={2} />
             {photoBusy ? "Searching…" : "Find photo"}
           </button>
+          {/* Generate visual card — multi-photo composite branded
+              with the account's brand kit + agent block. Hits the
+              visual-card route; image streams in. Cache-bust state
+              forces a fresh render each click. */}
+          <button
+            type="button"
+            onClick={() => setCardCacheBust(Date.now())}
+            title="Render a branded social-post visual card (1200×1500 PNG)"
+            className="inline-flex items-center gap-1.5 rounded-md border border-purple-300 bg-purple-50 px-3 py-1.5 text-xs font-medium text-purple-700 hover:border-purple-500 hover:bg-purple-100"
+          >
+            <Wand2 className="h-3.5 w-3.5" strokeWidth={2} />
+            Generate visual
+          </button>
           <button
             type="button"
             onClick={generate}
@@ -239,6 +259,56 @@ export function SocialPostsPanel({
           source attribution, and copy / open buttons. The user
           decides what to do with it — caching it on the transaction
           is a future enhancement. */}
+      {/* Visual-card preview. Image loads from the API directly —
+          1200×1500 PNG, branded with the account's brand kit + JP's
+          agent block. Right-click to save, or "Open" to use in
+          social posts manually (auto-attach lands when posting
+          endpoints can read multi-image payloads). */}
+      {cardUrl && (
+        <div className="mb-3 flex items-start gap-3 rounded border border-purple-300 bg-purple-50 p-2">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={cardUrl}
+            alt="Generated visual card"
+            className="h-48 w-auto flex-none rounded border border-purple-200 object-contain shadow"
+          />
+          <div className="flex-1 min-w-0 text-xs text-purple-900">
+            <div className="font-medium">Visual card rendered.</div>
+            <div className="mt-1 text-purple-800">
+              Branded for{" "}
+              <span className="font-medium">{EVENT_LABEL[event]}</span> with
+              your Real Broker palette + agent block. Right-click → Save
+              image. Eventual auto-attach to FB/IG/LinkedIn coming in
+              Phase 1B.
+            </div>
+            <div className="mt-1.5 flex flex-wrap gap-2">
+              <a
+                href={cardUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-purple-700 underline hover:text-purple-600"
+              >
+                Open full-size
+              </a>
+              <a
+                href={cardUrl}
+                download={`reos-visual-${event}.png`}
+                className="text-purple-700 underline hover:text-purple-600"
+              >
+                Download PNG
+              </a>
+              <button
+                type="button"
+                onClick={() => setCardCacheBust(Date.now())}
+                className="text-purple-700 underline hover:text-purple-600"
+              >
+                Re-render
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {photoUrl && (
         <div className="mb-3 flex items-start gap-3 rounded border border-border bg-surface-2 p-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
