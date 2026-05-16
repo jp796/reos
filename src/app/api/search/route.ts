@@ -12,10 +12,17 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
+import { requireSession } from "@/lib/require-session";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+  // SECURITY: this used to query Contact + Transaction across every
+  // tenant — typing two characters returned everyone's data. Now
+  // gated by session AND scoped to actor.accountId.
+  const actor = await requireSession();
+  if (actor instanceof NextResponse) return actor;
+
   const q = (req.nextUrl.searchParams.get("q") ?? "").trim();
   if (q.length < 2) {
     return NextResponse.json({ query: q, contacts: [], transactions: [] });
@@ -25,6 +32,7 @@ export async function GET(req: NextRequest) {
   const [contacts, transactions] = await Promise.all([
     prisma.contact.findMany({
       where: {
+        accountId: actor.accountId,
         OR: [
           { fullName: { contains: like, mode: "insensitive" } },
           { primaryEmail: { contains: like, mode: "insensitive" } },
@@ -43,6 +51,7 @@ export async function GET(req: NextRequest) {
     }),
     prisma.transaction.findMany({
       where: {
+        accountId: actor.accountId,
         OR: [
           { propertyAddress: { contains: like, mode: "insensitive" } },
           { city: { contains: like, mode: "insensitive" } },

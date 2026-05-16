@@ -7,9 +7,16 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
+import { requireSession } from "@/lib/require-session";
 
 export async function GET() {
+  // SECURITY: was listing all spends across all accounts. Scoped to
+  // caller now.
+  const actor = await requireSession();
+  if (actor instanceof NextResponse) return actor;
+
   const spends = await prisma.marketingSpend.findMany({
+    where: { accountId: actor.accountId },
     orderBy: { spendDate: "desc" },
     include: { sourceChannel: { select: { name: true, category: true } } },
     take: 200,
@@ -28,6 +35,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const actor = await requireSession();
+  if (actor instanceof NextResponse) return actor;
+
   const body = (await req.json().catch(() => null)) as {
     sourceChannelId?: string;
     spendDate?: string;
@@ -63,10 +73,20 @@ export async function POST(req: NextRequest) {
       { status: 404 },
     );
   }
+  // SECURITY: prevent cross-tenant writes — only the channel's owning
+  // account can record spend against it. Previously we inherited
+  // channel.accountId blindly which let a caller write into another
+  // tenant's spend ledger by passing that tenant's channel id.
+  if (channel.accountId !== actor.accountId) {
+    return NextResponse.json(
+      { error: "sourceChannel not in caller's account" },
+      { status: 403 },
+    );
+  }
 
   const created = await prisma.marketingSpend.create({
     data: {
-      accountId: channel.accountId,
+      accountId: actor.accountId,
       sourceChannelId: channel.id,
       spendDate: date,
       amount,

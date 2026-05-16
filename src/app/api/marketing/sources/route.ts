@@ -7,6 +7,7 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
+import { requireSession } from "@/lib/require-session";
 
 const VALID_CATEGORIES = new Set([
   "paid",
@@ -23,8 +24,13 @@ const VALID_CATEGORIES = new Set([
 ]);
 
 export async function GET() {
+  // SECURITY: was returning all source channels across every tenant.
+  // Scoped to caller now.
+  const actor = await requireSession();
+  if (actor instanceof NextResponse) return actor;
+
   const rows = await prisma.sourceChannel.findMany({
-    where: { isActive: true },
+    where: { accountId: actor.accountId, isActive: true },
     orderBy: { name: "asc" },
     select: { id: true, name: true, category: true },
   });
@@ -32,6 +38,12 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  // SECURITY: previously the POST used prisma.account.findFirst() to
+  // pick *some* account — letting any anonymous caller create source
+  // channels under another tenant. Now bound to actor.accountId.
+  const actor = await requireSession();
+  if (actor instanceof NextResponse) return actor;
+
   const body = (await req.json().catch(() => null)) as {
     name?: string;
     category?: string;
@@ -52,14 +64,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const account = await prisma.account.findFirst({ select: { id: true } });
-  if (!account) {
-    return NextResponse.json({ error: "no account" }, { status: 500 });
-  }
-
-  // Idempotent on name
+  // Idempotent on name within the caller's account.
   const existing = await prisma.sourceChannel.findFirst({
-    where: { accountId: account.id, name },
+    where: { accountId: actor.accountId, name },
     select: { id: true },
   });
   if (existing) {
@@ -68,7 +75,7 @@ export async function POST(req: NextRequest) {
 
   const created = await prisma.sourceChannel.create({
     data: {
-      accountId: account.id,
+      accountId: actor.accountId,
       name,
       category,
       isActive: true,
