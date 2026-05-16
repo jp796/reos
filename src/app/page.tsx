@@ -28,12 +28,170 @@ import { Logo } from "./components/Logo";
 
 export const dynamic = "force-dynamic";
 
+// Homepage-specific metadata. Overrides the layout default so the
+// landing page can target the high-intent search query
+// "transaction coordinator software" directly. The layout's OG +
+// Twitter blocks still apply (next.js merges; we just set explicit
+// values here for higher specificity).
+export const metadata = {
+  title: {
+    absolute:
+      "Transaction Coordinator Software · AI-Driven Real Estate OS · REOS",
+  },
+  description:
+    "REOS is AI-driven transaction coordinator software for real-estate TCs, agents, and brokerages. Reads contracts in 60 seconds, drafts email replies, audits compliance per brokerage, and posts listings to FB / Instagram / LinkedIn. Free demo, 60-day money-back guarantee.",
+  alternates: { canonical: "https://myrealestateos.com/" },
+  openGraph: {
+    title: "REOS · AI Transaction Coordinator Software",
+    description:
+      "AI-driven TC software for real-estate agents and brokerages. Reads contracts, drafts replies, audits compliance, posts listings.",
+    url: "https://myrealestateos.com/",
+    siteName: "REOS",
+    type: "website",
+  },
+};
+
+// JSON-LD structured data — Organization + SoftwareApplication +
+// FAQPage. Embedded as a single <script type="application/ld+json">
+// in the page body. Helps Google understand REOS is a SaaS product
+// (eligible for product-rich snippets) and elevates the FAQ items
+// into search results directly.
+const JSON_LD = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://myrealestateos.com/#organization",
+      name: "REOS",
+      legalName: "Real Estate OS",
+      url: "https://myrealestateos.com",
+      logo: "https://myrealestateos.com/icons/icon-512.png",
+      sameAs: [],
+      contactPoint: {
+        "@type": "ContactPoint",
+        contactType: "customer support",
+        email: "jp@titanreteam.com",
+      },
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://myrealestateos.com/#software",
+      name: "REOS — Real Estate OS",
+      description:
+        "AI-driven transaction coordinator software for real-estate TCs, agents, and brokerages.",
+      applicationCategory: "BusinessApplication",
+      operatingSystem: "Web",
+      url: "https://myrealestateos.com",
+      offers: [
+        {
+          "@type": "Offer",
+          price: "97",
+          priceCurrency: "USD",
+          priceSpecification: {
+            "@type": "PriceSpecification",
+            price: "97",
+            priceCurrency: "USD",
+            unitText: "MONTH",
+          },
+          name: "Solo",
+        },
+        {
+          "@type": "Offer",
+          price: "297",
+          priceCurrency: "USD",
+          priceSpecification: {
+            "@type": "PriceSpecification",
+            price: "297",
+            priceCurrency: "USD",
+            unitText: "MONTH",
+          },
+          name: "Team",
+        },
+        {
+          "@type": "Offer",
+          price: "997",
+          priceCurrency: "USD",
+          priceSpecification: {
+            "@type": "PriceSpecification",
+            price: "997",
+            priceCurrency: "USD",
+            unitText: "MONTH",
+          },
+          name: "Brokerage",
+        },
+      ],
+      featureList: [
+        "AI contract reading (60-second extraction)",
+        "Per-customer compliance audit",
+        "AI email-reply drafting",
+        "Auto social-post generation",
+        "Visual listing cards (HTML→PNG)",
+        "Gmail + Calendar sync",
+        "Multi-tenant brokerage profiles",
+      ],
+    },
+    {
+      "@type": "FAQPage",
+      mainEntity: [
+        {
+          "@type": "Question",
+          name: "Does REOS replace my CRM?",
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: "No. REOS is the Transaction OS that plugs into your existing CRM (FUB, kvCORE, etc.). Your CRM still owns the lead pipeline; REOS runs the deals once they're under contract.",
+          },
+        },
+        {
+          "@type": "Question",
+          name: "Which brokerage systems does REOS work with?",
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: "Real Broker (Rezen-native), independent brokerages (in-house compliance). Skyslope, Dotloop, Lone Wolf, and KW Command integrations are on the roadmap — see /vs/ pages for current status.",
+          },
+        },
+        {
+          "@type": "Question",
+          name: "How fast is the AI contract reader?",
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: "Under 60 seconds for a standard residential purchase agreement. Extracts dates, parties, financials, contingencies — then drives the deal timeline automatically.",
+          },
+        },
+        {
+          "@type": "Question",
+          name: "Is my data isolated from other REOS customers?",
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: "Yes. Every transaction, contact, document, and AI artifact is scoped to your account at the database level. Encrypted at rest (AES-256). No cross-account joins, no shared indexes.",
+          },
+        },
+        {
+          "@type": "Question",
+          name: "Where is REOS hosted?",
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: "Google Cloud Run (compute) + Neon Postgres (database) — both US-region. TLS in transit, AES-256 at rest. Backups daily.",
+          },
+        },
+      ],
+    },
+  ],
+};
+
 export default async function Landing() {
   const session = await auth();
   const signedIn = !!session?.user;
 
   return (
     <div className="min-h-screen bg-bg text-text">
+      {/* JSON-LD structured data — Organization + SoftwareApplication
+          + FAQPage. Lets Google build a rich snippet for the
+          homepage (FAQs in search results, product card eligibility).
+          Defined as a const at the top of this file. */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }}
+      />
       {/* ─── Top nav ─────────────────────────────────────────── */}
       <header className="sticky top-0 z-30 border-b border-border bg-bg/80 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
@@ -97,6 +255,12 @@ export default async function Landing() {
               Let Atlas do the paperwork.
             </span>
           </h1>
+          {/* Keyword-bearing H2 below the hook — does the SEO work
+              without diluting the marketing punch of the H1. */}
+          <h2 className="mx-auto mt-4 max-w-2xl text-base font-medium text-text-muted sm:text-lg">
+            AI transaction coordinator software for real-estate TCs, agents,
+            and brokerages
+          </h2>
           <p className="mx-auto mt-5 max-w-2xl text-lg text-text-muted sm:text-xl">
             REOS is the{" "}
             <strong className="text-text">AI Transaction Coordinator</strong>{" "}
