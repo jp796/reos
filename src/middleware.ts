@@ -31,6 +31,7 @@ const PUBLIC_PREFIXES = [
   "/signup", // public self-serve signup form
   "/api/signup", // signup-start endpoint that creates the Stripe Checkout Session
   "/vs", // programmatic competitor-comparison SEO pages (/vs/dotloop, etc.)
+  "/api/analytics/vsl", // public VSL watch-progress beacon (homepage video)
 ];
 
 // Webhook + automation-tick endpoints — third parties (Google Pub/Sub,
