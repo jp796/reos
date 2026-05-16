@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { auth } from "@/auth";
 import { Logo } from "./components/Logo";
+import { VSLHero } from "./components/VSLHero";
 
 export const dynamic = "force-dynamic";
 
@@ -428,7 +429,30 @@ export default async function Landing() {
         </div>
       </section>
 
-      {/* ─── Demo video ─────────────────────────────────────── */}
+      {/* ─── VSL · full product walkthrough ───────────────────
+          Placeholder until JP records the proper VSL. The VSLHero
+          component handles autoplay-muted-on-scroll, tap-to-unmute,
+          time-gated CTA, and per-10s progress tracking. Pass a real
+          mp4 / HLS URL into videoUrl when the recorded VSL lives on
+          Cloudflare Stream / Mux / Vimeo Pro. */}
+      <section
+        id="walkthrough"
+        className="border-t border-border bg-gradient-to-b from-bg to-surface-2/30 py-16"
+      >
+        <VSLHero
+          videoUrl={null}
+          headline="The full REOS product walkthrough"
+          subheadline="Five minutes. Every AI feature. The story of how REOS replaces three tools and most of the manual work in a real-estate file."
+          ctaRevealSeconds={150}
+          ctaLabel="Start free trial"
+          ctaHref={signedIn ? "/today" : "/signup?tier=solo"}
+        />
+      </section>
+
+      {/* ─── 90-second quick-look demo ─────────────────────────
+          Secondary to the full VSL above. Existing Loom embed
+          stays — it's a tighter pitch for visitors who don't want
+          to commit to 5 minutes. */}
       <section
         id="demo"
         className="border-t border-border bg-surface-2/40 py-16"
@@ -469,7 +493,7 @@ export default async function Landing() {
             hours on your next deal, you don&rsquo;t pay.
           </p>
           <Link
-            href={signedIn ? "/today" : "/login"}
+            href={signedIn ? "/today" : "/signup?tier=solo"}
             className="mt-6 inline-flex items-center gap-2 rounded-md bg-brand-600 px-6 py-3 font-semibold text-white hover:bg-brand-500"
           >
             <Sparkles className="h-4 w-4" strokeWidth={2} />
@@ -656,11 +680,11 @@ export default async function Landing() {
             Connect your Gmail. Drop in a contract. Watch Atlas go to work.
           </p>
           <Link
-            href={signedIn ? "/today" : "/login"}
+            href={signedIn ? "/today" : "/signup?tier=solo"}
             className="mt-8 inline-flex items-center gap-2 rounded-md bg-brand-600 px-8 py-4 text-base font-semibold text-white hover:bg-brand-500"
           >
             <Sparkles className="h-5 w-5" strokeWidth={2} />
-            Start free — 1 deal free
+            Start free trial
             <ArrowRight className="h-5 w-5" strokeWidth={2} />
           </Link>
           <p className="mt-4 text-xs text-text-subtle">
