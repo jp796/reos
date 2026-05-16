@@ -30,6 +30,7 @@ const PUBLIC_PREFIXES = [
   "/demo", // public clickable sandbox — no DB writes, mock data only
   "/signup", // public self-serve signup form
   "/api/signup", // signup-start endpoint that creates the Stripe Checkout Session
+  "/vs", // programmatic competitor-comparison SEO pages (/vs/dotloop, etc.)
 ];
 
 // Webhook + automation-tick endpoints — third parties (Google Pub/Sub,

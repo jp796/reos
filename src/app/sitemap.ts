@@ -11,6 +11,7 @@
  */
 
 import type { MetadataRoute } from "next";
+import { allCompetitors } from "./vs/competitors";
 
 export const dynamic = "force-static";
 export const revalidate = 86400; // refresh once a day
@@ -19,6 +20,14 @@ const BASE = "https://myrealestateos.com";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();
+  const competitorEntries: MetadataRoute.Sitemap = allCompetitors().map(
+    (c) => ({
+      url: `${BASE}/vs/${c.slug}`,
+      lastModified: now,
+      changeFrequency: "monthly",
+      priority: 0.7,
+    }),
+  );
   return [
     {
       url: `${BASE}/`,
@@ -56,5 +65,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "yearly",
       priority: 0.2,
     },
+    ...competitorEntries,
   ];
 }
