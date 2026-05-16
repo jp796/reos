@@ -89,19 +89,66 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       clientId: process.env.AUTH_GOOGLE_ID ?? process.env.GOOGLE_CLIENT_ID,
       clientSecret:
         process.env.AUTH_GOOGLE_SECRET ?? process.env.GOOGLE_CLIENT_SECRET,
+      // Required for the self-serve signup flow: the Stripe webhook
+      // creates a User row by email BEFORE the user has ever signed
+      // in with Google. NextAuth refuses to link an OAuth account
+      // to a pre-existing User by email unless this flag is set —
+      // safe here because (a) the email was verified by Stripe at
+      // payment, (b) we never auto-create a User outside the webhook
+      // path, and (c) Google itself verifies the email it returns.
+      allowDangerousEmailAccountLinking: true,
     }),
   ],
   callbacks: {
     /**
-     * Gate: reject any email NOT on the whitelist before a user /
-     * auth_account record is created. Returning false prevents sign-in.
+     * Gate: who's allowed to sign in?
+     *
+     *   1. Anyone on AUTH_ALLOWED_EMAILS (legacy single-tenant gate
+     *      for JP's account + invited TCs)
+     *   2. Anyone whose email matches a User row attached to an
+     *      Account with an active subscription (self-serve signup
+     *      path — Stripe webhook materializes the User after payment;
+     *      this signIn callback then lets them through on first OAuth)
+     *   3. Anyone with a pending AccountMembership invite (so a TC
+     *      invited to a brokerage can accept by signing in)
+     *
+     * Returning false prevents sign-in. Everything else is rejected.
      */
     async signIn({ user }) {
       const email = user.email?.toLowerCase();
       if (!email) return false;
+
+      // (1) Static allowlist
       const allow = allowedEmails();
-      if (allow.length === 0) return false; // closed by default
-      return allow.includes(email);
+      if (allow.includes(email)) return true;
+
+      // (2) Active paid account
+      try {
+        const u = await prisma.user.findUnique({
+          where: { email },
+          select: {
+            account: {
+              select: { subscriptionStatus: true },
+            },
+          },
+        });
+        if (u?.account?.subscriptionStatus === "active") return true;
+      } catch (err) {
+        console.warn("[auth.signIn] paid-account lookup failed:", err);
+      }
+
+      // (3) Pending invite
+      try {
+        const invite = await prisma.accountMembership.findFirst({
+          where: { email, revokedAt: null, acceptedAt: null },
+          select: { id: true },
+        });
+        if (invite) return true;
+      } catch (err) {
+        console.warn("[auth.signIn] invite lookup failed:", err);
+      }
+
+      return false;
     },
     async session({ session, user }) {
       // Stamp the session with role + accountId from our User row.

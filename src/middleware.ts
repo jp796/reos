@@ -28,6 +28,8 @@ const PUBLIC_PREFIXES = [
   "/intake", // public lead-capture form + POST
   "/api/intake",
   "/demo", // public clickable sandbox — no DB writes, mock data only
+  "/signup", // public self-serve signup form
+  "/api/signup", // signup-start endpoint that creates the Stripe Checkout Session
 ];
 
 // Webhook + automation-tick endpoints — third parties (Google Pub/Sub,

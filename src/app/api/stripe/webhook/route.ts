@@ -24,6 +24,19 @@ const HANDLED_EVENTS = new Set([
   "invoice.payment_failed",
 ]);
 
+/**
+ * Map a Stripe price id back to our internal tier string. Defaults
+ * to "solo" so a price-id mismatch (e.g. a manually-created
+ * subscription) doesn't leave the account in a broken "no tier" state.
+ */
+function inferTierFromPrice(priceId: string | undefined): string {
+  if (!priceId) return "solo";
+  if (priceId === env.STRIPE_PRICE_ID_SOLO) return "solo";
+  if (priceId === env.STRIPE_PRICE_ID_TEAM) return "team";
+  if (priceId === env.STRIPE_PRICE_ID_BROKERAGE) return "brokerage";
+  return "solo";
+}
+
 export async function POST(req: NextRequest) {
   if (!env.STRIPE_SECRET_KEY || !env.STRIPE_WEBHOOK_SECRET) {
     return NextResponse.json(
@@ -58,6 +71,92 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // ── New self-serve signup → materialize the User + Account ─────
+    // Fired by Stripe immediately after a successful Checkout Session.
+    // If the session originated from /api/signup/start (metadata
+    // .reosSignup === "1") we create the tenant on the fly. For
+    // existing-account checkouts (an upgrade flow) we skip — those
+    // are handled by the customer.subscription.* branch below.
+    if (event.type === "checkout.session.completed") {
+      const session = event.data.object as Stripe.Checkout.Session;
+      const md = session.metadata ?? {};
+      if (md.reosSignup === "1") {
+        const signupEmail = (md.signupEmail ?? "").toLowerCase().trim();
+        const signupBusinessName = (md.signupBusinessName ?? "REOS Account").trim();
+        const signupTier = (md.signupTier ?? "solo").trim();
+        const customerId =
+          typeof session.customer === "string"
+            ? session.customer
+            : (session.customer?.id ?? null);
+        const subscriptionId =
+          typeof session.subscription === "string"
+            ? session.subscription
+            : (session.subscription?.id ?? null);
+
+        if (!signupEmail || !customerId) {
+          logError(new Error("signup webhook missing email or customerId"), {
+            route: "/api/stripe/webhook",
+            meta: { type: event.type, sessionId: session.id },
+          });
+        } else {
+          // Idempotency: if a User+Account already materialized for
+          // this email (webhook redelivery), just sync the latest
+          // subscription state and stop.
+          const existingUser = await prisma.user.findUnique({
+            where: { email: signupEmail },
+            select: { id: true, accountId: true },
+          });
+          if (existingUser?.accountId) {
+            await prisma.account.update({
+              where: { id: existingUser.accountId },
+              data: {
+                stripeCustomerId: customerId,
+                stripeSubscriptionId: subscriptionId,
+                subscriptionStatus: "active",
+                subscriptionTier: signupTier,
+              },
+            });
+          } else {
+            // First-time materialization. Order matters because of
+            // the User.accountId FK + Account.ownerUserId FK loop:
+            //   1. Create a placeholder User (no accountId yet)
+            //   2. Create the Account with ownerUserId = that user
+            //   3. Update User.accountId to point at the Account
+            // The User.email is unique; running this twice with the
+            // same email collides on the User insert and aborts —
+            // perfect idempotency for webhook redeliveries.
+            const newUser = await prisma.user.create({
+              data: {
+                email: signupEmail,
+                role: "owner",
+                termsAcceptedAt: new Date(),
+              },
+              select: { id: true },
+            });
+            const newAccount = await prisma.account.create({
+              data: {
+                businessName: signupBusinessName,
+                ownerUserId: newUser.id,
+                stripeCustomerId: customerId,
+                stripeSubscriptionId: subscriptionId,
+                subscriptionStatus: "active",
+                subscriptionTier: signupTier,
+              },
+              select: { id: true },
+            });
+            await prisma.user.update({
+              where: { id: newUser.id },
+              data: { accountId: newAccount.id },
+            });
+          }
+        }
+      }
+      // Done with checkout.session.completed regardless of branch.
+      // Subscription state lands authoritatively via the
+      // customer.subscription.* events that Stripe fires alongside.
+      return NextResponse.json({ ok: true, type: event.type });
+    }
+
     if (
       event.type === "customer.subscription.created" ||
       event.type === "customer.subscription.updated"
@@ -105,10 +204,5 @@ export async function POST(req: NextRequest) {
   }
 }
 
-function inferTierFromPrice(priceId: string | undefined): string | null {
-  if (!priceId) return null;
-  if (priceId === env.STRIPE_PRICE_ID_SOLO) return "solo";
-  if (priceId === env.STRIPE_PRICE_ID_TEAM) return "team";
-  if (priceId === env.STRIPE_PRICE_ID_BROKERAGE) return "brokerage";
-  return null;
-}
+// inferTierFromPrice moved to the top of the file so the new
+// checkout.session.completed branch above can use it too.

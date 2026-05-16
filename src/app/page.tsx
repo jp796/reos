@@ -107,11 +107,11 @@ export default async function Landing() {
 
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Link
-              href={signedIn ? "/today" : "/login"}
+              href={signedIn ? "/today" : "/signup?tier=solo"}
               className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-brand-600 px-6 py-3 text-base font-semibold text-white hover:bg-brand-500 sm:w-auto"
             >
               <Sparkles className="h-4 w-4" strokeWidth={2} />
-              {signedIn ? "Open dashboard" : "Start free — 1 deal free"}
+              {signedIn ? "Open dashboard" : "Start free trial"}
               <ArrowRight className="h-4 w-4" strokeWidth={2} />
             </Link>
             <a
@@ -412,7 +412,11 @@ export default async function Landing() {
                   ))}
                 </ul>
                 <Link
-                  href={signedIn ? "/today" : "/login"}
+                  href={
+                    signedIn
+                      ? "/today"
+                      : `/signup?tier=${tier.name.toLowerCase()}`
+                  }
                   className={
                     "mt-6 block rounded-md px-4 py-2 text-center text-sm font-semibold " +
                     (tier.highlight
@@ -420,7 +424,7 @@ export default async function Landing() {
                       : "border border-border bg-surface text-text hover:border-brand-500")
                   }
                 >
-                  Start free
+                  Start {tier.name}
                 </Link>
               </div>
             ))}

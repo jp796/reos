@@ -8,13 +8,20 @@ import { signIn } from "@/auth";
 import { Logo } from "@/app/components/Logo";
 
 interface Props {
-  searchParams: Promise<{ error?: string; callbackUrl?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    callbackUrl?: string;
+    activated?: string;
+    email?: string;
+  }>;
 }
 
 export default async function LoginPage({ searchParams }: Props) {
   const sp = await searchParams;
   const callbackUrl = sp.callbackUrl ?? "/";
   const errorCode = sp.error;
+  const justActivated = sp.activated === "1";
+  const activatedEmail = sp.email ?? null;
 
   // Human-friendly NextAuth error codes. Full list:
   // https://authjs.dev/reference/core/errors
@@ -64,6 +71,21 @@ export default async function LoginPage({ searchParams }: Props) {
           </p>
         </div>
 
+        {justActivated && (
+          <div className="mb-4 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+            <div className="font-semibold">Account activated.</div>
+            <div className="mt-1">
+              Sign in below using your Google account{activatedEmail ? (
+                <>
+                  {" "}
+                  for <code className="font-mono">{activatedEmail}</code>
+                </>
+              ) : null}
+              .
+            </div>
+          </div>
+        )}
+
         <form action={doSignIn}>
           <button
             type="submit"
@@ -81,7 +103,10 @@ export default async function LoginPage({ searchParams }: Props) {
         )}
 
         <p className="mt-6 text-center text-xs text-text-subtle">
-          Private workspace. Access limited to authorized team members.
+          Don&rsquo;t have an account?{" "}
+          <a href="/signup" className="font-medium text-brand-700 underline hover:text-brand-600">
+            Start a free trial →
+          </a>
           <br />
           By signing in you agree to the{" "}
           <a href="/terms" className="underline hover:text-text">
