@@ -32,6 +32,9 @@ const PUBLIC_PREFIXES = [
   "/api/signup", // signup-start endpoint that creates the Stripe Checkout Session
   "/vs", // programmatic competitor-comparison SEO pages (/vs/dotloop, etc.)
   "/api/analytics/vsl", // public VSL watch-progress beacon (homepage video)
+  "/opengraph-image", // dynamic Open Graph image (Next.js convention) — social crawlers need access
+  "/twitter-image", // dynamic Twitter Card image (if/when added)
+  "/sitemap.xml", // SEO sitemap — search-engine crawlers need access
 ];
 
 // Webhook + automation-tick endpoints — third parties (Google Pub/Sub,
