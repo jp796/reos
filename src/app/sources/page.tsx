@@ -8,7 +8,10 @@
  */
 
 import Link from "next/link";
+import { NextResponse } from "next/server";
+import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { requireSession } from "@/lib/require-session";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +37,10 @@ export default async function SourcesPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
+  const actor = await requireSession();
+  if (actor instanceof NextResponse) return notFound();
+  const accountId = actor.accountId;
+
   const sp = await searchParams;
   const year = Math.max(
     2000,
@@ -57,6 +64,7 @@ export default async function SourcesPage({
       SELECT COALESCE(source_name, '(unknown)') AS source_name,
              COUNT(*)::bigint AS leads
       FROM contacts
+      WHERE account_id = ${accountId}
       GROUP BY source_name
     ),
     closings AS (
@@ -68,7 +76,8 @@ export default async function SourcesPage({
       FROM transactions t
       JOIN contacts c ON c.id = t.contact_id
       LEFT JOIN transaction_financials f ON f.transaction_id = t.id
-      WHERE t.status = 'closed'
+      WHERE t.account_id = ${accountId}
+        AND t.status = 'closed'
         AND t.exclude_from_production = false
         AND t.is_demo = false
         AND t.closing_date >= ${yearStart}
@@ -80,7 +89,8 @@ export default async function SourcesPage({
              SUM(ms.amount)::numeric AS spend
       FROM marketing_spends ms
       JOIN source_channels sc ON sc.id = ms.source_channel_id
-      WHERE ms.spend_date >= ${yearStart}
+      WHERE ms.account_id = ${accountId}
+        AND ms.spend_date >= ${yearStart}
         AND ms.spend_date <  ${yearEnd}
       GROUP BY sc.name
     )

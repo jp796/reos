@@ -10,7 +10,10 @@
  */
 
 import Link from "next/link";
+import { NextResponse } from "next/server";
+import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { requireSession } from "@/lib/require-session";
 import { Home, Plus } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -34,8 +37,11 @@ function fmtMoney(n: number | null | undefined): string {
 }
 
 export default async function ListingsPage() {
+  const actor = await requireSession();
+  if (actor instanceof NextResponse) return notFound();
+
   const listings = await prisma.transaction.findMany({
-    where: { status: "listing" },
+    where: { accountId: actor.accountId, status: "listing" },
     include: {
       contact: true,
       financials: { select: { salePrice: true } },

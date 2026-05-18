@@ -13,7 +13,10 @@
  */
 
 import Link from "next/link";
+import { NextResponse } from "next/server";
+import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { requireSession } from "@/lib/require-session";
 import { ExcludeRowButton } from "./ExcludeRowButton";
 
 export const dynamic = "force-dynamic";
@@ -49,6 +52,10 @@ export default async function ProductionPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
+  const actor = await requireSession();
+  if (actor instanceof NextResponse) return notFound();
+  const accountId = actor.accountId;
+
   const sp = await searchParams;
   const year = Math.max(
     2000,
@@ -62,6 +69,7 @@ export default async function ProductionPage({
     await Promise.all([
       prisma.transaction.findMany({
         where: {
+          accountId,
           status: "closed",
           excludeFromProduction: false,
           isDemo: false,
@@ -76,6 +84,7 @@ export default async function ProductionPage({
       }),
       prisma.transaction.count({
         where: {
+          accountId,
           status: { in: ["active", "pending"] },
         },
       }),
@@ -96,7 +105,8 @@ export default async function ProductionPage({
           SUM(f.net_commission)::numeric AS net
         FROM transactions t
         LEFT JOIN transaction_financials f ON f.transaction_id = t.id
-        WHERE t.status='closed'
+        WHERE t.account_id = ${accountId}
+          AND t.status='closed'
           AND t.exclude_from_production = false
           AND t.is_demo = false
           AND t.closing_date >= ${yearStart}
@@ -120,7 +130,8 @@ export default async function ProductionPage({
         FROM transactions t
         JOIN contacts c ON c.id = t.contact_id
         LEFT JOIN transaction_financials f ON f.transaction_id = t.id
-        WHERE t.status='closed'
+        WHERE t.account_id = ${accountId}
+          AND t.status='closed'
           AND t.exclude_from_production = false
           AND t.is_demo = false
           AND t.closing_date >= ${yearStart}
@@ -129,7 +140,10 @@ export default async function ProductionPage({
         ORDER BY closings DESC
       `,
       prisma.$queryRaw<Array<{ status: string; count: bigint }>>`
-        SELECT status, COUNT(*)::bigint AS count FROM transactions GROUP BY status
+        SELECT status, COUNT(*)::bigint AS count
+        FROM transactions
+        WHERE account_id = ${accountId}
+        GROUP BY status
       `,
     ]);
 
@@ -151,6 +165,7 @@ export default async function ProductionPage({
       SELECT COALESCE(source_name, '(unknown)') AS source_name,
              COUNT(*)::bigint AS leads
       FROM contacts
+      WHERE account_id = ${accountId}
       GROUP BY source_name
     ),
     active AS (
@@ -158,7 +173,8 @@ export default async function ProductionPage({
              COUNT(*)::bigint AS active
       FROM transactions t
       JOIN contacts c ON c.id = t.contact_id
-      WHERE t.status IN ('listing','active','pending')
+      WHERE t.account_id = ${accountId}
+        AND t.status IN ('listing','active','pending')
       GROUP BY c.source_name
     ),
     closed AS (
@@ -167,7 +183,8 @@ export default async function ProductionPage({
              AVG(EXTRACT(EPOCH FROM (t.closing_date - t.contract_date)) / 86400)::float AS avg_days_to_close
       FROM transactions t
       JOIN contacts c ON c.id = t.contact_id
-      WHERE t.status = 'closed'
+      WHERE t.account_id = ${accountId}
+        AND t.status = 'closed'
         AND t.exclude_from_production = false
         AND t.is_demo = false
         AND t.closing_date IS NOT NULL

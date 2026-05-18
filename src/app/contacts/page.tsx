@@ -1,16 +1,25 @@
+import { NextResponse } from "next/server";
+import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { requireSession } from "@/lib/require-session";
 import { SyncButton } from "./SyncButton";
 
 // Fresh DB read on every request so the page reflects latest sync state.
 export const dynamic = "force-dynamic";
 
 export default async function ContactsPage() {
+  const actor = await requireSession();
+  if (actor instanceof NextResponse) return notFound();
+
   const contacts = await prisma.contact.findMany({
+    where: { accountId: actor.accountId },
     orderBy: { updatedAt: "desc" },
     take: 500,
   });
 
-  const total = await prisma.contact.count();
+  const total = await prisma.contact.count({
+    where: { accountId: actor.accountId },
+  });
 
   return (
     <main className="mx-auto max-w-6xl">

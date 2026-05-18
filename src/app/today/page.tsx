@@ -75,10 +75,16 @@ export default async function TodayPage({
   // redirects before we get here, so in practice this is always an
   // ActingUser. Narrow the type:
   const actingUserId = actor instanceof Response ? null : actor.userId;
+  // Tenant scope — every query below MUST scope by accountId or it
+  // leaks across tenants. Hard-fail to a deliberately-empty marker if
+  // we somehow got past the auth gate without an actor.
+  const actingAccountId =
+    actor instanceof Response ? "__none__" : actor.accountId;
   const txnAssignedFilter =
     scope === "mine" && actingUserId
       ? { assignedUserId: actingUserId }
       : {};
+  const txnTenantFilter = { accountId: actingAccountId };
 
   const now = new Date();
   const weekFromNow = new Date(now.getTime() + 7 * DAY_MS);
@@ -101,7 +107,7 @@ export default async function TodayPage({
         status: "pending",
         completedAt: null,
         dueAt: { lte: now },
-        transaction: { status: "active", ...txnAssignedFilter },
+        transaction: { ...txnTenantFilter, status: "active", ...txnAssignedFilter },
       },
       include: {
         transaction: { include: { contact: true } },
@@ -114,7 +120,7 @@ export default async function TodayPage({
         status: "pending",
         completedAt: null,
         dueAt: { gt: now, lte: weekFromNow },
-        transaction: { status: "active", ...txnAssignedFilter },
+        transaction: { ...txnTenantFilter, status: "active", ...txnAssignedFilter },
       },
       include: {
         transaction: { include: { contact: true } },
@@ -123,7 +129,7 @@ export default async function TodayPage({
       take: 25,
     }),
     prisma.transaction.findMany({
-      where: { status: "active", ...txnAssignedFilter },
+      where: { ...txnTenantFilter, status: "active", ...txnAssignedFilter },
       include: {
         contact: true,
         communicationEvents: {
@@ -134,6 +140,7 @@ export default async function TodayPage({
     }),
     prisma.transaction.findMany({
       where: {
+        ...txnTenantFilter,
         status: "active",
         closingDate: { gte: now, lte: monthFromNow },
         ...txnAssignedFilter,
@@ -143,18 +150,18 @@ export default async function TodayPage({
       take: 15,
     }),
     prisma.pendingEmailMatch.count({
-      where: { status: "pending" },
+      where: { ...txnTenantFilter, status: "pending" },
     }),
     prisma.$queryRaw<
       Array<{ active: bigint; closed: bigint; total_contacts: bigint }>
     >`
       SELECT
-        (SELECT COUNT(*) FROM transactions WHERE status='active')::bigint AS active,
-        (SELECT COUNT(*) FROM transactions WHERE status='closed')::bigint AS closed,
-        (SELECT COUNT(*) FROM contacts)::bigint AS total_contacts
+        (SELECT COUNT(*) FROM transactions WHERE status='active' AND account_id = ${actingAccountId})::bigint AS active,
+        (SELECT COUNT(*) FROM transactions WHERE status='closed' AND account_id = ${actingAccountId})::bigint AS closed,
+        (SELECT COUNT(*) FROM contacts WHERE account_id = ${actingAccountId})::bigint AS total_contacts
     `,
     prisma.transaction.findMany({
-      where: { status: "active", ...txnAssignedFilter },
+      where: { ...txnTenantFilter, status: "active", ...txnAssignedFilter },
       include: {
         contact: true,
         milestones: true,
@@ -167,7 +174,7 @@ export default async function TodayPage({
       where: {
         completedAt: null,
         dueAt: { lte: now },
-        transaction: { status: "active", ...txnAssignedFilter },
+        transaction: { ...txnTenantFilter, status: "active", ...txnAssignedFilter },
       },
       include: {
         transaction: {
@@ -182,7 +189,7 @@ export default async function TodayPage({
       where: {
         completedAt: null,
         dueAt: { gt: now, lte: weekFromNow },
-        transaction: { status: "active", ...txnAssignedFilter },
+        transaction: { ...txnTenantFilter, status: "active", ...txnAssignedFilter },
       },
       include: {
         transaction: {

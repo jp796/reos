@@ -6,19 +6,26 @@
  */
 
 import Link from "next/link";
+import { NextResponse } from "next/server";
+import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { requireSession } from "@/lib/require-session";
 import { MarketingSpendPanel } from "./MarketingSpendPanel";
 
 export const dynamic = "force-dynamic";
 
 export default async function MarketingPage() {
+  const actor = await requireSession();
+  if (actor instanceof NextResponse) return notFound();
+
   const [sources, spendsRaw] = await Promise.all([
     prisma.sourceChannel.findMany({
-      where: { isActive: true },
+      where: { accountId: actor.accountId, isActive: true },
       orderBy: { name: "asc" },
       select: { id: true, name: true, category: true },
     }),
     prisma.marketingSpend.findMany({
+      where: { accountId: actor.accountId },
       orderBy: { spendDate: "desc" },
       include: { sourceChannel: { select: { name: true, category: true } } },
       take: 200,

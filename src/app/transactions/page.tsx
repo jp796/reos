@@ -78,6 +78,10 @@ export default async function TransactionsPage({
   const { requireSession } = await import("@/lib/require-session");
   const actor = await requireSession();
   const actingUserId = actor instanceof Response ? null : actor.userId;
+  // Tenant scope — every query below MUST include this. Without it
+  // the list leaks every transaction across every tenant in the DB.
+  const accountWhere =
+    actor instanceof Response ? { accountId: "__none__" } : { accountId: actor.accountId };
 
   const sp = await searchParams;
   const filter: StatusFilter =
@@ -97,7 +101,7 @@ export default async function TransactionsPage({
 
   const repWhere = rep === "any" ? {} : { side: rep };
 
-  const where = { ...statusWhere, ...repWhere, ...scopeWhere };
+  const where = { ...accountWhere, ...statusWhere, ...repWhere, ...scopeWhere };
 
   const [
     transactions,
@@ -121,18 +125,18 @@ export default async function TransactionsPage({
       },
       take: 200,
     }),
-    prisma.transaction.count(),
+    prisma.transaction.count({ where: accountWhere }),
     prisma.transaction.count({
-      where: { status: { in: ["closed", "dead"] } },
+      where: { ...accountWhere, status: { in: ["closed", "dead"] } },
     }),
     prisma.transaction.count({
-      where: { status: { notIn: ["closed", "dead"] } },
+      where: { ...accountWhere, status: { notIn: ["closed", "dead"] } },
     }),
     // Rep-side counts, scoped to the currently-active status filter so
     // the numbers reflect what the user is looking at.
-    prisma.transaction.count({ where: { ...statusWhere, side: "buy" } }),
-    prisma.transaction.count({ where: { ...statusWhere, side: "sell" } }),
-    prisma.transaction.count({ where: { ...statusWhere, side: "both" } }),
+    prisma.transaction.count({ where: { ...accountWhere, ...statusWhere, side: "buy" } }),
+    prisma.transaction.count({ where: { ...accountWhere, ...statusWhere, side: "sell" } }),
+    prisma.transaction.count({ where: { ...accountWhere, ...statusWhere, side: "both" } }),
   ]);
 
   return (
