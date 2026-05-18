@@ -10,6 +10,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { getEncryptionService, EncryptionService } from "@/lib/encryption";
+import { appUrl } from "@/lib/app-url";
 import {
   LinkedInOAuthService,
   DEFAULT_LINKEDIN_SCOPES,
@@ -26,7 +27,7 @@ export async function GET(req: NextRequest) {
 
   if (errorParam) {
     return NextResponse.redirect(
-      new URL("/settings/integrations?linkedin=denied", req.url),
+      appUrl("/settings/integrations?linkedin=denied", req),
     );
   }
   if (!code || !state) {
@@ -49,7 +50,7 @@ export async function GET(req: NextRequest) {
   const cookieNonce = req.cookies.get(STATE_COOKIE)?.value;
   if (!cookieNonce) {
     return NextResponse.redirect(
-      new URL("/settings/integrations?linkedin_error=expired", req.url),
+      appUrl("/settings/integrations?linkedin_error=expired", req),
     );
   }
   if (
@@ -88,14 +89,14 @@ export async function GET(req: NextRequest) {
     await oauth.storeTokens(parsedState.accountId, tokens);
 
     const res = NextResponse.redirect(
-      new URL("/settings/integrations?linkedin=connected", req.url),
+      appUrl("/settings/integrations?linkedin=connected", req),
     );
     res.cookies.delete(STATE_COOKIE);
     return res;
   } catch (err) {
     console.error("LinkedIn OAuth callback error:", err);
     return NextResponse.redirect(
-      new URL("/settings/integrations?linkedin=error", req.url),
+      appUrl("/settings/integrations?linkedin=error", req),
     );
   }
 }

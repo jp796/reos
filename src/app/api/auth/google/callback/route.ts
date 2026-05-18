@@ -14,6 +14,7 @@ import {
 import { prisma } from "@/lib/db";
 import { getEncryptionService, EncryptionService } from "@/lib/encryption";
 import { env } from "@/lib/env";
+import { appUrl } from "@/lib/app-url";
 
 const STATE_COOKIE = "reos_oauth_state";
 
@@ -23,7 +24,7 @@ export async function GET(req: NextRequest) {
   const errorParam = req.nextUrl.searchParams.get("error");
 
   if (errorParam) {
-    return NextResponse.redirect(new URL("/?google=denied", req.url));
+    return NextResponse.redirect(appUrl("/?google=denied", req));
   }
   if (!code || !state) {
     return NextResponse.json(
@@ -50,7 +51,7 @@ export async function GET(req: NextRequest) {
     // way, surface a friendly redirect to /settings/integrations with
     // a flag the panel can show as a banner.
     return NextResponse.redirect(
-      new URL("/settings/integrations?google_error=expired", req.url),
+      appUrl("/settings/integrations?google_error=expired", req),
     );
   }
   if (!EncryptionService.constantTimeEqual(cookieNonce, parsedState.nonce)) {
@@ -89,11 +90,11 @@ export async function GET(req: NextRequest) {
     const { tokens, userEmail } = await oauth.exchangeCodeForTokens(code);
     await oauth.storeTokens(parsedState.accountId, tokens, userEmail);
 
-    const res = NextResponse.redirect(new URL("/?google=connected", req.url));
+    const res = NextResponse.redirect(appUrl("/?google=connected", req));
     res.cookies.delete(STATE_COOKIE);
     return res;
   } catch (err) {
     console.error("OAuth callback error:", err);
-    return NextResponse.redirect(new URL("/?google=error", req.url));
+    return NextResponse.redirect(appUrl("/?google=error", req));
   }
 }

@@ -16,6 +16,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { getEncryptionService, EncryptionService } from "@/lib/encryption";
+import { appUrl } from "@/lib/app-url";
 import {
   MetaOAuthService,
   DEFAULT_META_SCOPES,
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
 
   if (errorParam) {
     return NextResponse.redirect(
-      new URL("/settings/integrations?meta=denied", req.url),
+      appUrl("/settings/integrations?meta=denied", req),
     );
   }
   if (!code || !state) {
@@ -55,7 +56,7 @@ export async function GET(req: NextRequest) {
   const cookieNonce = req.cookies.get(STATE_COOKIE)?.value;
   if (!cookieNonce) {
     return NextResponse.redirect(
-      new URL("/settings/integrations?meta_error=expired", req.url),
+      appUrl("/settings/integrations?meta_error=expired", req),
     );
   }
   if (
@@ -90,14 +91,14 @@ export async function GET(req: NextRequest) {
     await oauth.storeTokens(parsedState.accountId, tokens);
 
     const res = NextResponse.redirect(
-      new URL("/settings/integrations?meta=connected", req.url),
+      appUrl("/settings/integrations?meta=connected", req),
     );
     res.cookies.delete(STATE_COOKIE);
     return res;
   } catch (err) {
     console.error("Meta OAuth callback error:", err);
     return NextResponse.redirect(
-      new URL("/settings/integrations?meta=error", req.url),
+      appUrl("/settings/integrations?meta=error", req),
     );
   }
 }
