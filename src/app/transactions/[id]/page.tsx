@@ -100,8 +100,14 @@ export default async function TransactionDetailPage({
   const actor = await requireSession();
   if (actor instanceof NextResponse) return notFound();
 
-  const txn = await prisma.transaction.findUnique({
-    where: { id },
+  // Tenancy enforcement: scope by accountId in the WHERE clause so a
+  // user from another tenant gets a clean 404. Without this guard the
+  // page renders cross-tenant data, every sub-panel API call then
+  // 404s (those routes DO check tenancy), and one of the panels
+  // crashes the client. Same class of bug as the Phase 0 leaks —
+  // never trust an `id` from the URL alone.
+  const txn = await prisma.transaction.findFirst({
+    where: { id, accountId: actor.accountId },
     include: {
       contact: true,
       milestones: { orderBy: { dueAt: "asc" } },
