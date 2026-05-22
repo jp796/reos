@@ -7,13 +7,21 @@ name: Deploy to Cloud Run
 #                              successful run; otherwise no-op)
 #   3. manual workflow_dispatch — "Run workflow" button in the Actions tab
 #
-# One-time setup before this works:
-#   1. Create a deployer service account in GCP with roles:
-#        roles/cloudbuild.builds.editor
-#        roles/storage.admin (for the source bucket)
-#        roles/iam.serviceAccountUser
-#   2. Generate a JSON key, store as repo secret `GCP_SA_KEY`
-#   3. Set repo secret `GCP_PROJECT_ID` to "real-estate-os-493719"
+# One-time setup before this works (already provisioned 2026-05-22):
+#   1. Service account `reos-deployer@real-estate-os-493719.iam.gserviceaccount.com`
+#      with project roles: cloudbuild.builds.editor, storage.admin,
+#      iam.serviceAccountUser, logging.viewer.
+#   2. Workload Identity Federation (NOT a JSON key — GCP org policy
+#      blocks SA key creation as a security best practice):
+#        - Pool:     github-actions-pool
+#        - Provider: github-jp796 (gated to attribute.repository = jp796/reos)
+#        - SA binding: roles/iam.workloadIdentityUser for the repo's
+#          principalSet, so GitHub OIDC tokens for jp796/reos can
+#          impersonate reos-deployer.
+#   3. Repo secrets used here:
+#        GCP_PROJECT_ID            = "real-estate-os-493719"
+#        GCP_WIF_PROVIDER          = full provider resource path
+#        GCP_SERVICE_ACCOUNT_EMAIL = "reos-deployer@..."
 
 on:
   push:
@@ -42,10 +50,11 @@ jobs:
       - uses: actions/checkout@v4
 
       - id: auth
-        name: Auth to GCP
+        name: Auth to GCP (Workload Identity Federation — no JSON key)
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
 
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
