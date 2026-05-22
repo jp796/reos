@@ -12,6 +12,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { getEncryptionService } from "@/lib/encryption";
+import { requireSession } from "@/lib/require-session";
 import {
   GoogleOAuthService,
   DEFAULT_SCOPES,
@@ -29,8 +30,18 @@ export const maxDuration = 300;
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as { days?: number };
 
-  const account = await prisma.account.findFirst({
-    select: { id: true, googleOauthTokensEncrypted: true },
+  // Tenancy guard: see create-from-scan/route.ts. Pull settingsJson
+  // up front in the same call so we don't need a second findUnique
+  // below for the trusted-TC sender allowlist.
+  const actor = await requireSession();
+  if (actor instanceof NextResponse) return actor;
+  const account = await prisma.account.findUnique({
+    where: { id: actor.accountId },
+    select: {
+      id: true,
+      googleOauthTokensEncrypted: true,
+      settingsJson: true,
+    },
   });
   if (!account?.googleOauthTokensEncrypted) {
     return NextResponse.json(
@@ -83,11 +94,7 @@ export async function POST(req: NextRequest) {
   // Pull the user-configured trusted-TC sender allowlist so the scan
   // also surfaces threads from outside coordinators that don't carry
   // the usual contract-keyword markers in the subject.
-  const acct = await prisma.account.findUnique({
-    where: { id: account.id },
-    select: { settingsJson: true },
-  });
-  const settings = (acct?.settingsJson ?? {}) as Record<string, unknown>;
+  const settings = (account.settingsJson ?? {}) as Record<string, unknown>;
   const trustedSenders = Array.isArray(settings.trustedTcSenders)
     ? (settings.trustedTcSenders as unknown[]).filter(
         (x): x is string => typeof x === "string",

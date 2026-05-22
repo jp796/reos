@@ -12,6 +12,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { getEncryptionService } from "@/lib/encryption";
+import { requireSession } from "@/lib/require-session";
 import {
   GoogleOAuthService,
   DEFAULT_SCOPES,
@@ -39,7 +40,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const account = await prisma.account.findFirst({
+  // Tenancy guard: see create-from-scan/route.ts. The SS reconcile
+  // job writes PendingClosingDateUpdate rows + opens an SS scan
+  // window — under the old code it ran against whichever account
+  // Postgres returned first, so pending rows landed in (and SS
+  // searches hit) a random tenant's Gmail.
+  const actor = await requireSession();
+  if (actor instanceof NextResponse) return actor;
+  const account = await prisma.account.findUnique({
+    where: { id: actor.accountId },
     select: {
       id: true,
       googleOauthTokensEncrypted: true,

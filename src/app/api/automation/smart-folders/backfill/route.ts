@@ -10,6 +10,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { getEncryptionService } from "@/lib/encryption";
+import { requireSession } from "@/lib/require-session";
 import {
   GoogleOAuthService,
   DEFAULT_SCOPES,
@@ -26,7 +27,14 @@ import {
 } from "@/services/automation/SmartFolderService";
 
 export async function POST() {
-  const account = await prisma.account.findFirst({
+  // Tenancy guard: see create-from-scan/route.ts. Also scoping the
+  // `txns` findMany — without an accountId filter it would set up
+  // smart folders against every tenant's transactions using a single
+  // random tenant's Gmail label namespace.
+  const actor = await requireSession();
+  if (actor instanceof NextResponse) return actor;
+  const account = await prisma.account.findUnique({
+    where: { id: actor.accountId },
     select: { id: true, googleOauthTokensEncrypted: true },
   });
   if (!account?.googleOauthTokensEncrypted) {
@@ -48,6 +56,7 @@ export async function POST() {
 
   const txns = await prisma.transaction.findMany({
     where: {
+      accountId: account.id,
       createdAt: { gte: SMART_FOLDER_CUTOFF },
       smartFolderFilterId: null,
       propertyAddress: { not: null },

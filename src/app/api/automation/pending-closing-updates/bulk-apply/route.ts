@@ -13,6 +13,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { getEncryptionService } from "@/lib/encryption";
+import { requireSession } from "@/lib/require-session";
 import {
   GoogleOAuthService,
   DEFAULT_SCOPES,
@@ -44,8 +45,16 @@ export async function POST() {
     );
   }
 
+  // Tenancy guard: see create-from-scan/route.ts. Two leaks closed
+  // here: (1) the pending findMany was unscoped — it would apply
+  // EVERY tenant's pending rows in one call, stamping FUB updates
+  // with the wrong tenant's credentials. (2) The account.findFirst
+  // resolved Gmail under a random tenant.
+  const actor = await requireSession();
+  if (actor instanceof NextResponse) return actor;
+
   const pending = await prisma.pendingClosingDateUpdate.findMany({
-    where: { status: "pending" },
+    where: { accountId: actor.accountId, status: "pending" },
     orderBy: { detectedAt: "desc" },
   });
 
@@ -55,7 +64,8 @@ export async function POST() {
   // populating financials from SS attachments. If Google isn't connected,
   // the helper falls back gracefully.
   let gmail: GmailService | null = null;
-  const account = await prisma.account.findFirst({
+  const account = await prisma.account.findUnique({
+    where: { id: actor.accountId },
     select: { id: true, googleOauthTokensEncrypted: true },
   });
   if (

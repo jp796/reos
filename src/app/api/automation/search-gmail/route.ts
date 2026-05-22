@@ -22,6 +22,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { getEncryptionService } from "@/lib/encryption";
+import { requireSession } from "@/lib/require-session";
 import {
   GoogleOAuthService,
   DEFAULT_SCOPES,
@@ -68,7 +69,13 @@ export async function POST(req: NextRequest) {
   const days = Math.min(Math.max(body?.days ?? 365, 7), 1095);
   const max = Math.min(Math.max(body?.max ?? 40, 1), 100);
 
-  const account = await prisma.account.findFirst({
+  // Tenancy guard: see create-from-scan/route.ts. Without this, a
+  // search ran against whichever account Postgres returned first —
+  // surfacing another tenant's Gmail threads to the caller.
+  const actor = await requireSession();
+  if (actor instanceof NextResponse) return actor;
+  const account = await prisma.account.findUnique({
+    where: { id: actor.accountId },
     select: { id: true, googleOauthTokensEncrypted: true },
   });
   if (!account?.googleOauthTokensEncrypted) {

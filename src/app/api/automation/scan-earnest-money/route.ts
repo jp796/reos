@@ -11,6 +11,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { getEncryptionService } from "@/lib/encryption";
+import { requireSession } from "@/lib/require-session";
 import {
   GoogleOAuthService,
   DEFAULT_SCOPES,
@@ -26,7 +27,13 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function POST() {
-  const account = await prisma.account.findFirst({
+  // Tenancy guard: see create-from-scan/route.ts for the canonical fix.
+  // `findFirst()` returns AN account — whichever Postgres picks — so
+  // earnest-money scans would run under a random tenant's Gmail.
+  const actor = await requireSession();
+  if (actor instanceof NextResponse) return actor;
+  const account = await prisma.account.findUnique({
+    where: { id: actor.accountId },
     select: { id: true, googleOauthTokensEncrypted: true },
   });
   if (!account?.googleOauthTokensEncrypted) {

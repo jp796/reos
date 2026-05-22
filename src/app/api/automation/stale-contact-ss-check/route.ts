@@ -20,6 +20,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { getEncryptionService } from "@/lib/encryption";
+import { requireSession } from "@/lib/require-session";
 import {
   GoogleOAuthService,
   DEFAULT_SCOPES,
@@ -46,7 +47,13 @@ const SS_FILENAME_RES: RegExp[] = [
 ];
 
 export async function POST() {
-  const account = await prisma.account.findFirst({
+  // Tenancy guard: see create-from-scan/route.ts. `findFirst()` picked
+  // a random tenant, so this job would mark THAT tenant's stale txns
+  // closed using whatever SS PDFs sat in the random tenant's Gmail.
+  const actor = await requireSession();
+  if (actor instanceof NextResponse) return actor;
+  const account = await prisma.account.findUnique({
+    where: { id: actor.accountId },
     select: { id: true, googleOauthTokensEncrypted: true },
   });
   if (!account?.googleOauthTokensEncrypted) {

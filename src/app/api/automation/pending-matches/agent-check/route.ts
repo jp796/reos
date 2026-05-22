@@ -20,6 +20,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { getEncryptionService } from "@/lib/encryption";
+import { requireSession } from "@/lib/require-session";
 import {
   GoogleOAuthService,
   DEFAULT_SCOPES,
@@ -56,7 +57,16 @@ export const runtime = "nodejs";
 export const maxDuration = 90;
 
 export async function POST() {
-  const account = await prisma.account.findFirst({
+  // Tenancy guard: see create-from-scan/route.ts. Two leaks fixed:
+  // (1) the pending findMany was unscoped — it would auto-dismiss
+  // every tenant's pending rows using THIS tenant's agent identities,
+  // wrongly classifying other tenants' deals as "not_my_listing".
+  // (2) the account.findFirst picked a random tenant for the Gmail
+  // session that downloads the SS PDFs.
+  const actor = await requireSession();
+  if (actor instanceof NextResponse) return actor;
+  const account = await prisma.account.findUnique({
+    where: { id: actor.accountId },
     select: { id: true, settingsJson: true, googleOauthTokensEncrypted: true },
   });
   if (!account?.googleOauthTokensEncrypted) {
@@ -79,7 +89,7 @@ export async function POST() {
   const identities = resolveIdentities(account.settingsJson);
 
   const rows = await prisma.pendingEmailMatch.findMany({
-    where: { status: "pending" },
+    where: { accountId: account.id, status: "pending" },
     orderBy: { detectedAt: "desc" },
     take: 100,
   });

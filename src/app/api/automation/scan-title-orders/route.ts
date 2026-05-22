@@ -16,8 +16,10 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import { env } from "@/lib/env";
 import { getEncryptionService } from "@/lib/encryption";
+import { requireSession } from "@/lib/require-session";
 import {
   GoogleOAuthService,
   GoogleServiceFactory,
@@ -71,9 +73,39 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const account = await prisma.account.findFirst({
-    select: { id: true, settingsJson: true, googleOauthTokensEncrypted: true },
-  });
+  // Tenancy guard: when the call is from the in-app button, scope to
+  // the actor's account (see create-from-scan/route.ts). When the
+  // call is from cron/CLI (presented the schedule secret), we keep
+  // the historical single-tenant default of `findFirst` — there's
+  // no actor on a scheduled invocation. As REOS grows past one
+  // tenant, the cron path will need to iterate accounts explicitly.
+  let account:
+    | {
+        id: string;
+        settingsJson: Prisma.JsonValue | null;
+        googleOauthTokensEncrypted: string | null;
+      }
+    | null;
+  if (isFromApp) {
+    const actor = await requireSession();
+    if (actor instanceof NextResponse) return actor;
+    account = await prisma.account.findUnique({
+      where: { id: actor.accountId },
+      select: {
+        id: true,
+        settingsJson: true,
+        googleOauthTokensEncrypted: true,
+      },
+    });
+  } else {
+    account = await prisma.account.findFirst({
+      select: {
+        id: true,
+        settingsJson: true,
+        googleOauthTokensEncrypted: true,
+      },
+    });
+  }
   if (!account) {
     return NextResponse.json(
       { error: "No account — run `npm run db:seed`" },

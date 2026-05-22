@@ -16,6 +16,7 @@ import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { env } from "@/lib/env";
 import { getEncryptionService } from "@/lib/encryption";
+import { requireSession } from "@/lib/require-session";
 import {
   addBusinessDays,
   defaultWalkthroughForState,
@@ -75,29 +76,19 @@ interface Body {
 }
 
 export async function POST(req: NextRequest) {
-  const account = await prisma.account.findFirst({ select: { id: true } });
-  if (!account) {
-    return NextResponse.json({ error: "no account" }, { status: 500 });
-  }
-
-  // Figure out the acting user (for default assignment). Optional —
-  // if called by a cron / background job without a session, assignment
-  // stays null and the deal shows up as unassigned in /today.
-  let actingUserId: string | null = null;
-  try {
-    const { auth } = await import("@/auth");
-    const session = await auth();
-    const email = session?.user?.email?.toLowerCase();
-    if (email) {
-      const u = await prisma.user.findUnique({
-        where: { email },
-        select: { id: true },
-      });
-      actingUserId = u?.id ?? null;
-    }
-  } catch {
-    // best-effort only
-  }
+  // Tenancy guard. Prior implementation used
+  // `prisma.account.findFirst()` which returns AN account — whichever
+  // row Postgres feels like handing back — and stamped every contact +
+  // transaction with that id. That meant every customer's contract
+  // uploads landed in whichever tenant happened to sort first. Real
+  // bug: a Wyoming deal of JP's, uploaded by Vicki, ended up under
+  // Laura Webb's 417 brokerage. Sealed by switching to the actor's
+  // accountId from the session, matching the pattern used by every
+  // other tenant-owned write route.
+  const actor = await requireSession();
+  if (actor instanceof NextResponse) return actor;
+  const account = { id: actor.accountId };
+  const actingUserId = actor.userId;
 
   const body = (await req.json().catch(() => null)) as Body | null;
   if (!body?.address) {
