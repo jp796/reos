@@ -83,7 +83,18 @@ export async function runMorningTick(
    * ============================================================ */
   let contractScan: MorningTickResult["contractScan"] = null;
   try {
+    // Pick an account that actually has Gmail connected — bare
+    // findFirst() returned whichever row Postgres handed back first,
+    // which after multi-tenant rollout was occasionally a tenant
+    // with no OAuth token (e.g. an empty 417realestate-mo). Result:
+    // morning brief reported "Gmail not connected" when the user's
+    // primary account had a fine token. Filter on the token presence
+    // and pin a deterministic order so behavior is stable.
+    // TODO: iterate every Gmail-connected tenant and send one brief
+    // per tenant to that tenant's Telegram chat id.
     const account = await db.account.findFirst({
+      where: { googleOauthTokensEncrypted: { not: null } },
+      orderBy: { createdAt: "asc" },
       select: { id: true, googleOauthTokensEncrypted: true, settingsJson: true },
     });
     if (
@@ -149,7 +160,11 @@ export async function runMorningTick(
    * ============================================================ */
   let autoLink: MorningTickResult["autoLink"] = null;
   try {
+    // Same fix as Step 1 — require an account with Gmail actually
+    // connected, in deterministic order. See note above.
     const account = await db.account.findFirst({
+      where: { googleOauthTokensEncrypted: { not: null } },
+      orderBy: { createdAt: "asc" },
       select: { id: true, googleOauthTokensEncrypted: true },
     });
     if (
@@ -264,7 +279,11 @@ export async function runMorningTick(
    * ============================================================ */
   let earnestMoneyScan: MorningTickResult["earnestMoneyScan"] = null;
   try {
+    // Same fix as Step 1 — require an account with Gmail actually
+    // connected, in deterministic order. See note above.
     const account = await db.account.findFirst({
+      where: { googleOauthTokensEncrypted: { not: null } },
+      orderBy: { createdAt: "asc" },
       select: { id: true, googleOauthTokensEncrypted: true },
     });
     if (
