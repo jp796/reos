@@ -53,6 +53,13 @@ model Account {
   stripeCustomerId                String?  @unique @map("stripe_customer_id")
   stripeSubscriptionId            String?  @unique @map("stripe_subscription_id")
   subscriptionRenewsAt            DateTime? @map("subscription_renews_at")
+  /// When the owner clicked "Delete account" in Settings → Account.
+  /// Stripe subscription is canceled at that moment; the row + all
+  /// tenant data is kept for 30 days so the owner can restore via
+  /// /api/account/restore. After 30 days the scheduled purge route
+  /// hard-deletes the Account (cascade-removes contacts, txns, etc.).
+  /// Null = active account.
+  deletionRequestedAt             DateTime? @map("deletion_requested_at")
   createdAt                       DateTime @default(now()) @map("created_at")
   updatedAt                       DateTime @updatedAt @map("updated_at")
 
@@ -66,6 +73,7 @@ model Account {
   pendingEmailMatches       PendingEmailMatch[]
   pendingClosingDateUpdates PendingClosingDateUpdate[]
   forwardedDocuments        ForwardedDocument[]
+  esignRequests             EsignRequest[]
   invoiceEntries            InvoiceEntry[]
   emailTemplates            EmailTemplate[]
   leadIntakes               LeadIntake[]
@@ -293,6 +301,7 @@ model Transaction {
   contractVersions    ContractExtractionVersion[]
   inspections         TransactionInspection[]
   notes               TransactionNote[]
+  esignRequests       EsignRequest[]
   assignedUser        User?                    @relation("AssignedTransactions", fields: [assignedUserId], references: [id], onDelete: SetNull)
 
   @@index([accountId])
@@ -388,9 +397,39 @@ model Document {
   transaction         Transaction          @relation(fields: [transactionId], references: [id], onDelete: Cascade)
   documentExtractions DocumentExtraction[]
   extractedDates      ExtractedDate[]
+  esignRequests       EsignRequest[]
 
   @@index([transactionId])
   @@map("documents")
+}
+
+model EsignRequest {
+  id                    String   @id @default(cuid())
+  accountId             String   @map("account_id")
+  transactionId          String   @map("transaction_id")
+  documentId             String   @map("document_id")
+  provider              String   @default("documenso")
+  providerEnvelopeId     String?  @map("provider_envelope_id")
+  status                String   @default("draft") // draft, sent, completed, rejected, failed
+  title                 String
+  recipientsJson        Json     @map("recipients_json")
+  signingLinksJson      Json?    @map("signing_links_json")
+  providerResponseJson  Json?    @map("provider_response_json")
+  errorMessage          String?  @map("error_message")
+  sentAt                DateTime? @map("sent_at")
+  completedAt           DateTime? @map("completed_at")
+  createdByUserId       String?  @map("created_by_user_id")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  account     Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  document    Document    @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, status])
+  @@index([transactionId, createdAt])
+  @@index([documentId])
+  @@map("esign_requests")
 }
 
 model DocumentExtraction {

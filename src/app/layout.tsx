@@ -5,6 +5,7 @@ import { ThemeProvider } from "./ThemeProvider";
 import { AppShell } from "./AppShell";
 import { ToastProvider } from "./ToastProvider";
 import { TermsAcceptModal } from "./TermsAcceptModal";
+import { PendingDeletionBanner } from "./PendingDeletionBanner";
 import { auth, signOut } from "@/auth";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
@@ -90,6 +91,18 @@ export default async function RootLayout({
     }
   }
 
+  // If the acting tenant is scheduled for deletion, surface the
+  // countdown on every page so the owner can't lose track and miss
+  // the restore window.
+  let deletionScheduledAt: string | null = null;
+  if (session?.user?.email) {
+    const acctRow = await prisma.user.findUnique({
+      where: { email: session.user.email.toLowerCase() },
+      select: { account: { select: { deletionRequestedAt: true } } },
+    });
+    deletionScheduledAt = acctRow?.account?.deletionRequestedAt?.toISOString() ?? null;
+  }
+
   async function doSignOut() {
     "use server";
     await signOut({ redirectTo: "/login" });
@@ -108,6 +121,9 @@ export default async function RootLayout({
         <ThemeProvider>
           <ToastProvider>
             <AppShell user={user} signOutAction={doSignOut}>
+              {deletionScheduledAt && (
+                <PendingDeletionBanner scheduledAt={deletionScheduledAt} />
+              )}
               {children}
             </AppShell>
             {needsTerms && <TermsAcceptModal signOutAction={doSignOut} />}

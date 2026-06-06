@@ -47,6 +47,7 @@ const WEBHOOK_PATTERNS: RegExp[] = [
   /^\/api\/integrations\/gmail\/push(\/|$)/,
   /^\/api\/automation\/[^/]+\/tick(\/|$)/,
   /^\/api\/automation\/morning-tick(\/|$)/,
+  /^\/api\/automation\/purge-deleted-accounts(\/|$)/,
   /^\/api\/admin\/seed-brokerage-profiles(\/|$)/,
   /^\/api\/stripe\/webhook(\/|$)/,
 ];

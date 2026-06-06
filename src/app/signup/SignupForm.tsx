@@ -217,6 +217,10 @@ export function SignupForm({
         </a>
         .
       </p>
+      <p className="mt-2 text-[11px] italic text-text-muted">
+        Our Terms of Use are a working draft pending attorney review.
+        Material changes will prompt re-acceptance.
+      </p>
     </form>
   );
 }

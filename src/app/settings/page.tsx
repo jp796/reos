@@ -15,6 +15,7 @@ import {
   Inbox,
   CreditCard,
   Bell,
+  Shield,
 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -79,6 +80,12 @@ const SECTIONS = [
     title: "Demo data",
     desc: "Generate / wipe sample transactions — never affects analytics",
     icon: ScrollText,
+  },
+  {
+    href: "/settings/account",
+    title: "Account",
+    desc: "Subscription overview · delete this workspace",
+    icon: Shield,
   },
 ];
 
