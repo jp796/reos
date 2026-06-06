@@ -7,6 +7,7 @@ import { ToastProvider } from "./ToastProvider";
 import { TermsAcceptModal } from "./TermsAcceptModal";
 import { auth, signOut } from "@/auth";
 import { prisma } from "@/lib/db";
+import { env } from "@/lib/env";
 import { PwaRegister } from "./PwaRegister";
 
 // Brand typeface — Montserrat (per 2026 brand guide). One face for
@@ -20,6 +21,7 @@ const montserrat = Montserrat({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(env.NEXT_PUBLIC_APP_URL ?? "https://myrealestateos.com"),
   title: "REOS · Real Estate OS",
   description: "Private AI transaction chief of staff",
   manifest: "/manifest.json",
@@ -63,15 +65,29 @@ export default async function RootLayout({
 
   // Does the acting user still need to accept the Terms of Use? We
   // look this up once server-side so the modal only ever renders
-  // when it should. Owners are pre-accepted in createUser (they
-  // authored the terms).
+  // when it should. Two cases trigger the prompt:
+  //   (1) never accepted — termsAcceptedAt is null
+  //   (2) accepted an older version — termsAcceptedAt predates the
+  //       TERMS_LAST_UPDATED constant the current TermsBody exports
+  // Case (2) makes a ToU rewrite (like the SaaS conversion shipped
+  // 2026-06-06) automatically re-prompt every existing user. They
+  // can read the diff at /terms and accept; we stamp the new
+  // termsAcceptedAt on POST /api/terms/accept.
   let needsTerms = false;
   if (session?.user?.email) {
+    const { TERMS_LAST_UPDATED } = await import("./terms/TermsBody");
     const row = await prisma.user.findUnique({
       where: { email: session.user.email.toLowerCase() },
       select: { termsAcceptedAt: true },
     });
-    needsTerms = !row?.termsAcceptedAt;
+    if (!row?.termsAcceptedAt) {
+      needsTerms = true;
+    } else {
+      // TERMS_LAST_UPDATED is "YYYY-MM-DD"; treat midnight UTC as the
+      // effective moment so a same-day accept is honored.
+      const termsEffective = new Date(`${TERMS_LAST_UPDATED}T00:00:00Z`);
+      needsTerms = row.termsAcceptedAt < termsEffective;
+    }
   }
 
   async function doSignOut() {
