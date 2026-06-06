@@ -30,6 +30,8 @@ import { ProductionToggle } from "./ProductionToggle";
 import { RezenCompliancePrepPanel } from "./RezenCompliancePrepPanel";
 import { ConvertListingButton } from "./ConvertListingButton";
 import { SocialPostsPanel } from "./SocialPostsPanel";
+import { EsignPanel } from "./EsignPanel";
+import { DocumensoService } from "@/services/integrations/DocumensoService";
 import { SMART_FOLDER_CUTOFF } from "@/services/automation/SmartFolderService";
 import {
   RiskScoringService,
@@ -134,12 +136,40 @@ export default async function TransactionDetailPage({
         },
       },
       inspections: { orderBy: [{ scheduledAt: "asc" }, { createdAt: "asc" }] },
+      esignRequests: {
+        orderBy: { createdAt: "desc" },
+        include: {
+          document: {
+            select: { id: true, fileName: true, mimeType: true, uploadedAt: true },
+          },
+        },
+      },
     },
   });
 
   if (!txn) return notFound();
 
   const contact = txn.contact;
+  const signerOptions = [
+    ...txn.participants
+      .map((p) => ({
+        name: p.contact.fullName,
+        email: p.contact.primaryEmail ?? "",
+        role: p.role,
+      }))
+      .filter((p) => p.email),
+    {
+      name: contact.fullName,
+      email: contact.primaryEmail ?? "",
+      role: "primary",
+    },
+  ]
+    .filter((p) => p.email)
+    .filter(
+      (p, index, arr) =>
+        arr.findIndex((x) => x.email.toLowerCase() === p.email.toLowerCase()) ===
+        index,
+    );
 
   // Is this primary contact referenced on any OTHER transaction?
   // Drives the "renaming propagates" warning in <EditablePrimaryContact>.
@@ -720,6 +750,27 @@ export default async function TransactionDetailPage({
           </ul>
         </section>
       )}
+
+      <EsignPanel
+        transactionId={txn.id}
+        configured={DocumensoService.isConfigured()}
+        documents={txn.documents.map((d) => ({
+          id: d.id,
+          fileName: d.fileName,
+          mimeType: d.mimeType,
+        }))}
+        signerOptions={signerOptions}
+        requests={txn.esignRequests.map((r) => ({
+          id: r.id,
+          title: r.title,
+          status: r.status,
+          providerEnvelopeId: r.providerEnvelopeId,
+          signingLinksJson: r.signingLinksJson,
+          errorMessage: r.errorMessage,
+          createdAt: r.createdAt,
+          sentAt: r.sentAt,
+        }))}
+      />
 
       {/* Footer */}
       <footer className="mt-10 border-t border-border pt-4 text-xs text-text-subtle">

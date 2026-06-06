@@ -43,6 +43,11 @@ const schema = z.object({
   // runs alone (and currently 403s from Cloud Run IPs).
   APIFY_API_TOKEN: z.string().optional(),
 
+  // Documenso — open-source/self-hostable e-signing. Optional so
+  // tenants can keep REOS running before the signing host is wired.
+  DOCUMENSO_API_URL: z.string().url().optional(),
+  DOCUMENSO_API_KEY: z.string().optional(),
+
   // NextAuth v5 — these gate multi-user sign-in. Marked optional so
   // the app can still boot in single-user dev without auth wired up,
   // but `src/auth.ts` warns on startup if any are missing in prod.
