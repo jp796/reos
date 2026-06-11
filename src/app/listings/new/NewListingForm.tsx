@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Sparkles } from "lucide-react";
+import { Loader2, Mail, Sparkles } from "lucide-react";
 import { useToast } from "@/app/ToastProvider";
 import { DropZone } from "@/app/components/DropZone";
 
@@ -16,6 +16,7 @@ export function NewListingForm() {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [enriching, setEnriching] = useState(false);
   const [extraction, setExtraction] = useState<ListingExtraction | null>(null);
   // After a failed submit we mark each missing required field so it
   // renders with a red border + helper text. Clears whenever the user
@@ -127,6 +128,82 @@ export function NewListingForm() {
       );
     } finally {
       setUploading(false);
+    }
+  }
+
+  /** Search the connected Gmail for the seller's email + phone and
+   *  fill whichever contact fields are still empty. Deterministic
+   *  server-side header/body parse — no AI cost. */
+  async function pullFromGmail() {
+    if (!form.sellerName.trim()) {
+      setMissing(new Set(["sellerName"]));
+      toast.error(
+        "Need a name first",
+        "Fill the seller name (or drop the agreement above), then pull from Gmail.",
+      );
+      return;
+    }
+    setEnriching(true);
+    try {
+      const res = await fetch("/api/listings/enrich", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          sellerName: form.sellerName,
+          propertyAddress: form.propertyAddress || undefined,
+        }),
+      });
+      const data = (await res.json()) as {
+        ok?: boolean;
+        sellerEmail?: string | null;
+        sellerPhone?: string | null;
+        threadsScanned?: number;
+        error?: string;
+      };
+      if (!res.ok) {
+        toast.error("Gmail lookup failed", data.error ?? `HTTP ${res.status}`);
+        return;
+      }
+
+      const found: string[] = [];
+      setForm((f) => {
+        const next = { ...f };
+        if (data.sellerEmail && !f.sellerEmail.trim()) {
+          next.sellerEmail = data.sellerEmail;
+          found.push("email");
+        }
+        if (data.sellerPhone && !f.sellerPhone.trim()) {
+          next.sellerPhone = data.sellerPhone;
+          found.push("phone");
+        }
+        return next;
+      });
+
+      // setForm's updater runs synchronously in React 18 event
+      // handlers before this line, so `found` is populated here.
+      if (found.length > 0) {
+        toast.success(
+          "Pulled from Gmail",
+          `Found ${found.join(" + ")} across ${data.threadsScanned ?? 0} thread${(data.threadsScanned ?? 0) === 1 ? "" : "s"}. Double-check before creating.`,
+        );
+      } else if (data.sellerEmail || data.sellerPhone) {
+        toast.info(
+          "Fields already filled",
+          "Gmail had matches but the email/phone fields already have values — clear them first to overwrite.",
+        );
+      } else {
+        toast.info(
+          "Nothing found",
+          `No matching correspondence for "${form.sellerName}" in the last 2 years.`,
+        );
+      }
+    } catch (e) {
+      toast.error(
+        "Gmail lookup errored",
+        e instanceof Error ? e.message : "unknown",
+      );
+    } finally {
+      setEnriching(false);
     }
   }
 
@@ -257,6 +334,33 @@ export function NewListingForm() {
             fieldKey="sellerPhone"
           />
         </Section>
+
+        {/* Gmail enrichment — agreements rarely carry the seller's
+            email/phone; their correspondence does. */}
+        <div className="flex items-center gap-2 rounded-md border border-dashed border-border bg-surface-2/40 px-3 py-2">
+          <button
+            type="button"
+            onClick={pullFromGmail}
+            disabled={enriching || !form.sellerName.trim()}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-text hover:border-brand-500 hover:text-brand-700 disabled:opacity-50"
+            title={
+              form.sellerName.trim()
+                ? "Search your connected Gmail for this seller's email + phone"
+                : "Fill the seller name first"
+            }
+          >
+            {enriching ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} />
+            ) : (
+              <Mail className="h-3.5 w-3.5" strokeWidth={2} />
+            )}
+            {enriching ? "Searching Gmail…" : "Pull remaining info from Gmail"}
+          </button>
+          <span className="text-[11px] text-text-muted">
+            Searches your inbox for the seller's email + phone. Only fills
+            fields that are still empty.
+          </span>
+        </div>
 
         <Section title="Property">
           <Input
