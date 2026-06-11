@@ -430,17 +430,21 @@ export default async function Landing() {
       </section>
 
       {/* ─── VSL · full product walkthrough ───────────────────
-          Placeholder until JP records the proper VSL. The VSLHero
-          component handles autoplay-muted-on-scroll, tap-to-unmute,
-          time-gated CTA, and per-10s progress tracking. Pass a real
-          mp4 / HLS URL into videoUrl when the recorded VSL lives on
-          Cloudflare Stream / Mux / Vimeo Pro. */}
+          Live VSL v1 recorded 2026-06-11. Hosted on YouTube as an
+          unlisted upload — free, CDN-distributed, adaptive bitrate.
+          The VSLHero component handles autoplay-muted-on-scroll,
+          tap-to-unmute, time-gated CTA fade-in at 2:30, and per-10s
+          progress tracking via the YouTube IFrame Player API. Swap
+          `youtubeId` for `videoUrl` if/when we move to a paid host
+          (Cloudflare Stream, Mux). Script lives at
+          docs/VSL_SCRIPT.md. */}
       <section
         id="walkthrough"
         className="border-t border-border bg-gradient-to-b from-bg to-surface-2/30 py-16"
       >
         <VSLHero
           videoUrl={null}
+          youtubeId="FC6EOQJJ0_Q"
           headline="The full REOS product walkthrough"
           subheadline="Five minutes. Every AI feature. The story of how REOS replaces three tools and most of the manual work in a real-estate file."
           ctaRevealSeconds={150}

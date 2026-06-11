@@ -12,19 +12,18 @@
  *   - tap-to-unmute overlay that disappears once audio is on
  *   - pause when scrolled out of view (saves bandwidth + battery)
  *   - time-gated CTA that fades in at `ctaRevealSeconds`
- *   - per-10s watch-progress tracking via window.fetch to
- *     /api/analytics/vsl (no-ops gracefully if the endpoint doesn't
- *     exist yet; the call just 404s, which is fine — front-end
- *     console-warns once)
+ *   - per-10s watch-progress tracking to /api/analytics/vsl
  *
- * Expects a direct video URL (Cloudflare Stream / Mux / Vimeo Pro /
- * S3 — anything that returns an mp4 or HLS). For the placeholder
- * period before JP records the proper VSL, we render a poster
- * image + "Coming soon" overlay instead of a broken `<video>`.
+ * Supports two backends:
+ *   - `youtubeId` — YouTube Unlisted upload (free, no infra cost,
+ *     adaptive bitrate, CDN-distributed, but UI-restricted to what
+ *     the iframe API exposes). Used by REOS as of 2026-06-11.
+ *   - `videoUrl` — direct mp4 / HLS URL (Cloudflare Stream, Mux,
+ *     S3, etc.). Use this when YouTube cosmetics don't fit and
+ *     paying for a self-host makes sense.
  *
- * Future: when REOS has Cloudflare Stream wired we can also pull
- * HLS manifests + adaptive bitrate for free; for now `<video>` with
- * a single mp4 is fine.
+ * When both are null we render a placeholder card so the component
+ * can ship before the video exists.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -33,13 +32,19 @@ import { Play, Volume2, VolumeX, ArrowRight } from "lucide-react";
 export interface VSLHeroProps {
   /**
    * Direct video URL — mp4 preferred, HLS (.m3u8) also OK on Safari.
-   * When null we render a placeholder card with the poster image
-   * and a "Coming soon" message, so JP can ship the component
-   * before the video itself exists.
+   * Mutually exclusive with `youtubeId` — if both are set, the YT
+   * embed wins.
    */
   videoUrl: string | null;
 
-  /** Poster image (1280×720 or 1920×1080). Always shown before play. */
+  /**
+   * YouTube video id (the part after `?v=` or `youtu.be/`). The
+   * video must be Public or Unlisted; Private videos won't play in
+   * the embed. Wins over `videoUrl` when both are set.
+   */
+  youtubeId?: string | null;
+
+  /** Poster image (1280×720 or 1920×1080). Used by the placeholder. */
   posterUrl?: string;
 
   /** Headline above the player. */
@@ -62,10 +67,71 @@ export interface VSLHeroProps {
   ctaHref: string;
 }
 
+// ── YouTube IFrame Player API — minimal typings ──────────────────
+interface YTPlayer {
+  playVideo: () => void;
+  pauseVideo: () => void;
+  mute: () => void;
+  unMute: () => void;
+  isMuted: () => boolean;
+  getCurrentTime: () => number;
+  getDuration: () => number;
+  destroy: () => void;
+}
+interface YTPlayerEvent {
+  data: number;
+  target: YTPlayer;
+}
+interface YTGlobal {
+  Player: new (
+    el: HTMLElement | string,
+    config: {
+      videoId: string;
+      width?: string | number;
+      height?: string | number;
+      playerVars?: Record<string, string | number>;
+      events?: {
+        onReady?: (e: { target: YTPlayer }) => void;
+        onStateChange?: (e: YTPlayerEvent) => void;
+      };
+    },
+  ) => YTPlayer;
+}
+declare global {
+  interface Window {
+    YT?: YTGlobal;
+    onYouTubeIframeAPIReady?: () => void;
+  }
+}
+
+// Singleton loader — multiple VSLHero mounts share one script tag.
+let ytApiLoadPromise: Promise<YTGlobal> | null = null;
+function loadYouTubeApi(): Promise<YTGlobal> {
+  if (typeof window === "undefined") {
+    return Promise.reject(new Error("ssr"));
+  }
+  if (window.YT?.Player) return Promise.resolve(window.YT);
+  if (ytApiLoadPromise) return ytApiLoadPromise;
+  ytApiLoadPromise = new Promise((resolve) => {
+    const tag = document.createElement("script");
+    tag.src = "https://www.youtube.com/iframe_api";
+    tag.async = true;
+    document.head.appendChild(tag);
+    const prev = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      prev?.();
+      if (window.YT?.Player) resolve(window.YT);
+    };
+  });
+  return ytApiLoadPromise;
+}
+
 const PROGRESS_TICK_SECONDS = 10;
+const YT_POLL_MS = 500;
 
 export function VSLHero({
   videoUrl,
+  youtubeId,
   posterUrl,
   headline,
   subheadline,
@@ -73,60 +139,171 @@ export function VSLHero({
   ctaLabel,
   ctaHref,
 }: VSLHeroProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const ytMountRef = useRef<HTMLDivElement>(null);
+  const ytPlayerRef = useRef<YTPlayer | null>(null);
+  const [ytReady, setYtReady] = useState(false);
+
   const [muted, setMuted] = useState(true);
   const [playing, setPlaying] = useState(false);
   const [ctaVisible, setCtaVisible] = useState(false);
   const lastReportedTickRef = useRef<number>(-1);
 
+  const useYouTube = !!youtubeId;
+  const useNativeVideo = !useYouTube && !!videoUrl;
+  const showPlaceholder = !useYouTube && !useNativeVideo;
+
+  // ── YouTube player init ─────────────────────────────────────────
+  useEffect(() => {
+    if (!useYouTube || !ytMountRef.current || !youtubeId) return;
+    let canceled = false;
+    let player: YTPlayer | null = null;
+
+    loadYouTubeApi()
+      .then((YT) => {
+        if (canceled || !ytMountRef.current) return;
+        player = new YT.Player(ytMountRef.current, {
+          videoId: youtubeId,
+          width: "100%",
+          height: "100%",
+          playerVars: {
+            // We trigger play from the IntersectionObserver, not autoplay,
+            // so we can control the muted-vs-unmuted state on first play.
+            autoplay: 0,
+            mute: 1,
+            controls: 0,
+            modestbranding: 1,
+            rel: 0,
+            playsinline: 1,
+            iv_load_policy: 3, // suppress annotations
+            disablekb: 1,
+            fs: 0,
+          },
+          events: {
+            onReady: ({ target }) => {
+              ytPlayerRef.current = target;
+              setYtReady(true);
+            },
+            onStateChange: ({ data }) => {
+              // 1 = playing, 2 = paused, 0 = ended, 3 = buffering
+              if (data === 1) setPlaying(true);
+              else if (data === 2 || data === 0) setPlaying(false);
+            },
+          },
+        });
+      })
+      .catch(() => {
+        // Script failed to load (ad-blocker, network) — placeholder is
+        // already not shown for the YT path, so we just stay quiet.
+      });
+
+    return () => {
+      canceled = true;
+      try {
+        player?.destroy();
+      } catch {
+        /* noop */
+      }
+      ytPlayerRef.current = null;
+      setYtReady(false);
+    };
+  }, [useYouTube, youtubeId]);
+
   // ── Autoplay on scroll-into-view, pause when out ────────────────
   useEffect(() => {
     const el = containerRef.current;
-    const video = videoRef.current;
-    if (!el || !video) return;
+    if (!el) return;
 
     const io = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
           if (entry.isIntersecting) {
-            // Browsers require muted=true for autoplay to be approved.
-            video.muted = true;
-            video.play().catch(() => {
-              // Some browsers (older Safari) still reject — non-fatal.
-            });
+            if (useYouTube) {
+              const p = ytPlayerRef.current;
+              if (p) {
+                try {
+                  p.mute();
+                  p.playVideo();
+                } catch {
+                  /* noop */
+                }
+              }
+            } else if (useNativeVideo) {
+              const v = videoRef.current;
+              if (v) {
+                v.muted = true;
+                v.play().catch(() => {});
+              }
+            }
           } else {
-            video.pause();
+            if (useYouTube) {
+              try {
+                ytPlayerRef.current?.pauseVideo();
+              } catch {
+                /* noop */
+              }
+            } else if (useNativeVideo) {
+              videoRef.current?.pause();
+            }
           }
         }
       },
-      // Trigger when 40% of the player is in viewport — feels natural
-      // and avoids firing for headers/nav.
       { threshold: 0.4 },
     );
     io.observe(el);
     return () => io.disconnect();
-  }, []);
+  }, [useYouTube, useNativeVideo, ytReady]);
 
-  // ── Time-gated CTA + progress tracking ──────────────────────────
+  // ── YouTube polling: CTA reveal + analytics beacon ──────────────
   useEffect(() => {
+    if (!useYouTube || !ytReady) return;
+    const id = window.setInterval(() => {
+      const p = ytPlayerRef.current;
+      if (!p) return;
+      let t = 0;
+      let duration = 0;
+      try {
+        t = p.getCurrentTime() ?? 0;
+        duration = p.getDuration() ?? 0;
+      } catch {
+        return;
+      }
+      if (!ctaVisible && t >= ctaRevealSeconds) {
+        setCtaVisible(true);
+      }
+      const tick = Math.floor(t / PROGRESS_TICK_SECONDS);
+      if (tick !== lastReportedTickRef.current && tick >= 0 && t > 0) {
+        lastReportedTickRef.current = tick;
+        fetch("/api/analytics/vsl", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            t: Math.round(t),
+            duration,
+            event: "progress",
+          }),
+        }).catch(() => {});
+      }
+    }, YT_POLL_MS);
+    return () => window.clearInterval(id);
+  }, [useYouTube, ytReady, ctaRevealSeconds, ctaVisible]);
+
+  // ── Native <video> time-gated CTA + progress ────────────────────
+  useEffect(() => {
+    if (!useNativeVideo) return;
     const video = videoRef.current;
     if (!video) return;
 
     function onTime() {
       if (!video) return;
       const t = video.currentTime;
-
       if (!ctaVisible && t >= ctaRevealSeconds) {
         setCtaVisible(true);
       }
-
-      // Tick every PROGRESS_TICK_SECONDS — fire-and-forget POST.
-      const currentTick = Math.floor(t / PROGRESS_TICK_SECONDS);
-      if (currentTick !== lastReportedTickRef.current) {
-        lastReportedTickRef.current = currentTick;
-        // The endpoint may not exist yet — that's fine. We don't
-        // wait, don't retry, and warn at most once per page load.
+      const tick = Math.floor(t / PROGRESS_TICK_SECONDS);
+      if (tick !== lastReportedTickRef.current) {
+        lastReportedTickRef.current = tick;
         fetch("/api/analytics/vsl", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -135,30 +312,57 @@ export function VSLHero({
             duration: video.duration,
             event: "progress",
           }),
-        }).catch(() => {
-          /* silent */
-        });
+        }).catch(() => {});
       }
     }
     video.addEventListener("timeupdate", onTime);
     return () => video.removeEventListener("timeupdate", onTime);
-  }, [ctaRevealSeconds, ctaVisible]);
+  }, [useNativeVideo, ctaRevealSeconds, ctaVisible]);
 
-  // ── Manual play (poster click) ─────────────────────────────────
+  // ── Click-to-play (from the big poster overlay) ────────────────
   function manualPlay() {
-    const video = videoRef.current;
-    if (!video) return;
-    video.muted = false;
-    setMuted(false);
-    video.play().catch(() => {});
-    setPlaying(true);
+    if (useYouTube) {
+      const p = ytPlayerRef.current;
+      if (!p) return;
+      try {
+        p.unMute();
+        setMuted(false);
+        p.playVideo();
+        setPlaying(true);
+      } catch {
+        /* noop */
+      }
+    } else if (useNativeVideo) {
+      const video = videoRef.current;
+      if (!video) return;
+      video.muted = false;
+      setMuted(false);
+      video.play().catch(() => {});
+      setPlaying(true);
+    }
   }
 
   function toggleMute() {
-    const video = videoRef.current;
-    if (!video) return;
-    video.muted = !video.muted;
-    setMuted(video.muted);
+    if (useYouTube) {
+      const p = ytPlayerRef.current;
+      if (!p) return;
+      try {
+        if (p.isMuted()) {
+          p.unMute();
+          setMuted(false);
+        } else {
+          p.mute();
+          setMuted(true);
+        }
+      } catch {
+        /* noop */
+      }
+    } else if (useNativeVideo) {
+      const video = videoRef.current;
+      if (!video) return;
+      video.muted = !video.muted;
+      setMuted(video.muted);
+    }
   }
 
   return (
@@ -171,22 +375,16 @@ export function VSLHero({
       </h2>
 
       <div className="relative mx-auto mt-8 aspect-video w-full overflow-hidden rounded-xl border border-border bg-black shadow-2xl">
-        {videoUrl ? (
+        {useYouTube && (
           <>
-            <video
-              ref={videoRef}
-              className="h-full w-full object-cover"
-              src={videoUrl}
-              poster={posterUrl}
-              playsInline
-              muted
-              loop={false}
-              preload="metadata"
-              onPlay={() => setPlaying(true)}
-              onPause={() => setPlaying(false)}
-            />
+            {/* The YouTube IFrame Player API replaces this div with an
+                iframe on instantiation. */}
+            <div ref={ytMountRef} className="absolute inset-0 h-full w-full" />
 
-            {/* Tap-to-unmute overlay — visible until the user clicks. */}
+            {/* Tap-to-unmute overlay — visible while muted+playing. The
+                inner button consumes the click; the rest of the overlay
+                is pointer-events:none so the user can interact with the
+                video chrome below if YT ever re-injects controls. */}
             {muted && playing && (
               <button
                 type="button"
@@ -232,15 +430,73 @@ export function VSLHero({
               </button>
             )}
           </>
-        ) : (
-          // Placeholder before JP records the proper VSL. Looks
-          // like a video player but stays static — better than a
-          // broken <video> tag that flashes to a black square.
+        )}
+
+        {useNativeVideo && (
+          <>
+            <video
+              ref={videoRef}
+              className="h-full w-full object-cover"
+              src={videoUrl ?? undefined}
+              poster={posterUrl}
+              playsInline
+              muted
+              loop={false}
+              preload="metadata"
+              onPlay={() => setPlaying(true)}
+              onPause={() => setPlaying(false)}
+            />
+
+            {muted && playing && (
+              <button
+                type="button"
+                onClick={toggleMute}
+                className="absolute inset-0 flex items-center justify-center bg-black/30 transition hover:bg-black/40"
+                aria-label="Unmute video"
+              >
+                <span className="flex items-center gap-3 rounded-full bg-white px-5 py-3 text-sm font-semibold text-black shadow-lg">
+                  <VolumeX className="h-4 w-4" strokeWidth={2} />
+                  Tap to unmute
+                </span>
+              </button>
+            )}
+
+            {!playing && (
+              <button
+                type="button"
+                onClick={manualPlay}
+                className="absolute inset-0 flex items-center justify-center bg-black/40 transition hover:bg-black/50"
+                aria-label="Play video"
+              >
+                <span className="flex h-20 w-20 items-center justify-center rounded-full bg-white shadow-2xl">
+                  <Play className="ml-1 h-9 w-9 text-black" strokeWidth={2.5} />
+                </span>
+              </button>
+            )}
+
+            {playing && (
+              <button
+                type="button"
+                onClick={toggleMute}
+                className="absolute bottom-3 right-3 flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur transition hover:bg-black/80"
+                aria-label={muted ? "Unmute" : "Mute"}
+              >
+                {muted ? (
+                  <VolumeX className="h-4 w-4" strokeWidth={2} />
+                ) : (
+                  <Volume2 className="h-4 w-4" strokeWidth={2} />
+                )}
+              </button>
+            )}
+          </>
+        )}
+
+        {showPlaceholder && (
           <div
             className="flex h-full w-full items-center justify-center"
             style={{
               backgroundImage: posterUrl ? `url(${posterUrl})` : undefined,
-              backgroundColor: "#050E3D", // Real Broker Cobalt fallback
+              backgroundColor: "#050E3D",
               backgroundSize: "cover",
               backgroundPosition: "center",
             }}
@@ -267,10 +523,11 @@ export function VSLHero({
       )}
 
       {/* Time-gated CTA — fades in once the watcher hits
-          ctaRevealSeconds. Stays put once revealed. */}
+          ctaRevealSeconds. Stays put once revealed. Placeholder
+          mode shows the CTA immediately. */}
       <div
         className="mt-6 transition-opacity duration-700"
-        style={{ opacity: ctaVisible || videoUrl === null ? 1 : 0 }}
+        style={{ opacity: ctaVisible || showPlaceholder ? 1 : 0 }}
       >
         <a
           href={ctaHref}
