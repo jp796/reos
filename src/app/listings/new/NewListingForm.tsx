@@ -17,6 +17,12 @@ export function NewListingForm() {
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [extraction, setExtraction] = useState<ListingExtraction | null>(null);
+  // After a failed submit we mark each missing required field so it
+  // renders with a red border + helper text. Clears whenever the user
+  // edits the field. Solves the "Create button does nothing" trap
+  // where HTML5 form validation was scrolling silently to a field
+  // off-screen above the button.
+  const [missing, setMissing] = useState<Set<string>>(new Set());
   const [form, setForm] = useState({
     sellerName: "",
     sellerEmail: "",
@@ -32,6 +38,14 @@ export function NewListingForm() {
 
   function field<K extends keyof typeof form>(k: K, v: string) {
     setForm((f) => ({ ...f, [k]: v }));
+    if (missing.has(k as string)) {
+      // Clear the red highlight once the user fills it in.
+      setMissing((cur) => {
+        const next = new Set(cur);
+        next.delete(k as string);
+        return next;
+      });
+    }
   }
 
   /** Drop a listing-agreement PDF → AI fills the form. */
@@ -94,6 +108,37 @@ export function NewListingForm() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+
+    // Explicit validation with a toast naming what's missing — the
+    // browser-default `required` path scrolls to the offending field
+    // silently and can leave the user staring at a "dead" Create
+    // button if the field is above the fold.
+    const missingFields: string[] = [];
+    if (!form.sellerName.trim()) missingFields.push("sellerName");
+    if (!form.propertyAddress.trim()) missingFields.push("propertyAddress");
+    if (missingFields.length > 0) {
+      setMissing(new Set(missingFields));
+      const friendly = missingFields
+        .map((k) => (k === "sellerName" ? "Seller name" : "Property address"))
+        .join(" and ");
+      toast.error(
+        "Can't create yet",
+        `${friendly} ${missingFields.length === 1 ? "is" : "are"} required. ${
+          extraction
+            ? "AI didn't find them in the document — type them in."
+            : "Drop a listing agreement above, or type them in."
+        }`,
+      );
+      // Scroll the first missing field into view.
+      const firstId = missingFields[0];
+      const el = document.querySelector(`[data-field="${firstId}"]`);
+      if (el && el instanceof HTMLElement) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.querySelector("input")?.focus();
+      }
+      return;
+    }
+
     setBusy(true);
     try {
       const res = await fetch("/api/listings", {
@@ -168,6 +213,8 @@ export function NewListingForm() {
             placeholder="John & Jane Smith"
             cols="sm:col-span-2"
             confidence={extraction?.sellerName?.confidence}
+            fieldKey="sellerName"
+            missing={missing.has("sellerName")}
           />
           <Input
             label="Email"
@@ -175,6 +222,7 @@ export function NewListingForm() {
             onChange={(v) => field("sellerEmail", v)}
             placeholder="seller@example.com"
             confidence={extraction?.sellerEmail?.confidence}
+            fieldKey="sellerEmail"
           />
           <Input
             label="Phone"
@@ -182,6 +230,7 @@ export function NewListingForm() {
             onChange={(v) => field("sellerPhone", v)}
             placeholder="307-555-1234"
             confidence={extraction?.sellerPhone?.confidence}
+            fieldKey="sellerPhone"
           />
         </Section>
 
@@ -194,6 +243,8 @@ export function NewListingForm() {
             placeholder="509 Bent Avenue"
             cols="sm:col-span-2"
             confidence={extraction?.propertyAddress?.confidence}
+            fieldKey="propertyAddress"
+            missing={missing.has("propertyAddress")}
           />
           <Input
             label="City"
@@ -284,6 +335,8 @@ function Input({
   cols,
   type = "text",
   confidence,
+  fieldKey,
+  missing,
 }: {
   label: string;
   value: string;
@@ -293,6 +346,8 @@ function Input({
   cols?: string;
   type?: string;
   confidence?: number | null;
+  fieldKey?: string;
+  missing?: boolean;
 }) {
   // Light visual hint when the AI filled this field — green dot for
   // high confidence, amber for low. Helps the user spot what to verify.
@@ -305,9 +360,10 @@ function Input({
           ? "bg-amber-400"
           : "bg-red-400";
   return (
-    <label className={`block ${cols ?? ""}`}>
+    <label className={`block ${cols ?? ""}`} data-field={fieldKey}>
       <span className="flex items-center gap-1.5 text-xs font-medium text-text-muted">
         {label}
+        {required && <span className="text-red-500">*</span>}
         {dot && <span className={`inline-block h-1.5 w-1.5 rounded-full ${dot}`} />}
       </span>
       <input
@@ -315,9 +371,18 @@ function Input({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        required={required}
-        className="mt-1 w-full rounded border border-border bg-surface-2 px-2.5 py-1.5 text-sm text-text placeholder:text-text-subtle focus:border-brand-500 focus:outline-none"
+        aria-invalid={missing ? true : undefined}
+        className={`mt-1 w-full rounded border px-2.5 py-1.5 text-sm text-text placeholder:text-text-subtle focus:outline-none ${
+          missing
+            ? "border-red-400 bg-red-50 focus:border-red-500"
+            : "border-border bg-surface-2 focus:border-brand-500"
+        }`}
       />
+      {missing && (
+        <span className="mt-1 block text-[11px] text-red-700">
+          Required — please fill before creating.
+        </span>
+      )}
     </label>
   );
 }
