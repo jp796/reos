@@ -77,6 +77,19 @@ export function NewListingForm() {
       // Populate every field that came back; keep existing values
       // when the AI didn't find anything (so the user's typed input
       // doesn't get clobbered).
+      const filled = [
+        get("sellerName"),
+        get("sellerEmail"),
+        get("sellerPhone"),
+        get("propertyAddress"),
+        get("city"),
+        get("state"),
+        get("zip"),
+        get("listPrice"),
+        isoDate("listDate"),
+        isoDate("listingExpirationDate"),
+      ].filter(Boolean).length;
+
       setForm((f) => ({
         ...f,
         sellerName: get("sellerName") || f.sellerName,
@@ -92,10 +105,21 @@ export function NewListingForm() {
           isoDate("listingExpirationDate") || f.listingExpirationDate,
       }));
 
-      toast.success(
-        "Listing read",
-        "Form filled — review the highlighted fields and create.",
-      );
+      // Tell the truth about what happened. The old code always said
+      // "Form filled" even when the extraction came back all-null,
+      // which left users staring at an empty form under a success
+      // toast.
+      if (filled === 0) {
+        toast.error(
+          "Couldn't read any fields",
+          "The PDF parsed but no usable values came back. If it's a scan or photo, try a clearer copy — or fill the form manually.",
+        );
+      } else {
+        toast.success(
+          "Listing read",
+          `${filled} field${filled === 1 ? "" : "s"} filled — review the dotted fields and create.`,
+        );
+      }
     } catch (e) {
       toast.error(
         "Couldn't read agreement",

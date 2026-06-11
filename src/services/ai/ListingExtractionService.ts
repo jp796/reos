@@ -90,7 +90,17 @@ export class ListingExtractionService {
     if (text && text.length > 200 && hasListingMarkers(text)) {
       try {
         const ex = await this.extractFromText(text);
-        return { ...ex, _path: "text" };
+        // A structurally-valid but all-null result means the text
+        // layer was garbage (common with scanned PDFs whose OCR layer
+        // passed the marker check) OR the model whiffed. Don't hand
+        // the user an empty form while claiming success — fall
+        // through to vision, which reads the rendered pages.
+        if (hasAnyValue(ex)) {
+          return { ...ex, _path: "text" };
+        }
+        console.warn(
+          "listing text-extraction returned zero fields, falling back to vision",
+        );
       } catch (err) {
         console.warn(
           "listing text-extraction failed, falling back to vision:",
@@ -132,7 +142,7 @@ export class ListingExtractionService {
     };
     const raw = data.choices?.[0]?.message?.content?.trim();
     if (!raw) throw new Error("listing text: empty response");
-    return JSON.parse(raw) as ListingExtraction;
+    return normalizeExtraction(JSON.parse(raw));
   }
 
   private async extractWithVision(buffer: Buffer): Promise<ListingExtraction> {
@@ -182,8 +192,82 @@ export class ListingExtractionService {
     };
     const raw = data.choices?.[0]?.message?.content?.trim();
     if (!raw) throw new Error("listing vision: empty response");
-    return JSON.parse(raw) as ListingExtraction;
+    return normalizeExtraction(JSON.parse(raw));
   }
+}
+
+const FIELD_KEYS = [
+  "sellerName",
+  "sellerEmail",
+  "sellerPhone",
+  "propertyAddress",
+  "city",
+  "state",
+  "zip",
+  "listPrice",
+  "listDate",
+  "listingExpirationDate",
+  "mlsNumber",
+] as const;
+
+/**
+ * Coerce whatever shape the model actually returned into the strict
+ * { value, confidence, snippet } field shape the form expects.
+ *
+ * Despite the schema being spelled out in the system prompt,
+ * gpt-4o-mini with response_format=json_object periodically flattens
+ * fields to plain values ("sellerName": "John Smith") or nests the
+ * whole payload under a wrapper key ("fields": {...}). The old code
+ * passed the raw parse straight through — the UI then read
+ * ex.sellerName?.value, got undefined on a flat string, and rendered
+ * an empty form while still claiming "Extracted via text". This
+ * normalizer accepts all three shapes.
+ */
+function normalizeExtraction(raw: unknown): ListingExtraction {
+  const obj = (raw && typeof raw === "object" ? raw : {}) as Record<
+    string,
+    unknown
+  >;
+  // Unwrap common wrapper keys the model sometimes invents.
+  const src = ((obj.fields ?? obj.extraction ?? obj.data ?? obj) ?? {}) as Record<
+    string,
+    unknown
+  >;
+
+  const out: Record<string, unknown> = {};
+  for (const k of FIELD_KEYS) {
+    const v = src[k];
+    if (v !== null && typeof v === "object" && "value" in (v as object)) {
+      const f = v as { value?: unknown; confidence?: unknown; snippet?: unknown };
+      const value = f.value === undefined ? null : f.value;
+      out[k] = {
+        value,
+        confidence:
+          typeof f.confidence === "number"
+            ? f.confidence
+            : value != null
+              ? 0.6
+              : 0,
+        snippet: typeof f.snippet === "string" ? f.snippet : null,
+      };
+    } else if (typeof v === "string" || typeof v === "number") {
+      // Flat value — model skipped the field wrapper. Treat presence
+      // as medium confidence so the amber dot prompts a human check.
+      out[k] = { value: v, confidence: 0.6, snippet: null };
+    } else {
+      out[k] = { value: null, confidence: 0, snippet: null };
+    }
+  }
+  out.notes = typeof src.notes === "string" ? src.notes : null;
+  return out as unknown as ListingExtraction;
+}
+
+/** At least one field carries a real value. */
+function hasAnyValue(ex: ListingExtraction): boolean {
+  return FIELD_KEYS.some((k) => {
+    const f = ex[k] as ListingExtractionField<string | number> | undefined;
+    return f?.value !== null && f?.value !== undefined && f?.value !== "";
+  });
 }
 
 /** Cheap heuristic: does the text layer look like it contains the
