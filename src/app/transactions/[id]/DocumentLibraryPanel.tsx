@@ -1,0 +1,428 @@
+"use client";
+
+/**
+ * DocumentLibraryPanel
+ *
+ * Rich inventory for every document attached to a transaction.
+ * Replaces the bare <li> list that used to render on the txn
+ * detail page. Surfaces everything the DB already knows:
+ *   - Source provenance (Gmail attachment / manual upload / FUB)
+ *   - Manual category (contract / addendum / inspection / etc.)
+ *   - AI classification result (Rezen slot suggestion + confidence)
+ *   - Linked eSign request state (none / sent / completed)
+ *   - Flags ("Needs signature", "Ready for Rezen")
+ *   - Actions: Download · Re-classify · Open in Gmail · Delete
+ *
+ * Sending for signature itself lives in the existing EsignPanel
+ * below this one — we just surface the *status* and link the user
+ * over there. Avoids duplicating the modal/recipient picker.
+ *
+ * Server props (passed from page.tsx) are intentionally flat
+ * primitives — easier to memoize, no Date/Buffer/JSONB hydration
+ * concerns crossing the client boundary.
+ */
+
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import {
+  Download,
+  Trash2,
+  Sparkles,
+  ExternalLink,
+  Mail,
+  Upload as UploadIcon,
+  FileText,
+} from "lucide-react";
+import { useToast } from "../../ToastProvider";
+
+interface DocumentRow {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  category: string | null;
+  source: string; // "upload" | "gmail_attachment" | "fub_attachment"
+  uploadOrigin: string | null;
+  uploadedAt: string; // ISO
+  suggestedRezenSlot: string | null;
+  suggestedRezenConfidence: number | null;
+  classifiedAt: string | null; // ISO
+  hasRawBytes: boolean;
+  hasExtractedText: boolean;
+  // eSign state (rolled up from EsignRequest[])
+  esignStatus: "none" | "draft" | "sent" | "completed" | "voided" | "error";
+  esignSummary: string | null;
+}
+
+interface Props {
+  transactionId: string;
+  documents: DocumentRow[];
+}
+
+const CATEGORY_PILL: Record<string, { bg: string; text: string; border: string }> = {
+  contract:   { bg: "#EEEDFE", text: "#3C3489", border: "#AFA9EC" },
+  addendum:   { bg: "#E6F1FB", text: "#0C447C", border: "#85B7EB" },
+  inspection: { bg: "#FAEEDA", text: "#633806", border: "#EF9F27" },
+  appraisal:  { bg: "#FAEEDA", text: "#633806", border: "#EF9F27" },
+  title:      { bg: "#EAF3DE", text: "#27500A", border: "#97C459" },
+  closing:    { bg: "#EAF3DE", text: "#27500A", border: "#97C459" },
+  other:      { bg: "#F1EFE8", text: "#444441", border: "#B4B2A9" },
+};
+
+const SOURCE_LABEL: Record<string, { label: string; Icon: typeof Mail }> = {
+  upload:            { label: "Upload",   Icon: UploadIcon },
+  gmail_attachment:  { label: "Gmail",    Icon: Mail },
+  fub_attachment:    { label: "Follow Up Boss", Icon: Mail },
+};
+
+const CATEGORIES = [
+  "contract",
+  "addendum",
+  "inspection",
+  "appraisal",
+  "title",
+  "closing",
+  "other",
+] as const;
+
+function fmtDate(iso: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function fmtConfidence(c: number | null): string {
+  if (c == null) return "—";
+  return `${Math.round(c * 100)}%`;
+}
+
+export function DocumentLibraryPanel({ transactionId, documents }: Props) {
+  if (documents.length === 0) {
+    return (
+      <section className="mt-8 rounded-lg border border-dashed border-border bg-surface-2/40 p-8 text-center">
+        <FileText className="mx-auto mb-2 h-6 w-6 text-text-muted" strokeWidth={1.5} />
+        <h2 className="text-sm font-medium text-text">No documents yet</h2>
+        <p className="mt-1 text-xs text-text-muted">
+          Upload a contract above or run a Gmail scan. Documents that land here are
+          automatically AI-classified for Rezen.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="mt-8">
+      <div className="mb-3 flex items-baseline justify-between">
+        <h2 className="text-lg font-medium">Document library</h2>
+        <span className="text-xs text-text-muted">
+          {documents.length} file{documents.length === 1 ? "" : "s"} · Ready for Rezen prep
+        </span>
+      </div>
+      <ul className="space-y-2">
+        {documents.map((d) => (
+          <DocumentCard key={d.id} doc={d} transactionId={transactionId} />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function DocumentCard({
+  doc,
+  transactionId,
+}: {
+  doc: DocumentRow;
+  transactionId: string;
+}) {
+  const router = useRouter();
+  const toast = useToast();
+  const [pending, startTransition] = useTransition();
+  const [busy, setBusy] = useState<null | "delete" | "classify" | "category">(null);
+  const [localCategory, setLocalCategory] = useState(doc.category ?? "");
+
+  const flags: Array<{ key: string; label: string; tone: "red" | "green" | "amber" }> = [];
+  if (doc.category === "contract" && doc.esignStatus !== "completed") {
+    flags.push({ key: "needs-sig", label: "Needs signature", tone: "red" });
+  }
+  if (doc.classifiedAt && doc.suggestedRezenSlot) {
+    flags.push({ key: "rezen-ready", label: "Ready for Rezen", tone: "green" });
+  }
+  if (!doc.hasExtractedText && doc.mimeType === "application/pdf") {
+    flags.push({ key: "needs-extract", label: "Needs extraction", tone: "amber" });
+  }
+
+  async function downloadDoc() {
+    if (!doc.hasRawBytes) {
+      toast.error("File bytes not stored for this doc");
+      return;
+    }
+    // Same-origin GET; browser handles the file download/preview.
+    window.open(
+      `/api/transactions/${transactionId}/documents/${doc.id}`,
+      "_blank",
+      "noopener,noreferrer",
+    );
+  }
+
+  async function classifyNow() {
+    setBusy("classify");
+    try {
+      const res = await fetch(
+        `/api/transactions/${transactionId}/documents/${doc.id}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ runClassifier: true }),
+        },
+      );
+      const data = (await res.json()) as {
+        ok?: boolean;
+        document?: { suggestedRezenSlot?: string | null };
+        classifyError?: string | null;
+      };
+      if (!res.ok) {
+        toast.error(data.classifyError ?? "Classification failed");
+      } else if (data.classifyError) {
+        toast.info(data.classifyError);
+      } else if (data.document?.suggestedRezenSlot) {
+        toast.success(`Classified as ${data.document.suggestedRezenSlot}`);
+      } else {
+        toast.info("No slot matched — set the category manually");
+      }
+      startTransition(() => router.refresh());
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Network error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function changeCategory(next: string) {
+    const previous = localCategory;
+    setLocalCategory(next);
+    setBusy("category");
+    try {
+      const res = await fetch(
+        `/api/transactions/${transactionId}/documents/${doc.id}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ category: next || null }),
+        },
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(
+          (data as { error?: string }).error ?? "Could not update category",
+        );
+        setLocalCategory(previous);
+        return;
+      }
+      startTransition(() => router.refresh());
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Network error");
+      setLocalCategory(previous);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function deleteDoc() {
+    if (!confirm(`Delete "${doc.fileName}"? This can't be undone.`)) return;
+    setBusy("delete");
+    try {
+      const res = await fetch(
+        `/api/transactions/${transactionId}/documents/${doc.id}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error((data as { error?: string }).error ?? "Delete failed");
+        return;
+      }
+      toast.success("Document deleted");
+      startTransition(() => router.refresh());
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Network error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const catColor = doc.category ? CATEGORY_PILL[doc.category] : null;
+  const sourceMeta = SOURCE_LABEL[doc.source] ?? SOURCE_LABEL.upload;
+  const SourceIcon = sourceMeta.Icon;
+  const cardLoading = busy !== null || pending;
+
+  return (
+    <li
+      className={`rounded-lg border border-border bg-surface p-4 transition ${
+        cardLoading ? "opacity-70" : ""
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-brand-50 text-brand-700">
+          <FileText className="h-4 w-4" strokeWidth={1.8} />
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="truncate text-sm font-medium text-text">
+              {doc.fileName}
+            </span>
+            {catColor && (
+              <Pill bg={catColor.bg} text={catColor.text} border={catColor.border}>
+                {doc.category}
+              </Pill>
+            )}
+            <Pill bg="#F1EFE8" text="#444441" border="#B4B2A9">
+              <SourceIcon className="mr-1 h-3 w-3" strokeWidth={2} />
+              {sourceMeta.label}
+            </Pill>
+            {flags.map((f) => (
+              <Pill
+                key={f.key}
+                bg={f.tone === "red" ? "#FCEBEB" : f.tone === "green" ? "#EAF3DE" : "#FAEEDA"}
+                text={f.tone === "red" ? "#791F1F" : f.tone === "green" ? "#27500A" : "#633806"}
+                border={f.tone === "red" ? "#F09595" : f.tone === "green" ? "#97C459" : "#EF9F27"}
+              >
+                {f.label}
+              </Pill>
+            ))}
+          </div>
+
+          <div className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-text-muted sm:grid-cols-4">
+            <div>
+              <span className="uppercase tracking-wide">Uploaded</span>
+              <div className="mt-0.5 text-text">{fmtDate(doc.uploadedAt)}</div>
+            </div>
+            <div>
+              <span className="uppercase tracking-wide">Rezen slot</span>
+              <div className="mt-0.5 text-text">
+                {doc.suggestedRezenSlot ?? <span className="text-text-muted">—</span>}
+              </div>
+            </div>
+            <div>
+              <span className="uppercase tracking-wide">Confidence</span>
+              <div className="mt-0.5 text-text tabular-nums">
+                {fmtConfidence(doc.suggestedRezenConfidence)}
+              </div>
+            </div>
+            <div>
+              <span className="uppercase tracking-wide">Signature</span>
+              <div className="mt-0.5 text-text">
+                {doc.esignSummary ?? (
+                  <span className="text-text-muted">
+                    {doc.esignStatus === "none" ? "Not requested" : doc.esignStatus}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <select
+              value={localCategory}
+              onChange={(e) => changeCategory(e.target.value)}
+              disabled={cardLoading}
+              className="rounded-md border border-border bg-surface px-2 py-1 text-xs"
+              aria-label="Document category"
+            >
+              <option value="">— Set category —</option>
+              {CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+
+            <button
+              type="button"
+              onClick={downloadDoc}
+              disabled={cardLoading || !doc.hasRawBytes}
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-surface px-2.5 py-1 text-xs text-text hover:border-brand-500 disabled:opacity-50"
+              title={doc.hasRawBytes ? "Open / download" : "File bytes not stored"}
+            >
+              <Download className="h-3 w-3" strokeWidth={2} />
+              Download
+            </button>
+
+            <button
+              type="button"
+              onClick={classifyNow}
+              disabled={cardLoading || !doc.hasExtractedText}
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-surface px-2.5 py-1 text-xs text-text hover:border-brand-500 disabled:opacity-50"
+              title={
+                doc.hasExtractedText
+                  ? "Run the AI classifier to (re-)suggest a Rezen slot"
+                  : "Document has no extracted text"
+              }
+            >
+              <Sparkles className="h-3 w-3" strokeWidth={2} />
+              {busy === "classify" ? "Classifying…" : "Classify"}
+            </button>
+
+            {doc.uploadOrigin && doc.source === "gmail_attachment" && (
+              <a
+                href={doc.uploadOrigin}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 rounded-md border border-border bg-surface px-2.5 py-1 text-xs text-text hover:border-brand-500"
+              >
+                <ExternalLink className="h-3 w-3" strokeWidth={2} />
+                Open in Gmail
+              </a>
+            )}
+
+            <span className="flex-1" />
+
+            <button
+              type="button"
+              onClick={deleteDoc}
+              disabled={cardLoading}
+              className="inline-flex items-center gap-1 rounded-md border border-transparent bg-transparent px-2 py-1 text-xs text-text-muted hover:border-red-300 hover:text-red-700 disabled:opacity-50"
+            >
+              <Trash2 className="h-3 w-3" strokeWidth={2} />
+              {busy === "delete" ? "Deleting…" : "Delete"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function Pill({
+  bg,
+  text,
+  border,
+  children,
+}: {
+  bg: string;
+  text: string;
+  border: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        background: bg,
+        color: text,
+        border: `0.5px solid ${border}`,
+        borderRadius: 999,
+        padding: "1px 7px",
+        fontSize: 10,
+        fontWeight: 500,
+        letterSpacing: "0.02em",
+        textTransform: "capitalize",
+        lineHeight: 1.4,
+      }}
+    >
+      {children}
+    </span>
+  );
+}

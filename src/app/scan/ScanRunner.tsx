@@ -76,6 +76,17 @@ interface Hit {
   filename?: string;
   gmailUrl?: string;
   snippet?: string | null;
+  // Populated by AcceptedContractScanService when type === "contract"
+  // or type === "smart". When present the result row renders with
+  // the extracted contract metadata and a per-hit Create button.
+  propertyAddress?: string | null;
+  buyers?: string[];
+  sellers?: string[];
+  purchasePrice?: number | null;
+  closingDate?: string | null;
+  effectiveDate?: string | null;
+  titleCompany?: string | null;
+  matchedTransactionId?: string | null;
 }
 
 function fmtRel(iso: string | null) {
@@ -180,6 +191,69 @@ export function ScanRunner({
       );
     } finally {
       setBusy(false);
+    }
+  }
+
+  // Per-hit Create button for contract scans. Same body shape that
+  // AcceptedContractScanPanel uses, so the server-side create-from-
+  // scan endpoint handles both flows identically.
+  async function createTransactionFromHit(h: Hit) {
+    const address = h.propertyAddress;
+    if (!address) {
+      toast.error("Can't create", "this hit has no address");
+      return;
+    }
+    const buyerName = h.buyers?.[0] ?? null;
+    const sellerName = h.sellers?.[0] ?? null;
+    if (
+      !confirm(
+        `Create transaction?\n\nAddress: ${address}\nBuyer: ${buyerName ?? "—"}\nSeller: ${sellerName ?? "—"}\nClosing: ${h.closingDate ?? "—"}`,
+      )
+    ) {
+      return;
+    }
+    try {
+      const res = await fetch("/api/automation/create-from-scan", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          address,
+          buyerName,
+          sellerName,
+          closingDate: h.closingDate,
+          effectiveDate: h.effectiveDate,
+          purchasePrice: h.purchasePrice,
+          titleCompany: h.titleCompany,
+          threadId: h.threadId,
+          messageId: h.threadId,
+        }),
+      });
+      const data = (await res.json()) as {
+        ok?: boolean;
+        transactionId?: string;
+        error?: string;
+      };
+      if (!res.ok || !data.ok) {
+        toast.error("Create failed", data.error ?? `HTTP ${res.status}`);
+        return;
+      }
+      toast.success("Transaction created", address);
+      // Optimistically mark this hit as matched so the row swaps
+      // to a "View transaction" link without waiting for a refresh.
+      setResults(
+        (prev) =>
+          prev?.map((x) =>
+            x.threadId === h.threadId
+              ? { ...x, matchedTransactionId: data.transactionId ?? null }
+              : x,
+          ) ?? null,
+      );
+      startTransition(() => router.refresh());
+    } catch (e) {
+      toast.error(
+        "Create errored",
+        e instanceof Error ? e.message : "unknown",
+      );
     }
   }
 
@@ -295,38 +369,110 @@ export function ScanRunner({
             </div>
           ) : (
             <ul className="space-y-1.5">
-              {results.map((h, i) => (
-                <li
-                  key={h.threadId ?? i}
-                  className="flex items-start gap-2 rounded border border-border bg-surface-2/40 p-2 text-sm"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium text-text">
-                      {h.subject ?? h.filename ?? "(no subject)"}
-                    </div>
-                    <div className="truncate text-xs text-text-muted">
-                      {h.from ?? ""}
-                      {h.date && ` · ${h.date}`}
-                      {h.filename && h.subject && ` · ${h.filename}`}
-                    </div>
-                    {h.snippet && (
-                      <div className="mt-1 line-clamp-2 text-xs text-text-subtle">
-                        {h.snippet}
+              {results.map((h, i) => {
+                // Contract / smart scans return extracted contract
+                // metadata; surface a Create button per hit so the
+                // user doesn't have to copy details into the manual
+                // upload form. Other scan types (invoice, title,
+                // stale_contact) render the lite row.
+                const isContractHit =
+                  (type === "contract" || type === "smart") &&
+                  !!h.propertyAddress;
+
+                return (
+                  <li
+                    key={h.threadId ?? i}
+                    className="flex items-start gap-2 rounded border border-border bg-surface-2/40 p-2 text-sm"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-medium text-text">
+                        {h.subject ?? h.filename ?? "(no subject)"}
                       </div>
-                    )}
-                  </div>
-                  {h.gmailUrl && (
-                    <a
-                      href={h.gmailUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 rounded border border-border bg-surface px-2 py-1 text-[11px] text-text-muted hover:border-brand-500 hover:text-brand-700"
-                    >
-                      Open <ExternalLink className="h-3 w-3" strokeWidth={1.8} />
-                    </a>
-                  )}
-                </li>
-              ))}
+                      <div className="truncate text-xs text-text-muted">
+                        {h.from ?? ""}
+                        {h.date && ` · ${h.date}`}
+                        {h.filename && h.subject && ` · ${h.filename}`}
+                      </div>
+                      {isContractHit && (
+                        <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px] text-text">
+                          <div>
+                            <span className="text-text-muted">Address:</span>{" "}
+                            <span className="font-medium">{h.propertyAddress}</span>
+                          </div>
+                          <div>
+                            <span className="text-text-muted">Closing:</span>{" "}
+                            <span className="tabular-nums">
+                              {h.closingDate ?? "—"}
+                            </span>
+                          </div>
+                          {h.buyers && h.buyers.length > 0 && (
+                            <div>
+                              <span className="text-text-muted">Buyer:</span>{" "}
+                              {h.buyers.join(", ")}
+                            </div>
+                          )}
+                          {h.sellers && h.sellers.length > 0 && (
+                            <div>
+                              <span className="text-text-muted">Seller:</span>{" "}
+                              {h.sellers.join(", ")}
+                            </div>
+                          )}
+                          {h.purchasePrice != null && (
+                            <div>
+                              <span className="text-text-muted">Price:</span>{" "}
+                              <span className="tabular-nums">
+                                ${h.purchasePrice.toLocaleString()}
+                              </span>
+                            </div>
+                          )}
+                          {h.titleCompany && (
+                            <div>
+                              <span className="text-text-muted">Title:</span>{" "}
+                              {h.titleCompany}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {h.snippet && !isContractHit && (
+                        <div className="mt-1 line-clamp-2 text-xs text-text-subtle">
+                          {h.snippet}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      {isContractHit && (
+                        h.matchedTransactionId ? (
+                          <a
+                            href={`/transactions/${h.matchedTransactionId}`}
+                            className="inline-flex items-center gap-1 rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-[11px] font-medium text-emerald-800 hover:border-emerald-500"
+                          >
+                            View transaction
+                          </a>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => createTransactionFromHit(h)}
+                            className="inline-flex items-center gap-1 rounded-md bg-brand-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-brand-500"
+                          >
+                            Create transaction
+                          </button>
+                        )
+                      )}
+                      {h.gmailUrl && (
+                        <a
+                          href={h.gmailUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 rounded border border-border bg-surface px-2 py-1 text-[11px] text-text-muted hover:border-brand-500 hover:text-brand-700"
+                        >
+                          Open <ExternalLink className="h-3 w-3" strokeWidth={1.8} />
+                        </a>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>

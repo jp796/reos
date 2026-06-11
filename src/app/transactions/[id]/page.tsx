@@ -15,6 +15,7 @@ import { EditableHeader } from "./EditableHeader";
 import { DeleteTransactionButton } from "./DeleteTransactionButton";
 import { InspectionsPanel } from "./InspectionsPanel";
 import { NotesPanel } from "./NotesPanel";
+import { DocumentLibraryPanel } from "./DocumentLibraryPanel";
 import { EditablePrimaryContact } from "./EditablePrimaryContact";
 import { TaskPanel } from "./TaskPanel";
 import { CompliancePanel } from "./CompliancePanel";
@@ -731,25 +732,60 @@ export default async function TransactionDetailPage({
         </section>
       )}
 
-      {/* Documents */}
-      {txn.documents.length > 0 && (
-        <section className="mt-8">
-          <h2 className="mb-2 text-lg font-medium">Documents</h2>
-          <ul className="space-y-1 text-sm">
-            {txn.documents.map((d) => (
-              <li
-                key={d.id}
-                className="flex items-center justify-between rounded-md border border-border bg-surface px-3 py-2"
-              >
-                <span className="truncate">{d.fileName}</span>
-                <span className="ml-3 shrink-0 text-xs text-text-muted">
-                  {d.category ?? "—"} · {fmtDate(d.uploadedAt)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      {/* Document library — rich inventory, replaces the bare list.
+          Source provenance, AI Rezen-slot classification, eSign
+          rollup, and per-doc actions (download / classify / delete)
+          all live here. The signature send-flow remains in the
+          EsignPanel below; library shows the *status*, send happens
+          there. */}
+      <DocumentLibraryPanel
+        transactionId={txn.id}
+        documents={txn.documents.map((d) => {
+          // Roll up every eSign request that points at this doc into
+          // a single status + human-readable summary line.
+          const reqs = txn.esignRequests.filter(
+            (r) => r.document?.id === d.id,
+          );
+          let esignStatus: "none" | "draft" | "sent" | "completed" | "voided" | "error" = "none";
+          let esignSummary: string | null = null;
+          if (reqs.length > 0) {
+            // Prefer the newest request's status as the headline.
+            const newest = reqs[0];
+            esignStatus =
+              (newest.status as "none" | "draft" | "sent" | "completed" | "voided" | "error") ?? "none";
+            if (newest.status === "completed") {
+              esignSummary = "✓ Completed";
+            } else if (newest.status === "sent") {
+              esignSummary = `Sent · awaiting signatures`;
+            } else if (newest.status === "voided") {
+              esignSummary = "Voided";
+            } else if (newest.status === "error") {
+              esignSummary = "Send failed";
+            } else if (newest.status === "draft") {
+              esignSummary = "Draft saved";
+            }
+          }
+          return {
+            id: d.id,
+            fileName: d.fileName,
+            mimeType: d.mimeType,
+            category: d.category,
+            source: d.source,
+            uploadOrigin: d.uploadOrigin,
+            uploadedAt: d.uploadedAt.toISOString(),
+            suggestedRezenSlot: d.suggestedRezenSlot,
+            suggestedRezenConfidence: d.suggestedRezenConfidence,
+            classifiedAt: d.classifiedAt?.toISOString() ?? null,
+            hasRawBytes: d.rawBytes !== null && d.rawBytes !== undefined,
+            hasExtractedText:
+              d.extractedText !== null &&
+              d.extractedText !== undefined &&
+              d.extractedText.length > 0,
+            esignStatus,
+            esignSummary,
+          };
+        })}
+      />
 
       <EsignPanel
         transactionId={txn.id}
