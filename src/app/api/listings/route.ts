@@ -19,6 +19,12 @@ interface Body {
   sellerName: string;
   sellerEmail?: string;
   sellerPhone?: string;
+  /** Optional second seller (spouse / co-owner / second trustee).
+   *  Becomes their own Contact + a co_seller TransactionParticipant
+   *  so eSign can route a separate signature to them. */
+  seller2Name?: string;
+  seller2Email?: string;
+  seller2Phone?: string;
   propertyAddress: string;
   city?: string;
   state?: string;
@@ -83,6 +89,49 @@ export async function POST(req: NextRequest) {
     },
     select: { id: true },
   });
+
+  // Second seller → own Contact + co_seller participant. Kept
+  // separate from the primary contact so eSign can route an
+  // individual signature and Gmail enrichment can target their
+  // own inbox. Failure here never rolls back the listing — the
+  // user can re-add the co-seller from the transaction page.
+  if (body.seller2Name?.trim()) {
+    try {
+      let contact2 = body.seller2Email?.trim()
+        ? await prisma.contact.findFirst({
+            where: {
+              accountId: actor.accountId,
+              primaryEmail: {
+                equals: body.seller2Email.trim(),
+                mode: "insensitive",
+              },
+            },
+            select: { id: true },
+          })
+        : null;
+      if (!contact2) {
+        contact2 = await prisma.contact.create({
+          data: {
+            accountId: actor.accountId,
+            fullName: body.seller2Name.trim().slice(0, 200),
+            primaryEmail: body.seller2Email?.trim() || null,
+            primaryPhone: body.seller2Phone?.trim() || null,
+            sourceName: "manual-listing-create",
+          },
+          select: { id: true },
+        });
+      }
+      await prisma.transactionParticipant.create({
+        data: {
+          transactionId: txn.id,
+          contactId: contact2.id,
+          role: "co_seller",
+        },
+      });
+    } catch (e) {
+      console.warn("listing co-seller create failed (non-fatal):", e);
+    }
+  }
 
   return NextResponse.json({ ok: true, id: txn.id });
 }

@@ -24,10 +24,16 @@ export function NewListingForm() {
   // where HTML5 form validation was scrolling silently to a field
   // off-screen above the button.
   const [missing, setMissing] = useState<Set<string>>(new Set());
+  // Second seller (spouse / co-owner). Hidden until toggled or until
+  // the AI extraction returns a combined "A & B" name we can split.
+  const [showSeller2, setShowSeller2] = useState(false);
   const [form, setForm] = useState({
     sellerName: "",
     sellerEmail: "",
     sellerPhone: "",
+    seller2Name: "",
+    seller2Email: "",
+    seller2Phone: "",
     propertyAddress: "",
     city: "",
     state: "WY",
@@ -91,9 +97,22 @@ export function NewListingForm() {
         isoDate("listingExpirationDate"),
       ].filter(Boolean).length;
 
+      // The extraction prompt combines multiple sellers with " & ".
+      // Split into Seller 1 / Seller 2 so each gets their own
+      // contact (separate eSign signature, separate inbox lookup).
+      const rawSeller = get("sellerName");
+      const sellerParts = rawSeller
+        .split(/\s*(?:&|\band\b)\s*/i)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const seller1 = sellerParts[0] ?? "";
+      const seller2 = sellerParts.length > 1 ? sellerParts.slice(1).join(" & ") : "";
+      if (seller2) setShowSeller2(true);
+
       setForm((f) => ({
         ...f,
-        sellerName: get("sellerName") || f.sellerName,
+        sellerName: seller1 || f.sellerName,
+        seller2Name: seller2 || f.seller2Name,
         sellerEmail: get("sellerEmail") || f.sellerEmail,
         sellerPhone: get("sellerPhone") || f.sellerPhone,
         propertyAddress: get("propertyAddress") || f.propertyAddress,
@@ -134,9 +153,14 @@ export function NewListingForm() {
   /** Search the connected Gmail for the seller's email + phone and
    *  fill whichever contact fields are still empty. Deterministic
    *  server-side header/body parse — no AI cost. */
-  async function pullFromGmail() {
-    if (!form.sellerName.trim()) {
-      setMissing(new Set(["sellerName"]));
+  async function pullFromGmail(which: 1 | 2 = 1) {
+    const nameKey = which === 1 ? "sellerName" : "seller2Name";
+    const emailKey = which === 1 ? "sellerEmail" : "seller2Email";
+    const phoneKey = which === 1 ? "sellerPhone" : "seller2Phone";
+    const name = form[nameKey].trim();
+
+    if (!name) {
+      setMissing(new Set([nameKey]));
       toast.error(
         "Need a name first",
         "Fill the seller name (or drop the agreement above), then pull from Gmail.",
@@ -149,7 +173,7 @@ export function NewListingForm() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          sellerName: form.sellerName,
+          sellerName: name,
           propertyAddress: form.propertyAddress || undefined,
         }),
       });
@@ -168,12 +192,12 @@ export function NewListingForm() {
       const found: string[] = [];
       setForm((f) => {
         const next = { ...f };
-        if (data.sellerEmail && !f.sellerEmail.trim()) {
-          next.sellerEmail = data.sellerEmail;
+        if (data.sellerEmail && !f[emailKey].trim()) {
+          next[emailKey] = data.sellerEmail;
           found.push("email");
         }
-        if (data.sellerPhone && !f.sellerPhone.trim()) {
-          next.sellerPhone = data.sellerPhone;
+        if (data.sellerPhone && !f[phoneKey].trim()) {
+          next[phoneKey] = data.sellerPhone;
           found.push("phone");
         }
         return next;
@@ -184,7 +208,7 @@ export function NewListingForm() {
       if (found.length > 0) {
         toast.success(
           "Pulled from Gmail",
-          `Found ${found.join(" + ")} across ${data.threadsScanned ?? 0} thread${(data.threadsScanned ?? 0) === 1 ? "" : "s"}. Double-check before creating.`,
+          `Found ${found.join(" + ")} for ${name} across ${data.threadsScanned ?? 0} thread${(data.threadsScanned ?? 0) === 1 ? "" : "s"}. Double-check before creating.`,
         );
       } else if (data.sellerEmail || data.sellerPhone) {
         toast.info(
@@ -194,7 +218,7 @@ export function NewListingForm() {
       } else {
         toast.info(
           "Nothing found",
-          `No matching correspondence for "${form.sellerName}" in the last 2 years.`,
+          `No matching correspondence for "${name}" in the last 2 years.`,
         );
       }
     } catch (e) {
@@ -305,7 +329,7 @@ export function NewListingForm() {
         onSubmit={submit}
         className="space-y-5 rounded-lg border border-border bg-surface p-5"
       >
-        <Section title="Seller">
+        <Section title={showSeller2 ? "Seller 1" : "Seller"}>
           <Input
             label="Name"
             required
@@ -340,7 +364,7 @@ export function NewListingForm() {
         <div className="flex items-center gap-2 rounded-md border border-dashed border-border bg-surface-2/40 px-3 py-2">
           <button
             type="button"
-            onClick={pullFromGmail}
+            onClick={() => pullFromGmail(1)}
             disabled={enriching || !form.sellerName.trim()}
             className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-text hover:border-brand-500 hover:text-brand-700 disabled:opacity-50"
             title={
@@ -361,6 +385,75 @@ export function NewListingForm() {
             fields that are still empty.
           </span>
         </div>
+
+        {showSeller2 ? (
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <div className="reos-label">Seller 2</div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSeller2(false);
+                  setForm((f) => ({
+                    ...f,
+                    seller2Name: "",
+                    seller2Email: "",
+                    seller2Phone: "",
+                  }));
+                }}
+                className="text-xs text-text-muted hover:text-red-700"
+              >
+                × Remove
+              </button>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Input
+                label="Name"
+                value={form.seller2Name}
+                onChange={(v) => field("seller2Name", v)}
+                placeholder="Jane Smith"
+                cols="sm:col-span-2"
+                fieldKey="seller2Name"
+                missing={missing.has("seller2Name")}
+              />
+              <Input
+                label="Email"
+                value={form.seller2Email}
+                onChange={(v) => field("seller2Email", v)}
+                placeholder="seller2@example.com"
+                fieldKey="seller2Email"
+              />
+              <Input
+                label="Phone"
+                value={form.seller2Phone}
+                onChange={(v) => field("seller2Phone", v)}
+                placeholder="307-555-1234"
+                fieldKey="seller2Phone"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => pullFromGmail(2)}
+              disabled={enriching || !form.seller2Name.trim()}
+              className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-text hover:border-brand-500 hover:text-brand-700 disabled:opacity-50"
+            >
+              {enriching ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} />
+              ) : (
+                <Mail className="h-3.5 w-3.5" strokeWidth={2} />
+              )}
+              Pull Seller 2 from Gmail
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowSeller2(true)}
+            className="text-xs font-medium text-brand-700 hover:underline"
+          >
+            + Add second seller
+          </button>
+        )}
 
         <Section title="Property">
           <Input
