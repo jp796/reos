@@ -32,7 +32,6 @@ import { RezenCompliancePrepPanel } from "./RezenCompliancePrepPanel";
 import { ConvertListingButton } from "./ConvertListingButton";
 import { SocialPostsPanel } from "./SocialPostsPanel";
 import { EsignPanel } from "./EsignPanel";
-import { DocumensoService } from "@/services/integrations/DocumensoService";
 import { SMART_FOLDER_CUTOFF } from "@/services/automation/SmartFolderService";
 import {
   RiskScoringService,
@@ -142,6 +141,10 @@ export default async function TransactionDetailPage({
         include: {
           document: {
             select: { id: true, fileName: true, mimeType: true, uploadedAt: true },
+          },
+          recipients: {
+            orderBy: { signingOrder: "asc" },
+            select: { name: true, email: true, status: true, signedAt: true },
           },
         },
       },
@@ -796,7 +799,6 @@ export default async function TransactionDetailPage({
 
       <EsignPanel
         transactionId={txn.id}
-        configured={DocumensoService.isConfigured()}
         documents={txn.documents.map((d) => ({
           id: d.id,
           fileName: d.fileName,
@@ -807,11 +809,11 @@ export default async function TransactionDetailPage({
           id: r.id,
           title: r.title,
           status: r.status,
-          providerEnvelopeId: r.providerEnvelopeId,
           signingLinksJson: r.signingLinksJson,
           errorMessage: r.errorMessage,
           createdAt: r.createdAt,
           sentAt: r.sentAt,
+          recipients: r.recipients,
         }))}
       />
 

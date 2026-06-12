@@ -443,6 +443,10 @@ model EsignRequest {
   errorMessage          String?  @map("error_message")
   sentAt                DateTime? @map("sent_at")
   completedAt           DateTime? @map("completed_at")
+  /// SHA-256 hex of the finalized (signed) PDF — native provider only.
+  finalHash             String?  @map("final_hash")
+  /// Document row holding the finalized signed PDF — native provider only.
+  finalDocumentId       String?  @map("final_document_id")
   createdByUserId       String?  @map("created_by_user_id")
   createdAt             DateTime @default(now()) @map("created_at")
   updatedAt             DateTime @updatedAt @map("updated_at")
@@ -450,6 +454,9 @@ model EsignRequest {
   account     Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
   transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
   document    Document    @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  recipients  EsignRecipient[]
+  signFields  EsignField[]
+  events      EsignEvent[]
 
   @@index([accountId, status])
   @@index([transactionId, createdAt])
@@ -1227,4 +1234,80 @@ model TransactionNote {
 
   @@index([transactionId, createdAt])
   @@map("transaction_notes")
+}
+
+/// Native esign — one row per signer on a request. The `token` is the
+/// signer's bearer credential (crypto-random, emailed link). ESIGN
+/// attribution evidence = token delivery to this email + ip/userAgent
+/// captured at consent and signing.
+model EsignRecipient {
+  id                 String    @id @default(cuid())
+  esignRequestId     String    @map("esign_request_id")
+  name               String
+  email              String
+  signingOrder       Int       @default(1) @map("signing_order")
+  token              String    @unique
+  status             String    @default("pending") // pending, viewed, consented, signed, declined
+  consentAt          DateTime? @map("consent_at")
+  /// Version tag of the consent affirmation text shown (ESIGN evidence).
+  consentTextVersion String?   @map("consent_text_version")
+  viewedAt           DateTime? @map("viewed_at")
+  signedAt           DateTime? @map("signed_at")
+  ip                 String?
+  userAgent          String?   @map("user_agent")
+  /// PNG data URL of the captured signature (drawn or typed render).
+  signatureImage     String?   @map("signature_image")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  esignRequest EsignRequest @relation(fields: [esignRequestId], references: [id], onDelete: Cascade)
+  fields       EsignField[]
+  events       EsignEvent[]
+
+  @@index([esignRequestId])
+  @@map("esign_recipients")
+}
+
+/// Native esign — a box placed on a page. Coordinates are normalized
+/// 0..1 with TOP-LEFT origin relative to the page (UI convention).
+/// pdf-lib uses bottom-left origin — EsignPdfService converts.
+model EsignField {
+  id             String  @id @default(cuid())
+  esignRequestId String  @map("esign_request_id")
+  recipientId    String  @map("recipient_id")
+  type           String  // SIGNATURE, INITIALS, DATE_SIGNED, TEXT
+  page           Int     // 1-based
+  x              Float
+  y              Float
+  width          Float
+  height         Float
+  required       Boolean @default(true)
+  /// Filled value for TEXT fields (set at signing time).
+  value          String?
+
+  esignRequest EsignRequest   @relation(fields: [esignRequestId], references: [id], onDelete: Cascade)
+  recipient    EsignRecipient @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([esignRequestId])
+  @@index([recipientId])
+  @@map("esign_fields")
+}
+
+/// Native esign — append-only lifecycle audit trail. Feeds the audit
+/// certificate page burned into the finalized PDF.
+model EsignEvent {
+  id             String   @id @default(cuid())
+  esignRequestId String   @map("esign_request_id")
+  recipientId    String?  @map("recipient_id")
+  type           String   // created, sent, viewed, consented, signed, declined, completed, voided
+  occurredAt     DateTime @default(now()) @map("occurred_at")
+  ip             String?
+  userAgent      String?  @map("user_agent")
+  metaJson       Json?    @map("meta_json")
+
+  esignRequest EsignRequest    @relation(fields: [esignRequestId], references: [id], onDelete: Cascade)
+  recipient    EsignRecipient? @relation(fields: [recipientId], references: [id], onDelete: SetNull)
+
+  @@index([esignRequestId, occurredAt])
+  @@map("esign_events")
 }

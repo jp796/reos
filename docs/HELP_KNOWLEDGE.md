@@ -195,3 +195,37 @@ Gmail OAuth tokens encrypted with a per-tenant ENCRYPTION_KEY.
 ### Can I bulk-add deals?
 Voice intake (`/voice`) for fast one-off. Scan (`/scan`) pulls from
 Gmail in bulk. CSV import not yet built.
+
+## E-sign (native, built-in)
+
+REOS has a built-in e-signature engine — no DocuSign/Documenso account,
+API key, or per-envelope fee. Find it on any transaction page in the
+"E-sign" panel.
+
+### How do I send a document for signature?
+Transaction page → E-sign panel → pick a PDF → tap recipient chips →
+"Place fields" → click on the page to drop Signature / Initials /
+Date signed / Text boxes per recipient (each recipient gets a color)
+→ Send. Each signer gets an email with their own private signing link.
+Requires Gmail connected (Settings → Integrations) since signing
+invitations send from your own Gmail.
+
+### What do signers see?
+A public /sign/[link] page: an ESIGN/UETA consent step, the document
+with their highlighted fields, and a draw-or-type signature pad. Works
+on phones. Links expire after 30 days and are unique per signer — they
+never see other signers' info.
+
+### What happens when everyone signs?
+REOS burns the signatures into the PDF, appends a Signature Certificate
+page (signers, consent record, timestamps, IPs, SHA-256 document hash),
+saves "<name> (signed).pdf" back onto the transaction's documents, and
+emails the completed file to all parties.
+
+### Is it legally valid?
+It follows the ESIGN Act / UETA evidence model: explicit consent
+(recorded with text version), deliberate sign action, attribution
+(unique emailed link + IP/user-agent), and a tamper-evident audit
+trail. Notarized documents (e.g. deeds) still go through your title
+company. (Endpoints: POST /api/transactions/[id]/esign with fields;
+public GET/POST under /api/sign/[token]/*.)

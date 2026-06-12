@@ -35,6 +35,8 @@ const PUBLIC_PREFIXES = [
   "/opengraph-image", // dynamic Open Graph image (Next.js convention) — social crawlers need access
   "/twitter-image", // dynamic Twitter Card image (if/when added)
   "/sitemap.xml", // SEO sitemap — search-engine crawlers need access
+  "/sign", // native esign — public signer pages, bearer auth via the URL token
+  "/api/sign", // native esign — public signer API, token-checked + rate-limited in handlers
 ];
 
 // Webhook + automation-tick endpoints — third parties (Google Pub/Sub,

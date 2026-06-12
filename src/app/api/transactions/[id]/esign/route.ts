@@ -1,11 +1,17 @@
+/**
+ * E-sign management — native first-party engine (provider: "native").
+ *
+ * POST creates a signature request with placed fields and emails each
+ * signer a unique tokenized link (/sign/[token]). No third-party
+ * esign API. The legacy Documenso integration remains in the repo
+ * (DocumensoService) but is dormant — native is the only send path.
+ */
 import { NextResponse, type NextRequest } from "next/server";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { env } from "@/lib/env";
-import { appUrl } from "@/lib/app-url";
 import { requireSession } from "@/lib/require-session";
-import { DocumensoService } from "@/services/integrations/DocumensoService";
+import { createAndSendNative } from "@/services/esign/NativeEsignService";
 
 export const runtime = "nodejs";
 
@@ -14,10 +20,21 @@ const recipientSchema = z.object({
   email: z.string().trim().email().max(255),
 });
 
+const fieldSchema = z.object({
+  type: z.enum(["SIGNATURE", "INITIALS", "DATE_SIGNED", "TEXT"]),
+  page: z.number().int().min(1).max(500),
+  x: z.number().min(0).max(1),
+  y: z.number().min(0).max(1),
+  width: z.number().min(0.005).max(1),
+  height: z.number().min(0.005).max(1),
+  recipientIndex: z.number().int().min(0).max(7),
+  required: z.boolean().optional(),
+});
+
 const postSchema = z.object({
   documentId: z.string().min(1),
   recipients: z.array(recipientSchema).min(1).max(8),
-  subject: z.string().trim().max(180).optional(),
+  fields: z.array(fieldSchema).min(1).max(200),
   message: z.string().trim().max(1000).optional(),
 });
 
@@ -41,14 +58,25 @@ export async function GET(
       document: {
         select: { id: true, fileName: true, mimeType: true, uploadedAt: true },
       },
+      recipients: {
+        orderBy: { signingOrder: "asc" },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          status: true,
+          consentAt: true,
+          signedAt: true,
+          viewedAt: true,
+        },
+      },
     },
     orderBy: { createdAt: "desc" },
   });
 
   return NextResponse.json({
-    provider: "documenso",
-    configured: DocumensoService.isConfigured(),
-    providerUrl: env.DOCUMENSO_API_URL ?? null,
+    provider: "native",
+    configured: true,
     requests,
   });
 }
@@ -72,10 +100,14 @@ export async function POST(
     );
   }
 
-  if (!DocumensoService.isConfigured()) {
+  // Every field must point at a recipient that exists in this payload.
+  const badField = body.data.fields.find(
+    (f) => f.recipientIndex >= body.data.recipients.length,
+  );
+  if (badField) {
     return NextResponse.json(
-      { error: "Documenso is not configured" },
-      { status: 409 },
+      { error: "field references a missing recipient" },
+      { status: 400 },
     );
   }
 
@@ -90,7 +122,6 @@ export async function POST(
           fileName: true,
           mimeType: true,
           rawBytes: true,
-          transactionId: true,
         },
       },
     },
@@ -118,53 +149,23 @@ export async function POST(
   }
 
   const title = `${txn.contact.fullName} — ${doc.fileName}`;
-  const recipients = body.data.recipients.map((r) => ({
-    name: r.name,
-    email: r.email.toLowerCase(),
-  }));
-  const subject =
-    body.data.subject ?? `Signature requested: ${txn.contact.fullName}`;
-  const message =
-    body.data.message ??
-    "Please review and sign this document. REOS will track the signing request on the transaction.";
 
-  const request = await prisma.esignRequest.create({
-    data: {
-      accountId: actor.accountId,
+  try {
+    const result = await createAndSendNative({
+      actor: {
+        accountId: actor.accountId,
+        userId: actor.userId,
+        email: actor.email,
+      },
       transactionId: txn.id,
       documentId: doc.id,
       title,
-      status: "draft",
-      recipientsJson: recipients as unknown as Prisma.InputJsonValue,
-      createdByUserId: actor.userId,
-    },
-  });
-
-  try {
-    const result = await new DocumensoService().createAndSend({
-      title,
-      externalId: `reos:${request.id}`,
-      fileName: doc.fileName,
-      fileBytes: doc.rawBytes,
-      recipients,
-      subject,
-      message,
-      redirectUrl: appUrl(`/transactions/${txn.id}`).toString(),
-    });
-
-    const updated = await prisma.esignRequest.update({
-      where: { id: request.id },
-      data: {
-        status: "sent",
-        providerEnvelopeId: result.envelopeId,
-        signingLinksJson:
-          result.recipients as unknown as Prisma.InputJsonValue,
-        providerResponseJson: {
-          create: result.rawCreate,
-          distribute: result.rawDistribute,
-        } as unknown as Prisma.InputJsonValue,
-        sentAt: new Date(),
-      },
+      recipients: body.data.recipients.map((r) => ({
+        name: r.name,
+        email: r.email.toLowerCase(),
+      })),
+      fields: body.data.fields,
+      message: body.data.message,
     });
 
     await prisma.automationAuditLog.create({
@@ -180,24 +181,17 @@ export async function POST(
         decision: "applied",
         actorUserId: actor.userId,
         afterJson: {
-          summary: `Sent ${doc.fileName} for Documenso signature`,
-          esignRequestId: updated.id,
-          providerEnvelopeId: result.envelopeId,
-          recipientCount: recipients.length,
+          summary: `Sent ${doc.fileName} for native e-signature`,
+          esignRequestId: result.id,
+          recipientCount: body.data.recipients.length,
+          fieldCount: body.data.fields.length,
         } as unknown as Prisma.InputJsonValue,
       },
     });
 
-    return NextResponse.json({ ok: true, request: updated });
+    return NextResponse.json({ ok: true, id: result.id, links: result.links });
   } catch (e) {
-    const message = e instanceof Error ? e.message : "Documenso send failed";
-    const failed = await prisma.esignRequest.update({
-      where: { id: request.id },
-      data: { status: "failed", errorMessage: message },
-    });
-    return NextResponse.json(
-      { error: message, request: failed },
-      { status: 502 },
-    );
+    const message = e instanceof Error ? e.message : "e-sign send failed";
+    return NextResponse.json({ error: message }, { status: 502 });
   }
 }
