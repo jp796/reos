@@ -21,6 +21,9 @@ import {
   Download,
   FileWarning,
   Loader2,
+  PenLine,
+  Pin,
+  Send,
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
@@ -37,7 +40,14 @@ interface SlotItem {
     requiredFor?: string;
   };
   status: "present" | "missing";
-  matches: Array<{ id: string; fileName: string; source: string }>;
+  matches: Array<{
+    id: string;
+    fileName: string;
+    source: string;
+    pinned: boolean;
+    signatureStatus: string | null;
+    signatureNotes: string | null;
+  }>;
   rezenFilename: string | null;
 }
 
@@ -65,6 +75,54 @@ export function RezenCompliancePrepPanel({
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [classifying, setClassifying] = useState(false);
+  const [sigScanning, setSigScanning] = useState(false);
+
+  /** "Scanned for signatures" tracker — runs the GPT-4o vision scan
+   *  over every unscanned PDF (loops while the server reports more).
+   *  force=true re-scans everything (e.g. after re-signing). */
+  async function scanSignaturesAll(force: boolean) {
+    setSigScanning(true);
+    try {
+      let scanned = 0;
+      let safety = 10;
+      while (safety-- > 0) {
+        const res = await fetch(
+          `/api/transactions/${transactionId}/scan-signatures`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ force: force && safety === 9 ? true : false }),
+          },
+        );
+        const bodyJson = (await res.json()) as {
+          ok?: boolean;
+          scanned: number;
+          remaining: number;
+          error?: string;
+        };
+        if (!res.ok || !bodyJson.ok) {
+          toast.error("Signature scan failed", bodyJson.error ?? res.statusText);
+          return;
+        }
+        scanned += bodyJson.scanned;
+        if (!bodyJson.remaining) break;
+      }
+      toast.success(
+        "Signature scan done",
+        scanned === 0
+          ? "All PDFs already scanned — use force-rescan after re-signing."
+          : `${scanned} document${scanned === 1 ? "" : "s"} checked.`,
+      );
+      await reload();
+    } catch (e) {
+      toast.error(
+        "Signature scan errored",
+        e instanceof Error ? e.message : "unknown",
+      );
+    } finally {
+      setSigScanning(false);
+    }
+  }
 
   async function reload() {
     const res = await fetch(`/api/transactions/${transactionId}/compliance-prep`);
@@ -195,6 +253,17 @@ export function RezenCompliancePrepPanel({
               {classifying ? "Classifying…" : "Classify with AI"}
             </button>
           </Hint>
+          <Hint label="AI vision pass over the LAST pages of every PDF — where signature blocks live. Marks each doc Signed / Partial / Unsigned so you know what's executed before it goes to Rezen. ~2¢/doc.">
+            <button
+              type="button"
+              onClick={() => scanSignaturesAll(false)}
+              disabled={sigScanning}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-text hover:border-brand-500 disabled:opacity-50"
+            >
+              <PenLine className="h-3.5 w-3.5" strokeWidth={2} />
+              {sigScanning ? "Scanning…" : "Scan for signatures"}
+            </button>
+          </Hint>
           <Hint label="Download a ZIP of every present doc, renamed to Rezen's filename convention. Drag each subfolder into Rezen's file area to upload all at once.">
             <a
               href={`/api/transactions/${transactionId}/compliance-prep/bundle`}
@@ -208,6 +277,16 @@ export function RezenCompliancePrepPanel({
               <Download className="h-3.5 w-3.5" strokeWidth={2} />
               Download Rezen package
             </a>
+          </Hint>
+          <Hint label="Direct push into Rezen — pending Rezen API access. Until then, use Download Rezen package and drag into Rezen.">
+            <button
+              type="button"
+              disabled
+              className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-md border border-dashed border-border bg-surface-2/50 px-3 py-1.5 text-xs font-medium text-text-subtle"
+            >
+              <Send className="h-3.5 w-3.5" strokeWidth={2} />
+              Send to Rezen
+            </button>
           </Hint>
         </div>
       </header>
@@ -304,11 +383,25 @@ function SlotRow({ item }: { item: SlotItem }) {
           )}
         </div>
         {item.status === "present" && item.matches[0] && (
-          <div className="mt-0.5 truncate text-xs text-text-muted">
-            <span className="font-mono">→ {item.rezenFilename}</span>
-            <span className="ml-2 text-text-subtle">
-              from {item.matches[0].fileName} · {item.matches[0].source}
-            </span>
+          <div className="mt-0.5 text-xs text-text-muted">
+            <div className="truncate">
+              <span className="font-mono">→ {item.rezenFilename}</span>
+              <span className="ml-2 text-text-subtle">
+                from {item.matches[0].fileName} · {item.matches[0].source}
+              </span>
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+              {item.matches[0].pinned && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-1.5 py-0.5 text-[10px] font-medium text-brand-700 ring-1 ring-brand-200">
+                  <Pin className="h-2.5 w-2.5" strokeWidth={2.5} />
+                  pinned
+                </span>
+              )}
+              <SignatureBadge
+                status={item.matches[0].signatureStatus}
+                notes={item.matches[0].signatureNotes}
+              />
+            </div>
           </div>
         )}
         {item.slot.requiredFor && (
@@ -319,4 +412,52 @@ function SlotRow({ item }: { item: SlotItem }) {
       </div>
     </li>
   );
+}
+
+/** Signed / Partial / Unsigned / no-blocks / not-scanned chip. The
+ *  "Scanned for signatures" tracker readout — answers "is this doc
+ *  executed?" at a glance, per checklist item. */
+function SignatureBadge({
+  status,
+  notes,
+}: {
+  status: string | null;
+  notes: string | null;
+}) {
+  if (!status) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-surface px-1.5 py-0.5 text-[10px] text-text-subtle ring-1 ring-border">
+        <PenLine className="h-2.5 w-2.5" strokeWidth={2} />
+        not scanned
+      </span>
+    );
+  }
+  const map: Record<string, { label: string; cls: string }> = {
+    signed: {
+      label: "✓ signed",
+      cls: "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-200 dark:ring-emerald-900",
+    },
+    partial: {
+      label: "partial signatures",
+      cls: "bg-amber-50 text-amber-800 ring-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-900",
+    },
+    unsigned: {
+      label: "✗ unsigned",
+      cls: "bg-red-50 text-red-700 ring-red-200 dark:bg-red-950 dark:text-red-200 dark:ring-red-900",
+    },
+    no_signature_blocks: {
+      label: "no signature lines",
+      cls: "bg-surface text-text-subtle ring-border",
+    },
+  };
+  const m = map[status] ?? map.no_signature_blocks;
+  const chip = (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ring-1 ${m.cls}`}
+    >
+      <PenLine className="h-2.5 w-2.5" strokeWidth={2} />
+      {m.label}
+    </span>
+  );
+  return notes ? <Hint label={notes}>{chip}</Hint> : chip;
 }

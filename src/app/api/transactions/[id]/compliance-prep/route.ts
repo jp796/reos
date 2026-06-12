@@ -56,6 +56,9 @@ export async function GET(
       source: true,
       suggestedRezenSlot: true,
       suggestedRezenConfidence: true,
+      assignedRezenSlot: true,
+      signatureScanStatus: true,
+      signatureScanNotes: true,
     },
   });
 

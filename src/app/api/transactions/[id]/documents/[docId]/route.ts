@@ -130,7 +130,13 @@ export async function PATCH(
   if (actor instanceof NextResponse) return actor;
   const { id, docId } = await ctx.params;
 
-  let body: { category?: string; runClassifier?: boolean };
+  let body: {
+    category?: string;
+    runClassifier?: boolean;
+    /** Manual Rezen-slot pin. String assigns; null clears. Takes
+     *  precedence over AI/keyword matching in the prep report. */
+    assignedRezenSlot?: string | null;
+  };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -143,6 +149,14 @@ export async function PATCH(
   }
 
   const patch: Record<string, unknown> = {};
+
+  if (body.assignedRezenSlot !== undefined) {
+    patch.assignedRezenSlot =
+      typeof body.assignedRezenSlot === "string" &&
+      body.assignedRezenSlot.trim().length > 0
+        ? body.assignedRezenSlot.trim().slice(0, 100)
+        : null;
+  }
 
   if (body.category !== undefined) {
     if (body.category !== null && !VALID_CATEGORIES.has(body.category)) {
@@ -214,6 +228,8 @@ export async function PATCH(
       suggestedRezenSlot: updated.suggestedRezenSlot,
       suggestedRezenConfidence: updated.suggestedRezenConfidence,
       classifiedAt: updated.classifiedAt,
+      assignedRezenSlot: updated.assignedRezenSlot,
+      signatureScanStatus: updated.signatureScanStatus,
     },
     classifyError,
   });

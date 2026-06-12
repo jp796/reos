@@ -498,7 +498,18 @@ function rezenFilenameFor(slot: RezenSlot, sourceFilename: string): string {
 export interface RezenSlotStatus {
   slot: RezenSlot;
   status: "present" | "missing";
-  matches: Array<{ id: string; fileName: string; source: string }>;
+  matches: Array<{
+    id: string;
+    fileName: string;
+    source: string;
+    /** True when a human pinned this doc to the slot via
+     *  Document.assignedRezenSlot — pinned matches rank first and
+     *  suppress heuristic matches for the slot. */
+    pinned: boolean;
+    /** signed | partial | unsigned | no_signature_blocks | null (= not scanned) */
+    signatureStatus: string | null;
+    signatureNotes: string | null;
+  }>;
   rezenFilename: string | null;
 }
 
@@ -518,11 +529,13 @@ export interface RezenCompliancePrepReport {
  * Document rows so this stays a pure function.
  *
  * Match order per slot:
- *   1. AI classification (Document.suggestedRezenSlot === slot.key)
+ *   1. Manual pin (Document.assignedRezenSlot === slot.key) — a human
+ *      said "this IS the doc for this item." Suppresses heuristics
+ *      for the slot entirely so a noisy keyword can't sit beside the
+ *      confirmed doc and confuse the bundle.
+ *   2. AI classification (Document.suggestedRezenSlot === slot.key)
  *      with confidence >= 0.5
- *   2. Filename / category / extractedText keyword regex
- * Anything matched by AI is shown first so confident classifications
- * trump filename heuristics.
+ *   3. Filename / category / extractedText keyword regex
  */
 export function buildRezenPrepReport(args: {
   side: string | null;
@@ -535,6 +548,9 @@ export function buildRezenPrepReport(args: {
     | "source"
     | "suggestedRezenSlot"
     | "suggestedRezenConfidence"
+    | "assignedRezenSlot"
+    | "signatureScanStatus"
+    | "signatureScanNotes"
   >[];
   /** Slot list to use. When omitted, falls back to the hard-coded
    * Real-Broker lists — backward compat for callers that haven't
@@ -555,19 +571,28 @@ export function buildRezenPrepReport(args: {
       "i",
     );
 
-    const aiMatches = args.documents.filter(
-      (d) =>
-        d.suggestedRezenSlot === slot.key &&
-        (d.suggestedRezenConfidence ?? 0) >= 0.5,
+    const pinnedMatches = args.documents.filter(
+      (d) => d.assignedRezenSlot === slot.key,
     );
-    const keywordMatches = args.documents.filter((d) => {
-      // Skip if already picked up by AI to avoid double-listing
-      if (aiMatches.some((m) => m.id === d.id)) return false;
-      const blob = [d.fileName, d.category ?? "", d.extractedText ?? ""].join(" ");
-      return re.test(blob);
-    });
+    const aiMatches = pinnedMatches.length
+      ? [] // a human pinned a doc — heuristics sit down
+      : args.documents.filter(
+          (d) =>
+            d.suggestedRezenSlot === slot.key &&
+            (d.suggestedRezenConfidence ?? 0) >= 0.5 &&
+            // A doc pinned to a DIFFERENT slot is spoken for.
+            !d.assignedRezenSlot,
+        );
+    const keywordMatches = pinnedMatches.length
+      ? []
+      : args.documents.filter((d) => {
+          if (aiMatches.some((m) => m.id === d.id)) return false;
+          if (d.assignedRezenSlot) return false; // pinned elsewhere
+          const blob = [d.fileName, d.category ?? "", d.extractedText ?? ""].join(" ");
+          return re.test(blob);
+        });
 
-    const allMatches = [...aiMatches, ...keywordMatches];
+    const allMatches = [...pinnedMatches, ...aiMatches, ...keywordMatches];
     const firstMatch = allMatches[0];
     return {
       slot,
@@ -576,6 +601,9 @@ export function buildRezenPrepReport(args: {
         id: d.id,
         fileName: d.fileName,
         source: d.source,
+        pinned: d.assignedRezenSlot === slot.key,
+        signatureStatus: d.signatureScanStatus ?? null,
+        signatureNotes: d.signatureScanNotes ?? null,
       })),
       rezenFilename: firstMatch
         ? rezenFilenameFor(slot, firstMatch.fileName)

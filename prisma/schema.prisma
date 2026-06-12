@@ -390,6 +390,17 @@ model Document {
   /// For Gmail-sourced docs — source message internalDate so we
   /// can pick the newest when multiple contracts exist on one txn.
   sourceDate     DateTime? @map("source_date")
+  /// Manual Rezen-slot pin. When set, this document is THE document
+  /// for that checklist item — takes precedence over AI suggestion
+  /// and filename heuristics in buildRezenPrepReport. Cleared by
+  /// setting null. Not validated against the slot vocab at the DB
+  /// level (slot lists are per-brokerage-profile rows).
+  assignedRezenSlot   String?   @map("assigned_rezen_slot")
+  /// Signature scan results (GPT-4o vision over the last pages).
+  /// status: signed | partial | unsigned | no_signature_blocks
+  signatureScanStatus String?   @map("signature_scan_status")
+  signatureScanNotes  String?   @map("signature_scan_notes")
+  signatureScannedAt  DateTime? @map("signature_scanned_at")
   uploadedAt     DateTime @map("uploaded_at")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
