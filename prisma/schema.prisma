@@ -37,6 +37,11 @@ model Account {
   /// token, refresh token (when granted), and the LinkedIn member URN
   /// we POST as. Shape: StoredLinkedInTokens (LinkedInOAuthService.ts).
   linkedinOauthTokensEncrypted    String?  @map("linkedin_oauth_tokens_encrypted")
+  /// Real Broker (Rezen) connection — encrypted JSON
+  /// { accessToken (JWT), userId, email, connectedAt }. Set when the
+  /// owner connects their Real account in Settings → Integrations;
+  /// used to push documents into Rezen checklists via sherlock.
+  realApiTokensEncrypted          String?  @map("real_api_tokens_encrypted")
   socialPostTemplates             SocialPostTemplate[]
   settingsJson                    Json?    @map("settings_json")
   /// Brokerage profile this account belongs to. Drives compliance
@@ -195,6 +200,15 @@ model Transaction {
   contactId              String    @map("contact_id")
   fubPersonId            String?   @map("fub_person_id")
   fubDealId              String?   @map("fub_deal_id")
+  /// Rezen (Real Broker) transaction UUID — pasted from the Bolt
+  /// dashboard URL (.../transactions/<uuid>). Used as parentId when
+  /// looking up this deal's Rezen checklist for the "Send to Rezen"
+  /// document push. parentType TRANSACTION (or LISTING for sell-side).
+  rezenTransactionId     String?   @map("rezen_transaction_id")
+  /// Last successful Send-to-Rezen push timestamp + JSON summary
+  /// { pushed, skipped, matchedItems } for the panel's status line.
+  rezenLastPushAt        DateTime? @map("rezen_last_push_at")
+  rezenLastPushJson      Json?     @map("rezen_last_push_json")
   propertyAddress        String?   @map("property_address")
   city                   String?
   state                  String?

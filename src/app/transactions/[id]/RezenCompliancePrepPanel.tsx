@@ -16,6 +16,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Check,
   Download,
@@ -65,17 +66,128 @@ interface ApiResponse {
   listing: Report | null;
 }
 
+interface RezenPlanRow {
+  fileName: string;
+  slotLabel: string;
+  rezenItem: string | null;
+  rezenItemId: string | null;
+  signatureStatus: string | null;
+  willPush: boolean;
+  reason: string;
+}
+
 export function RezenCompliancePrepPanel({
   transactionId,
+  rezenTransactionId,
+  rezenConnected,
 }: {
   transactionId: string;
+  rezenTransactionId?: string | null;
+  rezenConnected?: boolean;
 }) {
+  const router = useRouter();
   const toast = useToast();
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [classifying, setClassifying] = useState(false);
   const [sigScanning, setSigScanning] = useState(false);
+  const [rezenId, setRezenId] = useState(rezenTransactionId ?? "");
+  const [savingId, setSavingId] = useState(false);
+  const [pushing, setPushing] = useState(false);
+  const [plan, setPlan] = useState<RezenPlanRow[] | null>(null);
+  const [markComplete, setMarkComplete] = useState(false);
+
+  async function saveRezenId() {
+    setSavingId(true);
+    try {
+      const res = await fetch(`/api/transactions/${transactionId}/edit`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ rezenTransactionId: rezenId.trim() || null }),
+      });
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        toast.error("Couldn't save", (b as { error?: string }).error ?? res.statusText);
+        return;
+      }
+      toast.success("Rezen ID saved");
+      router.refresh();
+    } catch (e) {
+      toast.error("Save errored", e instanceof Error ? e.message : "unknown");
+    } finally {
+      setSavingId(false);
+    }
+  }
+
+  /** Dry-run: ask the server what it WOULD push, show the plan. */
+  async function previewPush() {
+    setPushing(true);
+    setPlan(null);
+    try {
+      const res = await fetch(`/api/transactions/${transactionId}/send-to-rezen`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ dryRun: true, requireSigned: true }),
+      });
+      const b = (await res.json()) as {
+        ok?: boolean;
+        plan?: RezenPlanRow[];
+        rezenItemCount?: number;
+        error?: string;
+      };
+      if (!res.ok || !b.ok) {
+        toast.error("Couldn't build plan", b.error ?? res.statusText);
+        return;
+      }
+      setPlan(b.plan ?? []);
+      toast.info(
+        "Push plan ready",
+        `${(b.plan ?? []).filter((p) => p.willPush).length} of ${b.plan?.length ?? 0} docs match a Rezen item.`,
+      );
+    } catch (e) {
+      toast.error("Plan errored", e instanceof Error ? e.message : "unknown");
+    } finally {
+      setPushing(false);
+    }
+  }
+
+  /** Live push of everything in the plan that willPush. */
+  async function confirmPush() {
+    setPushing(true);
+    try {
+      const res = await fetch(`/api/transactions/${transactionId}/send-to-rezen`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ dryRun: false, requireSigned: true, markComplete }),
+      });
+      const b = (await res.json()) as {
+        ok?: boolean;
+        pushed?: number;
+        skipped?: number;
+        errored?: number;
+        error?: string;
+        needsReconnect?: boolean;
+      };
+      if (!res.ok || !b.ok) {
+        toast.error(
+          b.needsReconnect ? "Reconnect Real" : "Push failed",
+          b.error ?? res.statusText,
+        );
+        return;
+      }
+      toast.success(
+        "Sent to Rezen",
+        `${b.pushed ?? 0} pushed · ${b.skipped ?? 0} skipped · ${b.errored ?? 0} errored`,
+      );
+      setPlan(null);
+      router.refresh();
+    } catch (e) {
+      toast.error("Push errored", e instanceof Error ? e.message : "unknown");
+    } finally {
+      setPushing(false);
+    }
+  }
 
   /** "Scanned for signatures" tracker — runs the GPT-4o vision scan
    *  over every unscanned PDF (loops while the server reports more).
@@ -278,18 +390,116 @@ export function RezenCompliancePrepPanel({
               Download Rezen package
             </a>
           </Hint>
-          <Hint label="Direct push into Rezen — pending Rezen API access. Until then, use Download Rezen package and drag into Rezen.">
+          <Hint label="Push present, signed documents straight into the matching Rezen checklist items. Shows a preview plan first — nothing uploads until you confirm.">
             <button
               type="button"
-              disabled
-              className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-md border border-dashed border-border bg-surface-2/50 px-3 py-1.5 text-xs font-medium text-text-subtle"
+              onClick={previewPush}
+              disabled={pushing || !rezenConnected || !rezenTransactionId}
+              className="inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-500 disabled:opacity-50"
+              title={
+                !rezenConnected
+                  ? "Connect Real in Settings → Integrations first"
+                  : !rezenTransactionId
+                    ? "Paste the Rezen transaction ID below first"
+                    : "Preview the push into Rezen"
+              }
             >
               <Send className="h-3.5 w-3.5" strokeWidth={2} />
-              Send to Rezen
+              {pushing ? "Working…" : "Send to Rezen"}
             </button>
           </Hint>
         </div>
       </header>
+
+      {/* Rezen link + connection status row */}
+      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-dashed border-border bg-surface-2/40 px-3 py-2">
+        <span className="text-[11px] font-medium uppercase tracking-wide text-text-muted">
+          Rezen link
+        </span>
+        <input
+          value={rezenId}
+          onChange={(e) => setRezenId(e.target.value)}
+          placeholder="Paste Rezen transaction ID or Bolt URL"
+          className="min-w-0 flex-1 rounded border border-border bg-surface px-2 py-1 text-xs"
+        />
+        <button
+          type="button"
+          onClick={saveRezenId}
+          disabled={savingId || rezenId.trim() === (rezenTransactionId ?? "")}
+          className="rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-medium text-text hover:border-brand-500 disabled:opacity-50"
+        >
+          {savingId ? "Saving…" : "Save"}
+        </button>
+        <span
+          className={
+            "text-[11px] " +
+            (rezenConnected ? "text-emerald-700" : "text-text-subtle")
+          }
+        >
+          {rezenConnected ? "● Real connected" : "○ Real not connected"}
+        </span>
+      </div>
+
+      {/* Push plan (dry-run result) */}
+      {plan && (
+        <div className="mb-3 rounded-md border border-brand-200 bg-brand-50/40 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-xs font-semibold text-text">
+              Push plan — {plan.filter((p) => p.willPush).length} of {plan.length} will upload
+            </h3>
+            <button
+              type="button"
+              onClick={() => setPlan(null)}
+              className="text-xs text-text-muted hover:text-text"
+            >
+              Cancel
+            </button>
+          </div>
+          <ul className="space-y-1 text-xs">
+            {plan.map((p, i) => (
+              <li key={i} className="flex items-center gap-2">
+                {p.willPush ? (
+                  <Check className="h-3.5 w-3.5 shrink-0 text-emerald-600" strokeWidth={2} />
+                ) : (
+                  <FileWarning className="h-3.5 w-3.5 shrink-0 text-text-subtle" strokeWidth={2} />
+                )}
+                <span className="min-w-0 flex-1 truncate">
+                  <span className="font-medium">{p.slotLabel}</span>
+                  <span className="ml-1 text-text-subtle">← {p.fileName}</span>
+                </span>
+                <span className="shrink-0 text-text-muted">
+                  {p.willPush
+                    ? `→ ${p.rezenItem}`
+                    : p.reason === "unsigned_blocked"
+                      ? "unsigned — blocked"
+                      : "no Rezen item"}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <label className="flex items-center gap-1.5 text-xs text-text-muted">
+              <input
+                type="checkbox"
+                checked={markComplete}
+                onChange={(e) => setMarkComplete(e.target.checked)}
+              />
+              Mark items complete after upload
+            </label>
+            <button
+              type="button"
+              onClick={confirmPush}
+              disabled={pushing || plan.filter((p) => p.willPush).length === 0}
+              className="inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-500 disabled:opacity-50"
+            >
+              <Send className="h-3.5 w-3.5" strokeWidth={2} />
+              {pushing
+                ? "Pushing…"
+                : `Confirm push (${plan.filter((p) => p.willPush).length})`}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className={reports.length > 1 ? "grid gap-4 md:grid-cols-2" : ""}>
         {reports.map((report) => (

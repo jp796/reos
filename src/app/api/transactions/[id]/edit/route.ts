@@ -36,6 +36,8 @@ interface Body {
   closingDate?: string | null;
   contractDate?: string | null;
   excludeFromProduction?: boolean;
+  /** Rezen transaction UUID pasted from the Bolt URL. null clears. */
+  rezenTransactionId?: string | null;
 }
 
 export async function PATCH(
@@ -119,6 +121,14 @@ export async function PATCH(
   }
   if (body.excludeFromProduction !== undefined) {
     data.excludeFromProduction = body.excludeFromProduction;
+  }
+  if (body.rezenTransactionId !== undefined) {
+    const v = body.rezenTransactionId?.trim();
+    // Accept a bare UUID or a full Bolt URL — extract the UUID.
+    const uuid = v?.match(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+    )?.[0];
+    data.rezenTransactionId = v ? (uuid ?? v) : null;
   }
 
   // Anti-overwrite guard: stamp manuallyEditedAt so AI re-extraction

@@ -192,6 +192,7 @@ export default async function TransactionDetailPage({
     where: { id: txn.accountId },
     select: {
       settingsJson: true,
+      realApiTokensEncrypted: true,
       // Multi-tenant compliance: each account is linked to a brokerage
       // profile that declares which compliance system its TCs use.
       // The Rezen-specific UI (file naming, submission ZIP bundle)
@@ -615,7 +616,13 @@ export default async function TransactionDetailPage({
           above plus the MissingItemsAlert summary near the AI summary.
           Track 2 (later) adds per-system adapters so we can bundle
           for Skyslope/Dotloop/etc. directly. */}
-      {isRezenShop && <RezenCompliancePrepPanel transactionId={txn.id} />}
+      {isRezenShop && (
+        <RezenCompliancePrepPanel
+          transactionId={txn.id}
+          rezenTransactionId={txn.rezenTransactionId}
+          rezenConnected={!!account?.realApiTokensEncrypted}
+        />
+      )}
 
       {/* Social posts — generate ready-to-paste captions for the
           three milestone events (listed/under-contract/sold). */}

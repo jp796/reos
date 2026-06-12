@@ -11,6 +11,7 @@ import { ALL_PHOTO_SOURCES } from "@/services/integrations/listing-photos/regist
 import { ALL_POSTERS } from "@/services/integrations/social-posters/registry";
 import { IntegrationsForm } from "./IntegrationsForm";
 import { GoogleConnectionPanel } from "./GoogleConnectionPanel";
+import { RezenConnectionPanel } from "./RezenConnectionPanel";
 import { MetaConnectionPanel } from "./MetaConnectionPanel";
 import { LinkedInConnectionPanel } from "./LinkedInConnectionPanel";
 
@@ -58,6 +59,7 @@ export default async function IntegrationsSettingsPage() {
         />
         <MetaConnectionPanel />
         <LinkedInConnectionPanel />
+        <RezenConnectionPanel />
         <IntegrationsForm
           activePhotoProvider={
             (settings.listingPhotoProvider as string) ?? "manual_upload"
