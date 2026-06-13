@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Mail, Sparkles } from "lucide-react";
 import { useToast } from "@/app/ToastProvider";
 import { DropZone } from "@/app/components/DropZone";
+import { ContactAutocomplete } from "@/app/components/ContactAutocomplete";
 
 type ListingExtraction = Record<
   string,
@@ -27,6 +28,11 @@ export function NewListingForm() {
   // Second seller (spouse / co-owner). Hidden until toggled or until
   // the AI extraction returns a combined "A & B" name we can split.
   const [showSeller2, setShowSeller2] = useState(false);
+  // When a seller is picked from existing contacts, remember the
+  // contact id so the create endpoint links to it instead of making
+  // a duplicate. Cleared when the name is edited to free text.
+  const [sellerContactId, setSellerContactId] = useState<string | null>(null);
+  const [seller2ContactId, setSeller2ContactId] = useState<string | null>(null);
   const [form, setForm] = useState({
     sellerName: "",
     sellerEmail: "",
@@ -272,6 +278,10 @@ export function NewListingForm() {
         body: JSON.stringify({
           ...form,
           listPrice: form.listPrice ? parseFloat(form.listPrice) : null,
+          // Link to existing contacts when the user picked from the
+          // typeahead; null means create a fresh contact.
+          sellerContactId,
+          seller2ContactId,
         }),
       });
       const data = await res.json();
@@ -330,17 +340,37 @@ export function NewListingForm() {
         className="space-y-5 rounded-lg border border-border bg-surface p-5"
       >
         <Section title={showSeller2 ? "Seller 1" : "Seller"}>
-          <Input
-            label="Name"
-            required
-            value={form.sellerName}
-            onChange={(v) => field("sellerName", v)}
-            placeholder="John & Jane Smith"
-            cols="sm:col-span-2"
-            confidence={extraction?.sellerName?.confidence}
-            fieldKey="sellerName"
-            missing={missing.has("sellerName")}
-          />
+          <label className="block sm:col-span-2">
+            <span className="flex items-center gap-1.5 text-xs font-medium text-text-muted">
+              Name <span className="text-red-500">*</span>
+              <span className="font-normal text-text-subtle">· pull from contacts or add new</span>
+            </span>
+            <div className="mt-1">
+              <ContactAutocomplete
+                value={form.sellerName}
+                placeholder="Search contacts or type a new name"
+                invalid={missing.has("sellerName")}
+                fieldKey="sellerName"
+                onChange={(v) => {
+                  field("sellerName", v);
+                  if (sellerContactId) setSellerContactId(null);
+                }}
+                onSelect={(hit) => {
+                  if (hit) {
+                    setSellerContactId(hit.id);
+                    setForm((f) => ({
+                      ...f,
+                      sellerName: hit.fullName,
+                      sellerEmail: hit.primaryEmail ?? f.sellerEmail,
+                      sellerPhone: hit.primaryPhone ?? f.sellerPhone,
+                    }));
+                  } else {
+                    setSellerContactId(null);
+                  }
+                }}
+              />
+            </div>
+          </label>
           <Input
             label="Email"
             value={form.sellerEmail}
@@ -407,15 +437,36 @@ export function NewListingForm() {
               </button>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Input
-                label="Name"
-                value={form.seller2Name}
-                onChange={(v) => field("seller2Name", v)}
-                placeholder="Jane Smith"
-                cols="sm:col-span-2"
-                fieldKey="seller2Name"
-                missing={missing.has("seller2Name")}
-              />
+              <label className="block sm:col-span-2">
+                <span className="flex items-center gap-1.5 text-xs font-medium text-text-muted">
+                  Name
+                  <span className="font-normal text-text-subtle">· pull from contacts or add new</span>
+                </span>
+                <div className="mt-1">
+                  <ContactAutocomplete
+                    value={form.seller2Name}
+                    placeholder="Search contacts or type a new name"
+                    fieldKey="seller2Name"
+                    onChange={(v) => {
+                      field("seller2Name", v);
+                      if (seller2ContactId) setSeller2ContactId(null);
+                    }}
+                    onSelect={(hit) => {
+                      if (hit) {
+                        setSeller2ContactId(hit.id);
+                        setForm((f) => ({
+                          ...f,
+                          seller2Name: hit.fullName,
+                          seller2Email: hit.primaryEmail ?? f.seller2Email,
+                          seller2Phone: hit.primaryPhone ?? f.seller2Phone,
+                        }));
+                      } else {
+                        setSeller2ContactId(null);
+                      }
+                    }}
+                  />
+                </div>
+              </label>
               <Input
                 label="Email"
                 value={form.seller2Email}

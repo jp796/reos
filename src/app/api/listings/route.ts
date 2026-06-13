@@ -19,12 +19,17 @@ interface Body {
   sellerName: string;
   sellerEmail?: string;
   sellerPhone?: string;
+  /** Existing contact id when the seller was picked from the
+   *  contact typeahead. When set, link it instead of creating a
+   *  duplicate. */
+  sellerContactId?: string | null;
   /** Optional second seller (spouse / co-owner / second trustee).
    *  Becomes their own Contact + a co_seller TransactionParticipant
    *  so eSign can route a separate signature to them. */
   seller2Name?: string;
   seller2Email?: string;
   seller2Phone?: string;
+  seller2ContactId?: string | null;
   propertyAddress: string;
   city?: string;
   state?: string;
@@ -46,16 +51,26 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Find or create seller contact
-  let contact = body.sellerEmail
-    ? await prisma.contact.findFirst({
-        where: {
-          accountId: actor.accountId,
-          primaryEmail: { equals: body.sellerEmail, mode: "insensitive" },
-        },
-        select: { id: true },
-      })
-    : null;
+  // Resolve the seller contact, in priority order:
+  //   1. explicit contact id from the typeahead (must be in tenant)
+  //   2. existing contact matched by email
+  //   3. create a new one
+  let contact: { id: string } | null = null;
+  if (body.sellerContactId) {
+    contact = await prisma.contact.findFirst({
+      where: { id: body.sellerContactId, accountId: actor.accountId },
+      select: { id: true },
+    });
+  }
+  if (!contact && body.sellerEmail) {
+    contact = await prisma.contact.findFirst({
+      where: {
+        accountId: actor.accountId,
+        primaryEmail: { equals: body.sellerEmail, mode: "insensitive" },
+      },
+      select: { id: true },
+    });
+  }
   if (!contact) {
     contact = await prisma.contact.create({
       data: {
@@ -97,18 +112,25 @@ export async function POST(req: NextRequest) {
   // user can re-add the co-seller from the transaction page.
   if (body.seller2Name?.trim()) {
     try {
-      let contact2 = body.seller2Email?.trim()
-        ? await prisma.contact.findFirst({
-            where: {
-              accountId: actor.accountId,
-              primaryEmail: {
-                equals: body.seller2Email.trim(),
-                mode: "insensitive",
-              },
+      let contact2: { id: string } | null = null;
+      if (body.seller2ContactId) {
+        contact2 = await prisma.contact.findFirst({
+          where: { id: body.seller2ContactId, accountId: actor.accountId },
+          select: { id: true },
+        });
+      }
+      if (!contact2 && body.seller2Email?.trim()) {
+        contact2 = await prisma.contact.findFirst({
+          where: {
+            accountId: actor.accountId,
+            primaryEmail: {
+              equals: body.seller2Email.trim(),
+              mode: "insensitive",
             },
-            select: { id: true },
-          })
-        : null;
+          },
+          select: { id: true },
+        });
+      }
       if (!contact2) {
         contact2 = await prisma.contact.create({
           data: {

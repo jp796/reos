@@ -35,6 +35,7 @@ export async function GET(req: NextRequest) {
         id: true,
         fullName: true,
         primaryEmail: true,
+        primaryPhone: true,
         sourceName: true,
       },
     });
@@ -51,7 +52,7 @@ export async function GET(req: NextRequest) {
     },
     orderBy: { updatedAt: "desc" },
     take: limit,
-    select: { id: true, fullName: true, primaryEmail: true, sourceName: true },
+    select: { id: true, fullName: true, primaryEmail: true, primaryPhone: true, sourceName: true },
   });
   return NextResponse.json({ items });
 }
