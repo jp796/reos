@@ -14,7 +14,8 @@
     "db:studio": "prisma studio",
     "db:validate": "prisma validate",
     "db:seed": "tsx prisma/seed.ts",
-    "crypto:test": "tsx src/lib/encryption.test.ts"
+    "crypto:test": "tsx src/lib/encryption.test.ts",
+    "test:extraction": "bun run scripts/test-extraction.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",

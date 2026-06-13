@@ -26,6 +26,7 @@
 
 import { DocumentExtractionService } from "./DocumentExtractionService";
 import { renderPdfForVision } from "./PdfRender";
+import { addBusinessDays, addCalendarDays } from "@/lib/business-days";
 
 const MODEL = "gpt-4o-mini";
 const VISION_MODEL = "gpt-4o"; // vision requires full 4o, not mini
@@ -84,6 +85,34 @@ export interface ContractExtraction {
   >;
   buyerSignedAt: ContractExtractionField<string>;
   sellerSignedAt: ContractExtractionField<string>;
+
+  // ── Relative deadlines (the fix for "scan isn't pulling dates") ──
+  // Many state contracts (WY, and others) express deadlines as
+  // OFFSETS from the Effective Date rather than absolute dates:
+  //   "within 5 business days of the Effective Date"
+  //   "10 Business Days after the Effective Date to inspect"
+  // The model returns null for the absolute field because there's no
+  // absolute date in the document. We extract the offset here and
+  // COMPUTE the absolute date from effectiveDate (see
+  // computeRelativeDeadlines). unit "business" skips weekends.
+  /** Days the buyer has to deposit earnest money, from Effective Date. */
+  earnestMoneyDueDays: ContractExtractionField<number>;
+  earnestMoneyDueUnit: ContractExtractionField<"business" | "calendar">;
+  /** Length of the inspection period, from Effective Date. */
+  inspectionPeriodDays: ContractExtractionField<number>;
+  inspectionPeriodUnit: ContractExtractionField<"business" | "calendar">;
+  /** Days to deliver written inspection objections, from the END of
+   *  the inspection period (or Effective Date if the form says so). */
+  inspectionObjectionDays: ContractExtractionField<number>;
+  inspectionObjectionUnit: ContractExtractionField<"business" | "calendar">;
+  /** Days to object to title, from receipt of the title commitment.
+   *  Not auto-computed (no commitment-receipt date), surfaced for the TC. */
+  titleObjectionDays: ContractExtractionField<number>;
+  titleObjectionUnit: ContractExtractionField<"business" | "calendar">;
+  /** Days to secure financing, from Effective Date. */
+  financingDeadlineDays: ContractExtractionField<number>;
+  financingDeadlineUnit: ContractExtractionField<"business" | "calendar">;
+
   /** Non-empty only on partial / low-confidence extractions */
   notes: string | null;
 }
@@ -132,6 +161,20 @@ Both pct AND amount may appear; extract whichever is provided.
 
 On a Rider doc, timeline fields (closingDate, inspectionDeadline, etc.) will mostly be null — that's expected.
 
+RELATIVE DEADLINES — CRITICAL
+Many contracts DO NOT state absolute deadline dates. They state OFFSETS from the Effective Date, e.g.:
+  "within 5 business days of the Effective Date" (earnest money)
+  "Buyer shall have 10 Business Days after the Effective Date to inspect" (inspection period)
+  "10 business days after receipt of the title commitment" (title objection)
+  "secure financing within 21 days of the Effective Date" (financing)
+When the absolute date field is null because the contract only gives an offset, ALSO fill the matching relative-offset field so REOS can compute the date:
+  - earnestMoneyDueDays / earnestMoneyDueUnit  ("business" or "calendar")
+  - inspectionPeriodDays / inspectionPeriodUnit
+  - inspectionObjectionDays / inspectionObjectionUnit
+  - titleObjectionDays / titleObjectionUnit
+  - financingDeadlineDays / financingDeadlineUnit
+Set unit to "business" when the text says "business days", else "calendar". Always extract BOTH the absolute date (if stated) and the offset (if stated). One contract may have some absolute and some relative — fill whatever each field is.
+
 CONTRACT STAGE (executed vs. offer vs. counter)
 Check the signature pages at the end of the document:
   - If BOTH a buyer signature AND a seller signature are present (with
@@ -172,6 +215,16 @@ const SCHEMA_HINT = `{
   "contractStage":         { "value": "offer|counter|executed|unknown", "confidence": 0-1, "snippet": "..." },
   "buyerSignedAt":         { "value": "YYYY-MM-DD or null", "confidence": 0-1, "snippet": "..." },
   "sellerSignedAt":        { "value": "YYYY-MM-DD or null", "confidence": 0-1, "snippet": "..." },
+  "earnestMoneyDueDays":   { "value": 0 or null, "confidence": 0-1, "snippet": "..." },
+  "earnestMoneyDueUnit":   { "value": "business|calendar", "confidence": 0-1, "snippet": "..." },
+  "inspectionPeriodDays":  { "value": 0 or null, "confidence": 0-1, "snippet": "..." },
+  "inspectionPeriodUnit":  { "value": "business|calendar", "confidence": 0-1, "snippet": "..." },
+  "inspectionObjectionDays":{ "value": 0 or null, "confidence": 0-1, "snippet": "..." },
+  "inspectionObjectionUnit":{ "value": "business|calendar", "confidence": 0-1, "snippet": "..." },
+  "titleObjectionDays":    { "value": 0 or null, "confidence": 0-1, "snippet": "..." },
+  "titleObjectionUnit":    { "value": "business|calendar", "confidence": 0-1, "snippet": "..." },
+  "financingDeadlineDays": { "value": 0 or null, "confidence": 0-1, "snippet": "..." },
+  "financingDeadlineUnit": { "value": "business|calendar", "confidence": 0-1, "snippet": "..." },
   "notes":                 "string or null — brief note if anything was ambiguous"
 }`;
 
@@ -192,27 +245,41 @@ export class ContractExtractionService {
     const text = await new DocumentExtractionService().extractText(buffer);
     if (!text) {
       const v = await this.extractWithVision(buffer);
-      return { ...v, _path: "vision" };
+      return { ...computeRelativeDeadlines(v), _path: "vision" };
     }
 
     const thin = looksThin(text);
     const textExtraction = await this.extractFromText(text);
 
-    if (!thin) {
-      return { ...textExtraction, _path: "text" };
+    // Outcome-based fallback. The `looksThin` regex guesses whether
+    // the text layer is complete, but it's wrong for flattened PDFs
+    // whose text layer has template boilerplate dates/dollars
+    // (thin=false) yet is MISSING the filled timeline values that
+    // live only in graphic overlays. So: if the critical dates didn't
+    // come back, treat the text layer as incomplete REGARDLESS of the
+    // heuristic and let Vision try.
+    //
+    // BUT: if the dates are missing because the contract states them
+    // as RELATIVE offsets (5 business days after Effective Date), the
+    // offsets came back instead — Vision reads the same words and
+    // won't find absolute dates that don't exist. Skip the wasteful
+    // Vision call; computeRelativeDeadlines() handles those.
+    const criticalMissing =
+      criticalTimelineMissing(textExtraction) &&
+      !hasRelativeOffsets(textExtraction);
+
+    if (!thin && !criticalMissing) {
+      return { ...computeRelativeDeadlines(textExtraction), _path: "text" };
     }
 
-    // Thin text → Vision, then merge (prefer Vision values where
-    // confidence is higher).
     try {
       const visionExtraction = await this.extractWithVision(buffer);
       const merged = mergeByConfidence(textExtraction, visionExtraction);
-      return { ...merged, _path: "merged" };
+      return { ...computeRelativeDeadlines(merged), _path: "merged" };
     } catch (err) {
-      // Vision conversion/call failed — return what we got from text
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`vision fallback failed: ${msg}`);
-      return { ...textExtraction, _path: "text" };
+      return { ...computeRelativeDeadlines(textExtraction), _path: "text" };
     }
   }
 
@@ -332,6 +399,51 @@ ${SCHEMA_HINT}`;
 }
 
 /**
+ * The timeline fields that matter most for transaction coordination —
+ * the ones JP flagged as "not pulling." When the text pass returns
+ * null for these, the text layer is almost certainly incomplete and
+ * we should let Vision try, regardless of the looksThin heuristic.
+ *
+ * effectiveDate is excluded: a Rider / amendment legitimately has no
+ * timeline, and effectiveDate alone being null isn't diagnostic. We
+ * trigger on the operational deadlines that a real executed purchase
+ * contract WILL contain.
+ */
+function criticalTimelineMissing(ex: ContractExtraction): boolean {
+  const critical: Array<ContractExtractionField<unknown>> = [
+    ex.closingDate,
+    ex.inspectionDeadline,
+    ex.inspectionObjectionDeadline,
+    ex.financingDeadline,
+    ex.earnestMoneyDueDate,
+  ];
+  const present = critical.filter((f) => f && f.value != null).length;
+  // If a Rider (compensation-only) doc, timeline emptiness is expected —
+  // don't burn a Vision call. compensationOnSeparateRider=true OR a
+  // contractStage of "unknown" with zero timeline → leave as text.
+  const isRider = ex.compensationOnSeparateRider?.value === true;
+  if (isRider) return false;
+  // Trigger Vision when NONE of the five critical deadlines came back,
+  // or when closingDate specifically is missing (the single most
+  // important field — a real purchase contract always has one).
+  return present === 0 || ex.closingDate?.value == null;
+}
+
+/** True when the extraction captured any relative-deadline offset —
+ *  i.e. the contract states deadlines as "N days after Effective
+ *  Date" rather than absolute dates. Used to skip a pointless Vision
+ *  retry (Vision reads the same words and finds the same offsets). */
+function hasRelativeOffsets(ex: ContractExtraction): boolean {
+  return [
+    ex.earnestMoneyDueDays,
+    ex.inspectionPeriodDays,
+    ex.inspectionObjectionDays,
+    ex.financingDeadlineDays,
+    ex.titleObjectionDays,
+  ].some((f) => f && typeof f.value === "number");
+}
+
+/**
  * Heuristic: does the extracted text contain enough filled-in content
  * to run purely-textual extraction, or should we fall back to Vision?
  *
@@ -435,6 +547,115 @@ function normalize(parsed: unknown): ContractExtraction {
     ),
     buyerSignedAt: asField(o.buyerSignedAt),
     sellerSignedAt: asField(o.sellerSignedAt),
+    earnestMoneyDueDays: asField<number>(o.earnestMoneyDueDays),
+    earnestMoneyDueUnit: asField<"business" | "calendar">(o.earnestMoneyDueUnit),
+    inspectionPeriodDays: asField<number>(o.inspectionPeriodDays),
+    inspectionPeriodUnit: asField<"business" | "calendar">(o.inspectionPeriodUnit),
+    inspectionObjectionDays: asField<number>(o.inspectionObjectionDays),
+    inspectionObjectionUnit: asField<"business" | "calendar">(o.inspectionObjectionUnit),
+    titleObjectionDays: asField<number>(o.titleObjectionDays),
+    titleObjectionUnit: asField<"business" | "calendar">(o.titleObjectionUnit),
+    financingDeadlineDays: asField<number>(o.financingDeadlineDays),
+    financingDeadlineUnit: asField<"business" | "calendar">(o.financingDeadlineUnit),
     notes: typeof o.notes === "string" ? o.notes : null,
   };
+}
+
+/**
+ * Fill absolute deadline dates from extracted relative offsets +
+ * the Effective Date. This is the fix for contracts that express
+ * deadlines as "N business days after the Effective Date" — the
+ * model returns null for the absolute field (correctly, there's no
+ * date in the doc), and we compute it here.
+ *
+ * Only fills a field that's still null AND has both an offset and an
+ * anchor. Computed values get confidence 0.7 and a snippet noting it
+ * was derived, so the UI shows the amber "verify" dot. When the
+ * Effective Date itself is missing, nothing computes — the caller
+ * surfaces "enter the Effective Date to auto-fill deadlines."
+ *
+ * Anchors:
+ *   earnest money / inspection / financing → Effective Date
+ *   inspection objection → end of inspection period (so it stacks)
+ *   title objection → NOT computed (anchored to title-commitment
+ *     receipt, which isn't a date we have)
+ */
+export function computeRelativeDeadlines(
+  ex: ContractExtraction,
+): ContractExtraction {
+  const effRaw = ex.effectiveDate?.value;
+  if (!effRaw) return ex; // no anchor → nothing to compute
+  const effective = new Date(`${effRaw}T00:00:00`);
+  if (Number.isNaN(effective.getTime())) return ex;
+
+  const out = { ...ex };
+  const derive = (anchor: Date, days: number, unit: string): string => {
+    const d =
+      unit === "business" ? addBusinessDays(anchor, days) : addCalendarDays(anchor, days);
+    return d.toISOString().slice(0, 10);
+  };
+  const computed = (iso: string, fromLabel: string): ContractExtractionField => ({
+    value: iso,
+    confidence: 0.7,
+    snippet: `computed: ${fromLabel}`,
+  });
+
+  // Earnest money
+  if (
+    out.earnestMoneyDueDate.value == null &&
+    typeof out.earnestMoneyDueDays.value === "number"
+  ) {
+    const unit = out.earnestMoneyDueUnit.value === "calendar" ? "calendar" : "business";
+    out.earnestMoneyDueDate = computed(
+      derive(effective, out.earnestMoneyDueDays.value, unit),
+      `${out.earnestMoneyDueDays.value} ${unit} days from Effective Date`,
+    );
+  }
+
+  // Inspection period end (the inspection deadline)
+  let inspectionEnd: Date | null = null;
+  if (
+    out.inspectionDeadline.value == null &&
+    typeof out.inspectionPeriodDays.value === "number"
+  ) {
+    const unit = out.inspectionPeriodUnit.value === "calendar" ? "calendar" : "business";
+    const iso = derive(effective, out.inspectionPeriodDays.value, unit);
+    inspectionEnd = new Date(`${iso}T00:00:00`);
+    out.inspectionDeadline = computed(
+      iso,
+      `${out.inspectionPeriodDays.value} ${unit} days from Effective Date`,
+    );
+  } else if (out.inspectionDeadline.value) {
+    inspectionEnd = new Date(`${out.inspectionDeadline.value}T00:00:00`);
+  }
+
+  // Inspection objection — anchored to end of inspection period
+  if (
+    out.inspectionObjectionDeadline.value == null &&
+    typeof out.inspectionObjectionDays.value === "number" &&
+    inspectionEnd &&
+    !Number.isNaN(inspectionEnd.getTime())
+  ) {
+    const unit =
+      out.inspectionObjectionUnit.value === "calendar" ? "calendar" : "business";
+    out.inspectionObjectionDeadline = computed(
+      derive(inspectionEnd, out.inspectionObjectionDays.value, unit),
+      `${out.inspectionObjectionDays.value} ${unit} days after inspection period`,
+    );
+  }
+
+  // Financing
+  if (
+    out.financingDeadline.value == null &&
+    typeof out.financingDeadlineDays.value === "number"
+  ) {
+    const unit =
+      out.financingDeadlineUnit.value === "calendar" ? "calendar" : "business";
+    out.financingDeadline = computed(
+      derive(effective, out.financingDeadlineDays.value, unit),
+      `${out.financingDeadlineDays.value} ${unit} days from Effective Date`,
+    );
+  }
+
+  return out;
 }

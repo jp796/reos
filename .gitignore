@@ -41,3 +41,6 @@ prisma/dev.db*
 
 # Agent worktrees (PAI Delegation isolation)
 .claude/worktrees/
+
+# Extraction regression fixtures — real contract PII, never commit
+test/fixtures/contracts/
