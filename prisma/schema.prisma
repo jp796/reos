@@ -55,6 +55,12 @@ model Account {
   /// (active, trialing, past_due, canceled, incomplete).
   subscriptionTier                String   @default("free") @map("subscription_tier")
   subscriptionStatus              String?  @map("subscription_status")
+  /// Investor-module entitlements (spec §1). Independent of
+  /// subscriptionTier (which gates billing). JSON array of:
+  /// "retail_tc" | "investor". Null is treated as ["retail_tc"] by
+  /// lib/entitlements.ts so every existing account keeps working
+  /// unchanged. An agent-investor holds BOTH on one unified account.
+  entitlementsJson                Json?    @map("entitlements_json")
   stripeCustomerId                String?  @unique @map("stripe_customer_id")
   stripeSubscriptionId            String?  @unique @map("stripe_subscription_id")
   subscriptionRenewsAt            DateTime? @map("subscription_renews_at")
@@ -71,6 +77,8 @@ model Account {
   users                     User[]
   contacts                  Contact[]
   transactions              Transaction[]
+  assets                    Asset[]
+  projects                  Project[]
   sourceChannels            SourceChannel[]
   marketingSpends           MarketingSpend[]
   calendarEvents            CalendarEvent[]
@@ -177,6 +185,13 @@ model Contact {
   assignedAgentName  String?  @map("assigned_agent_name")
   sourceName         String?  @map("source_name")
   tagsJson           Json?    @map("tags_json")
+  /// Investor-module contact roles (spec §2, §7). JSON array of role
+  /// strings: buyer | seller | buyer_agent | lender | private_money_lender
+  /// | contractor | title_co | inspector | cash_buyer | tenant | partner.
+  /// One contact, many roles across many deals — this is the account-wide
+  /// role set, distinct from TransactionParticipant.role (per-deal). The
+  /// cash-buyers segment (wholesale disposition) queries this array.
+  rolesJson          Json?    @map("roles_json")
   rawFubPayloadJson  Json?    @map("raw_fub_payload_json")
   createdAt          DateTime @default(now()) @map("created_at")
   updatedAt          DateTime @updatedAt @map("updated_at")
@@ -198,6 +213,14 @@ model Transaction {
   id                     String    @id @default(cuid())
   accountId              String    @map("account_id")
   contactId              String    @map("contact_id")
+  /// Investor-module spine (spec §2). Nullable parent Asset — shadow /
+  /// incremental reparenting: existing retail transactions run with
+  /// assetId=null and every legacy query is unaffected. New investor
+  /// deals (and lazily-backfilled retail deals) point at an Asset. For
+  /// retail the Asset is degenerate (1 Asset → 1 Transaction, dies at
+  /// close); for investors an Asset carries 1..n transactions over its
+  /// life (acquire → refi → sell). Backfill: scripts/backfill-assets.ts.
+  assetId                String?   @map("asset_id")
   fubPersonId            String?   @map("fub_person_id")
   fubDealId              String?   @map("fub_deal_id")
   /// Rezen (Real Broker) transaction UUID — pasted from the Bolt
@@ -299,6 +322,7 @@ model Transaction {
 
   account             Account                  @relation(fields: [accountId], references: [id], onDelete: Cascade)
   contact             Contact                  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  asset               Asset?                   @relation(fields: [assetId], references: [id], onDelete: SetNull)
   milestones          Milestone[]
   tasks               Task[]
   documents           Document[]
@@ -319,9 +343,89 @@ model Transaction {
   assignedUser        User?                    @relation("AssignedTransactions", fields: [assignedUserId], references: [id], onDelete: SetNull)
 
   @@index([accountId])
+  @@index([assetId], map: "idx_transactions_asset")
   @@index([contactId, status], map: "idx_transactions_contact_status")
   @@index([status, closingDate], map: "idx_transactions_status_closing")
   @@map("transactions")
+}
+
+// ==================================================
+// INVESTOR MODULE — ASSET SPINE (spec §2)
+// The Asset (Deal) is the top-level object for investor deals; a
+// property persists across many episodes (acquire → rehab → refi →
+// rent → sell). Transactions and Projects are CHILDREN. For retail the
+// Asset is degenerate (1:1 with its Transaction). Added Phase 0; the
+// forks it drives (lifecycle template, economics, comms cadence) come
+// online with each strategy phase.
+// ==================================================
+
+model Asset {
+  id          String  @id @default(cuid())
+  accountId   String  @map("account_id")
+  /// Owning user (investor of record). Null = unassigned.
+  ownerUserId String? @map("owner_user_id")
+  address     String?
+
+  // ── Classification (spec §3–5). Set by auto-detect at intake. ──
+  /// agency (retail, third-party client) | principal (you own the asset)
+  representation       String  @default("agency")
+  /// takes_title | assignment | double_close | contract_rights (spec §4).
+  /// Governs whether an ownership record + holding-cost meter are created
+  /// and how many closings are coordinated.
+  titlePath            String? @map("title_path")
+  /// retail | flip | wholesale | rental_brrrr | creative (spec §6)
+  strategy             String  @default("retail")
+  /// subject_to | seller_finance | lease_option | wrap — set only when
+  /// strategy=creative (spec §6.4, §13).
+  creativeSubstructure String? @map("creative_substructure")
+
+  /// Free-text stage name from the active strategy template's lifecycle.
+  /// The template/stage engine (auto-advance) lands with Phase 1.
+  currentStageName     String? @map("current_stage_name")
+  riskScore            Float   @default(0) @map("risk_score")
+  /// Per-strategy economics object (spec §9). Shape varies by strategy:
+  /// retail=GCI, flip=profit/ROI, wholesale=assignment fee, etc.
+  economicsJson        Json?   @map("economics_json")
+  /// Hybrid principal+commission deals (spec §1): you own the asset AND
+  /// earn an agency commission component (e.g. list your own flip).
+  agencyComponentJson  Json?   @map("agency_component_json")
+  /// Integration handles (spec §7, §11). Drive folder tree + Google Chat
+  /// deal space — auto-scaffolded with their respective phases.
+  driveFolderId        String? @map("drive_folder_id")
+  chatSpaceId          String? @map("chat_space_id")
+  status               String  @default("active") // active | archived
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  account      Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  projects     Project[]
+
+  @@index([accountId])
+  @@index([accountId, strategy], map: "idx_assets_account_strategy")
+  @@index([accountId, representation], map: "idx_assets_account_representation")
+  @@map("assets")
+}
+
+model Project {
+  id          String  @id @default(cuid())
+  assetId     String  @map("asset_id")
+  accountId   String  @map("account_id")
+  /// rehab | lease_up | servicing | stabilization | other (spec §2, §6).
+  type        String
+  status      String  @default("active") // active | complete | archived
+  budget      Float?
+  actual      Float?
+  /// Draw schedule + capital stack relations land with Phase 2 (Flip).
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  asset   Asset   @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([assetId])
+  @@index([accountId])
+  @@map("projects")
 }
 
 model Milestone {
