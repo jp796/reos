@@ -10,7 +10,9 @@ import { redirect, notFound } from "next/navigation";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/require-session";
+import { readEntitlements } from "@/lib/entitlements";
 import { DeleteAccountSection } from "./DeleteAccountSection";
+import { InvestorModuleToggle } from "./InvestorModuleToggle";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +34,8 @@ export default async function AccountSettingsPage() {
     },
   });
   if (!account) return notFound();
+
+  const entitlements = await readEntitlements(account.id);
 
   return (
     <div className="mx-auto max-w-2xl space-y-8">
@@ -56,6 +60,8 @@ export default async function AccountSettingsPage() {
           Change payment method or cancel at <a className="underline" href="/settings/billing">Settings → Billing</a>.
         </p>
       </section>
+
+      <InvestorModuleToggle initialEnabled={entitlements.includes("investor")} />
 
       <DeleteAccountSection
         businessName={account.businessName}

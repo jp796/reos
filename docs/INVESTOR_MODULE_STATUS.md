@@ -95,9 +95,9 @@ Tag legend: ✅ exists · 🔧 partial · 🔴 missing. Update as phases land.
   - [x] `Account.entitlementsJson` + `src/lib/entitlements.ts` helper
   - [x] `Contact.rolesJson` field
   - [x] `scripts/backfill-assets.ts` (dry-run-safe, idempotent)
-  - [ ] Settings UI to grant the `investor` entitlement
-  - [ ] Retail / Investment / All filter on the home + transactions views
-  - [ ] Auto-detect classifier (§5) writes `strategy`/`representation`/`title_path` at intake
+  - [x] Settings UI to grant the `investor` entitlement (owner-only toggle, Settings → Account) + `POST/GET /api/account/entitlements`
+  - [x] Retail / Investment / All lens on `/transactions` (gated by entitlement; investment = Asset.representation principal, retail = agency + legacy null-asset)
+  - [~] Auto-detect classifier (§5) — pure `classifyDeal()` built + 12 unit tests passing (`src/services/core/DealClassifierService.ts`). **Remaining: wire it into the intake/create-from-scan pipeline so it actually creates an Asset with the classified fields.** Deferred to its own step (behavior change to core intake → run with the extraction-quality skill + fixtures).
 - [ ] **Phase 1 — Wholesale wedge** (lightest lift; validates auto-detect + auto-advance + Chat + cash-buyers list).
 - [ ] **Phase 2 — Flip + Draw engine + Holding-cost meter.**
 - [ ] **Phase 3 — Rental/BRRRR** (Lease-Up, refi 2nd closing, recurring-task engine).

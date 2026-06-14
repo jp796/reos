@@ -55,6 +55,25 @@ isolated to Phase 0 per JP).
 - [ ] Auto-detect classifier (§5) writes strategy/representation/title_path at intake
 - [ ] Then Phase 1: Wholesale 5-stage template + auto-advance + cash-buyers segment
 
+### Session: 2026-06-14 (cont.) — Phase 0 UI + classifier
+
+**Files:**
+
+| File | Change |
+|------|--------|
+| `src/app/api/account/entitlements/route.ts` | NEW. Owner-only `POST` (toggle investor on/off, retail_tc always preserved) + `GET`. |
+| `src/app/settings/account/InvestorModuleToggle.tsx` | NEW. Optimistic owner-only switch; calls the entitlements API. |
+| `src/app/settings/account/page.tsx` | Renders the toggle (initial state from `readEntitlements`). |
+| `src/app/transactions/page.tsx` | Retail/Investment/All **lens** filter — gated by `investor` entitlement; `buildHref` extended w/ `lens`; `lensWhere` maps investment→`asset.representation=principal`, retail→agency + legacy null-asset; lens counts queried only when shown. Scope toggle margin made conditional. |
+| `src/services/core/DealClassifierService.ts` | NEW. Pure `classifyDeal()` — §5 rules, precedence creative→wholesale→BRRRR→flip→retail, with reasons[] + confidence. Not yet wired into intake (zero runtime risk). |
+| `src/services/core/DealClassifierService.test.ts` | NEW. 12 standalone-tsx assertions, all passing. |
+
+**Verify:** `bun tsx DealClassifierService.test.ts` → 12 passed · `bunx tsc --noEmit` → exit 0.
+
+**Phase 0 status:** data foundation + entitlement toggle + lens filter SHIPPED. Classifier logic built+tested but **NOT wired** — the intake-pipeline wiring (create an Asset with classified fields at scan/upload) is the one remaining Phase 0 item; deferred to its own step with the extraction-quality skill + fixtures, then Phase 1 Wholesale.
+
+> ⚠️ Interceptor CLI not installed in this env — the new Settings toggle and lens filter are build-verified (next build + tsc) and serving, but not visually confirmed in-browser. Eyeball at Settings → Account and /transactions, or install Interceptor (skill Update workflow).
+
 ---
 
 ## Session: 2026-06-13 — Scan info card + contact card fields

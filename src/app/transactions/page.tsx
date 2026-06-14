@@ -13,12 +13,19 @@ import { PendingClosingUpdatesPanel } from "./PendingClosingUpdatesPanel";
 import { CalendarSyncButton } from "./CalendarSyncButton";
 import { QuickCloseButton } from "./QuickCloseButton";
 import { cn } from "@/lib/cn";
+import { readEntitlements } from "@/lib/entitlements";
 
 export const dynamic = "force-dynamic";
 
 type StatusFilter = "open" | "closed" | "all";
 type RepFilter = "any" | "buy" | "sell" | "both";
 type ScopeFilter = "all" | "mine";
+/** Investor-module lens (spec §1): split the unified board by deal kind
+ * without fragmenting the data. "investment" = deals whose Asset is
+ * principal-owned; "retail" = agency deals + every legacy transaction
+ * (assetId null). Only rendered when the account holds the investor
+ * entitlement. */
+type LensFilter = "all" | "retail" | "investment";
 
 const FILTER_TABS: Array<{ id: StatusFilter; label: string }> = [
   { id: "open", label: "Active" },
@@ -37,11 +44,13 @@ function buildHref(
   status: StatusFilter,
   rep: RepFilter,
   scope: ScopeFilter = "all",
+  lens: LensFilter = "all",
 ): string {
   const params = new URLSearchParams();
   if (status !== "open") params.set("status", status);
   if (rep !== "any") params.set("rep", rep);
   if (scope !== "all") params.set("scope", scope);
+  if (lens !== "all") params.set("lens", lens);
   const qs = params.toString();
   return qs ? `/transactions?${qs}` : "/transactions";
 }
@@ -73,7 +82,7 @@ function statusBadge(status: string) {
 export default async function TransactionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; rep?: string; scope?: string }>;
+  searchParams: Promise<{ status?: string; rep?: string; scope?: string; lens?: string }>;
 }) {
   const { requireSession } = await import("@/lib/require-session");
   const actor = await requireSession();
@@ -83,12 +92,22 @@ export default async function TransactionsPage({
   const accountWhere =
     actor instanceof Response ? { accountId: "__none__" } : { accountId: actor.accountId };
 
+  // Investor entitlement gates the Retail/Investment lens. Retail-only
+  // accounts never see it (and a stale ?lens= is ignored for them).
+  const entitlements =
+    actor instanceof Response ? [] : await readEntitlements(actor.accountId);
+  const showLens = entitlements.includes("investor");
+
   const sp = await searchParams;
   const filter: StatusFilter =
     sp.status === "closed" || sp.status === "all" ? sp.status : "open";
   const rep: RepFilter =
     sp.rep === "buy" || sp.rep === "sell" || sp.rep === "both" ? sp.rep : "any";
   const scope: ScopeFilter = sp.scope === "mine" ? "mine" : "all";
+  const lens: LensFilter =
+    showLens && (sp.lens === "retail" || sp.lens === "investment")
+      ? sp.lens
+      : "all";
   const scopeWhere =
     scope === "mine" && actingUserId ? { assignedUserId: actingUserId } : {};
 
@@ -101,7 +120,28 @@ export default async function TransactionsPage({
 
   const repWhere = rep === "any" ? {} : { side: rep };
 
-  const where = { ...accountWhere, ...statusWhere, ...repWhere, ...scopeWhere };
+  // Lens → Asset.representation. "investment" = principal-owned Assets;
+  // "retail" = agency Assets + every legacy txn with no Asset (assetId
+  // null), so existing deals stay visible under the retail lens.
+  const lensWhere =
+    lens === "investment"
+      ? { asset: { representation: "principal" } }
+      : lens === "retail"
+        ? {
+            OR: [
+              { assetId: null },
+              { asset: { representation: { not: "principal" } } },
+            ],
+          }
+        : {};
+
+  const where = {
+    ...accountWhere,
+    ...statusWhere,
+    ...repWhere,
+    ...scopeWhere,
+    ...lensWhere,
+  };
 
   const [
     transactions,
@@ -139,6 +179,32 @@ export default async function TransactionsPage({
     prisma.transaction.count({ where: { ...accountWhere, ...statusWhere, side: "both" } }),
   ]);
 
+  // Lens counts — only queried for investor-entitled accounts (scoped to
+  // the active status filter, like the rep counts).
+  let retailCount = 0;
+  let investmentCount = 0;
+  if (showLens) {
+    [investmentCount, retailCount] = await Promise.all([
+      prisma.transaction.count({
+        where: {
+          ...accountWhere,
+          ...statusWhere,
+          asset: { representation: "principal" },
+        },
+      }),
+      prisma.transaction.count({
+        where: {
+          ...accountWhere,
+          ...statusWhere,
+          OR: [
+            { assetId: null },
+            { asset: { representation: { not: "principal" } } },
+          ],
+        },
+      }),
+    ]);
+  }
+
   return (
     <main className="mx-auto max-w-6xl">
       <header className="flex items-start justify-between gap-6">
@@ -161,10 +227,54 @@ export default async function TransactionsPage({
         </div>
       </header>
 
+      {/* Lens — Retail / Investment / All (investor entitlement only).
+          Top-level cut of the unified board per spec §1; data is never
+          split, just filtered. */}
+      {showLens && (
+        <div className="mt-5 inline-flex overflow-hidden rounded-md border border-border bg-surface">
+          {(
+            [
+              { id: "all", label: "All" },
+              { id: "retail", label: "Retail" },
+              { id: "investment", label: "Investment" },
+            ] as Array<{ id: LensFilter; label: string }>
+          ).map((tab, i) => {
+            const active = lens === tab.id;
+            const count =
+              tab.id === "retail"
+                ? retailCount
+                : tab.id === "investment"
+                  ? investmentCount
+                  : retailCount + investmentCount;
+            return (
+              <Link
+                key={tab.id}
+                href={buildHref(filter, rep, scope, tab.id)}
+                className={cn(
+                  "px-3 py-1 text-xs font-medium transition-colors",
+                  i > 0 && "border-l border-border",
+                  active
+                    ? "bg-brand-50 text-brand-700"
+                    : "text-text-muted hover:bg-surface-2 hover:text-text",
+                )}
+              >
+                {tab.label}
+                <span className="ml-1.5 tabular-nums opacity-70">{count}</span>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+
       {/* Scope toggle — "my queue" vs all */}
-      <div className="mt-5 inline-flex overflow-hidden rounded-md border border-border bg-surface">
+      <div
+        className={cn(
+          "inline-flex overflow-hidden rounded-md border border-border bg-surface",
+          showLens ? "mt-3" : "mt-5",
+        )}
+      >
         <Link
-          href={buildHref(filter, rep, "all")}
+          href={buildHref(filter, rep, "all", lens)}
           className={cn(
             "px-3 py-1 text-xs font-medium transition-colors",
             scope === "all"
@@ -175,7 +285,7 @@ export default async function TransactionsPage({
           All transactions
         </Link>
         <Link
-          href={buildHref(filter, rep, "mine")}
+          href={buildHref(filter, rep, "mine", lens)}
           className={cn(
             "border-l border-border px-3 py-1 text-xs font-medium transition-colors",
             scope === "mine"
@@ -200,7 +310,7 @@ export default async function TransactionsPage({
           return (
             <Link
               key={tab.id}
-              href={buildHref(tab.id, rep, scope)}
+              href={buildHref(tab.id, rep, scope, lens)}
               className={cn(
                 "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
                 active
@@ -235,7 +345,7 @@ export default async function TransactionsPage({
           return (
             <Link
               key={tab.id}
-              href={buildHref(filter, tab.id, scope)}
+              href={buildHref(filter, tab.id, scope, lens)}
               className={cn(
                 "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
                 active
