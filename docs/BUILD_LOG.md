@@ -39,7 +39,15 @@ extensions → Wholesale → Flip+Draws → Rental/BRRRR → Creative → Hybrid
 | `docs/INVESTOR_MODULE_STATUS.md` | Phase 0 checklist updated; open decisions → resolved. |
 
 **Verify:** `prisma validate` ✅ · `prisma generate` ✅ · `bunx tsc --noEmit` → exit 0, 0 errors.
-**NOT yet applied to prod** — migration runs on next deploy. No UI added this session (nothing browser-observable to verify).
+
+**SHIPPED + VERIFIED 2026-06-14.** Committed solo (`19d494c`), pushed to `main`,
+deploy green (`Build + deploy 6m9s`). Serving revision **`reos-00153-wdf`**.
+Prod DB check (Neon `curly-night-72426604`): `assets`+`projects` tables present,
+`asset_id`/`entitlements_json`/`roles_json` columns present, FK present, migration
+recorded in `_prisma_migrations`. **`transactions` with asset_id ≠ null = 0** —
+shadow reparent confirmed, zero impact on existing retail deals. The 5 scan-card
+files from the prior session were intentionally left uncommitted (push was
+isolated to Phase 0 per JP).
 
 **Next session (finish Phase 0 → start Wholesale):**
 - [ ] Settings UI to grant the `investor` entitlement (Settings → Account/Plan)

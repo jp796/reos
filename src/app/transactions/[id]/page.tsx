@@ -289,6 +289,9 @@ export default async function TransactionDetailPage({
             grossCommission={txn.financials?.grossCommission ?? null}
             contractDate={txn.contractDate}
             closingDate={txn.closingDate}
+            inspectionDeadline={txn.inspectionDate ?? null}
+            inspectionObjectionDeadline={txn.inspectionObjectionDate ?? null}
+            rezenConnected={!!account?.realApiTokensEncrypted}
           />
           {txn.status === "listing" && (
             <ConvertListingButton transactionId={txn.id} />
@@ -357,6 +360,14 @@ export default async function TransactionDetailPage({
         <Fact label="Lender" value={txn.lenderName ?? "—"} />
         <Fact label="Title co." value={txn.titleCompanyName ?? "—"} />
         <Fact label="Sale price" value={fmtMoney(txn.financials?.salePrice)} />
+        <Fact
+          label="Commission %"
+          value={
+            txn.financials?.commissionPercent != null
+              ? `${txn.financials.commissionPercent}%`
+              : "—"
+          }
+        />
         <Fact
           label="Gross commission"
           value={fmtMoney(txn.financials?.grossCommission)}

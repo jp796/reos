@@ -62,6 +62,13 @@ export interface AcceptedContractHit {
   matchedTransactionId: string | null;
   matchedContactId: string | null;
   matchedContactName: string | null;
+  /** Extracted from the contract — null when not found or not absolute. */
+  inspectionDeadline: string | null;
+  inspectionObjectionDeadline: string | null;
+  titleObjectionDeadline: string | null;
+  /** Commission % extracted from the contract (decimal form, e.g. 0.03 = 3%). */
+  sellerSideCommissionPct: number | null;
+  buyerSideCommissionPct: number | null;
   /** 0..1 confidence that this is really the user's deal. Combines
    *  signals: stage=executed, future closing, price extracted, title
    *  company present, buyer/seller matches a known contact, etc. */
@@ -466,6 +473,11 @@ export class AcceptedContractScanService {
         effectiveDate: ex.effectiveDate?.value ?? null,
         contractStage: stage,
         titleCompany: ex.titleCompanyName?.value ?? null,
+        inspectionDeadline: ex.inspectionDeadline?.value ?? null,
+        inspectionObjectionDeadline: ex.inspectionObjectionDeadline?.value ?? null,
+        titleObjectionDeadline: ex.titleObjectionDeadline?.value ?? null,
+        sellerSideCommissionPct: ex.sellerSideCommissionPct?.value ?? null,
+        buyerSideCommissionPct: ex.buyerSideCommissionPct?.value ?? null,
         matchedTransactionId,
         matchedContactId,
         matchedContactName,

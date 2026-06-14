@@ -281,16 +281,21 @@ export async function POST(req: NextRequest) {
     grossCommission = Math.round(purchasePrice * pct);
   }
 
-  if (purchasePrice !== null || grossCommission !== null) {
+  // Normalize pct: accept 0.025 OR 2.5 → store as 2.5 (human %)
+  const myPctRaw = myPct != null ? (myPct > 1 ? myPct : myPct * 100) : null;
+
+  if (purchasePrice !== null || grossCommission !== null || myPctRaw !== null) {
     await prisma.transactionFinancials.upsert({
       where: { transactionId: txn.id },
       create: {
         transactionId: txn.id,
         salePrice: purchasePrice ?? null,
+        commissionPercent: myPctRaw,
         grossCommission,
       },
       update: {
         ...(purchasePrice !== null ? { salePrice: purchasePrice } : {}),
+        ...(myPctRaw !== null ? { commissionPercent: myPctRaw } : {}),
         ...(grossCommission !== null ? { grossCommission } : {}),
       },
     });

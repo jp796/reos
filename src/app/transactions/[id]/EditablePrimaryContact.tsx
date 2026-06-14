@@ -28,6 +28,9 @@ import {
   CalendarDays,
   Users,
   Home,
+  ShieldCheck,
+  ShieldOff,
+  ClipboardList,
 } from "lucide-react";
 import { useToast } from "@/app/ToastProvider";
 
@@ -55,6 +58,10 @@ interface Props {
   grossCommission?: number | null;
   contractDate?: Date | null;
   closingDate?: Date | null;
+  inspectionDeadline?: Date | null;
+  inspectionObjectionDeadline?: Date | null;
+  /** Whether the Rezen (Real) API token is connected for this account. */
+  rezenConnected?: boolean;
 }
 
 function fmtMoney(n: number | null | undefined): string | null {
@@ -144,6 +151,8 @@ export function EditablePrimaryContact(props: Props) {
     const grossStr = fmtMoney(props.grossCommission);
     const contractStr = fmtDate(props.contractDate);
     const closingStr = fmtDate(props.closingDate);
+    const inspectionStr = fmtDate(props.inspectionDeadline);
+    const objectionStr = fmtDate(props.inspectionObjectionDeadline);
     return (
       <div className="mt-2">
         {/* Address is the transaction's headline. Names live underneath,
@@ -195,6 +204,37 @@ export function EditablePrimaryContact(props: Props) {
               <CalendarDays className="h-3.5 w-3.5" strokeWidth={2} />
               <span>Closing</span>
               <span className="font-medium text-text">{closingStr}</span>
+            </span>
+          )}
+          {inspectionStr && (
+            <span className="inline-flex items-center gap-1 text-text-muted">
+              <ClipboardList className="h-3.5 w-3.5" strokeWidth={2} />
+              <span>Inspection</span>
+              <span className="font-medium text-text">{inspectionStr}</span>
+            </span>
+          )}
+          {objectionStr && (
+            <span className="inline-flex items-center gap-1 text-text-muted">
+              <ClipboardList className="h-3.5 w-3.5" strokeWidth={2} />
+              <span>Objection</span>
+              <span className="font-medium text-text">{objectionStr}</span>
+            </span>
+          )}
+          {props.rezenConnected !== undefined && (
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ${
+                props.rezenConnected
+                  ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                  : "bg-surface-2 text-text-subtle ring-border"
+              }`}
+              title={props.rezenConnected ? "Rezen API connected" : "Rezen API not connected"}
+            >
+              {props.rezenConnected ? (
+                <ShieldCheck className="h-3 w-3" strokeWidth={2} />
+              ) : (
+                <ShieldOff className="h-3 w-3" strokeWidth={2} />
+              )}
+              {props.rezenConnected ? "Rezen connected" : "Rezen not connected"}
             </span>
           )}
         </div>

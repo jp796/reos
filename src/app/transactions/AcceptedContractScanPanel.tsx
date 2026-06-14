@@ -19,6 +19,11 @@ interface Hit {
   closingDate: string | null;
   effectiveDate: string | null;
   titleCompany: string | null;
+  inspectionDeadline: string | null;
+  inspectionObjectionDeadline: string | null;
+  titleObjectionDeadline: string | null;
+  sellerSideCommissionPct: number | null;
+  buyerSideCommissionPct: number | null;
   matchedTransactionId: string | null;
   matchedContactId: string | null;
   matchedContactName: string | null;
@@ -127,6 +132,11 @@ export function AcceptedContractScanPanel() {
           effectiveDate: h.effectiveDate,
           purchasePrice: h.purchasePrice,
           titleCompany: h.titleCompany,
+          inspectionDeadline: h.inspectionDeadline,
+          inspectionObjectionDeadline: h.inspectionObjectionDeadline,
+          titleObjectionDeadline: h.titleObjectionDeadline,
+          sellerSideCommissionPct: h.sellerSideCommissionPct,
+          buyerSideCommissionPct: h.buyerSideCommissionPct,
           threadId: h.threadId,
           messageId: h.threadId, // fallback
         }),
@@ -258,6 +268,17 @@ export function AcceptedContractScanPanel() {
                           <span className="tabular-nums">
                             {fmtMoney(h.purchasePrice)}
                           </span>
+                        )}
+                        {(h.sellerSideCommissionPct ?? h.buyerSideCommissionPct) != null && (
+                          <span className="tabular-nums">
+                            {((h.sellerSideCommissionPct ?? h.buyerSideCommissionPct ?? 0) * 100).toFixed(2)}% commission
+                          </span>
+                        )}
+                        {h.inspectionDeadline && (
+                          <span>Inspection: {fmtDate(h.inspectionDeadline)}</span>
+                        )}
+                        {h.inspectionObjectionDeadline && (
+                          <span>Objection: {fmtDate(h.inspectionObjectionDeadline)}</span>
                         )}
                         {h.titleCompany && <span>· {h.titleCompany}</span>}
                       </div>
