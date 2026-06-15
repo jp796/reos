@@ -80,6 +80,24 @@ function isPublic(pathname: string): boolean {
 export function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
 
+  // Canonical host enforcement. The app is configured for the APEX
+  // domain everywhere (AUTH_URL, NEXT_PUBLIC_APP_URL, the OAuth redirect
+  // URIs). But the apex AND the www host both serve the app with no
+  // redirect between them — which silently breaks OAuth: the PKCE cookie
+  // is set on whichever host starts sign-in, yet NextAuth always calls
+  // back to the apex (AUTH_URL). A user who starts on www therefore
+  // fails with "InvalidCheck: pkceCodeVerifier could not be parsed".
+  // Force every www.* request to the apex so sign-in starts and ends on
+  // one origin. 308 preserves method + body.
+  const host = req.headers.get("host") ?? "";
+  if (host.toLowerCase().startsWith("www.")) {
+    const apex = host.slice(4);
+    return NextResponse.redirect(
+      `https://${apex}${pathname}${search ?? ""}`,
+      308,
+    );
+  }
+
   if (isPublic(pathname)) return NextResponse.next();
 
   const hasSession = SESSION_COOKIES.some(

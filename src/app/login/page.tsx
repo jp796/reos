@@ -31,7 +31,7 @@ export default async function LoginPage({ searchParams }: Props) {
       case "AccessDenied":
         return "This Google account isn't authorized to access REOS. Ask the workspace owner to add your email.";
       case "Configuration":
-        return "Authentication isn't fully configured on the server — the owner needs to check AUTH_SECRET, AUTH_GOOGLE_ID, and the Google OAuth redirect URI.";
+        return "Sign-in couldn't complete. This is usually a stale or cross-domain cookie — make sure you're on myrealestateos.com (not www) and try once more. If it keeps happening, the owner should check AUTH_SECRET / AUTH_GOOGLE_ID and the Google OAuth redirect URI.";
       case "OAuthSignin":
       case "OAuthCallback":
       case "OAuthCreateAccount":
