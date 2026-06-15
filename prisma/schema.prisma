@@ -79,6 +79,8 @@ model Account {
   transactions              Transaction[]
   assets                    Asset[]
   projects                  Project[]
+  drawSchedules             DrawSchedule[]
+  capitalStackEntries       CapitalStackEntry[]
   sourceChannels            SourceChannel[]
   marketingSpends           MarketingSpend[]
   calendarEvents            CalendarEvent[]
@@ -199,6 +201,7 @@ model Contact {
   account      Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
   transactions Transaction[]
   participantRoles TransactionParticipant[]
+  capitalStackEntries CapitalStackEntry[]
 
   @@index([accountId])
   @@index([fubPersonId], map: "idx_contacts_fub_person")
@@ -397,10 +400,13 @@ model Asset {
   createdAt            DateTime @default(now()) @map("created_at")
   updatedAt            DateTime @updatedAt @map("updated_at")
 
-  account      Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  transactions Transaction[]
-  projects     Project[]
-  tasks        Task[]
+  account       Account             @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  transactions  Transaction[]
+  projects      Project[]
+  tasks         Task[]
+  drawSchedules DrawSchedule[]
+  draws         Draw[]
+  capitalStack  CapitalStackEntry[]
 
   @@index([accountId])
   @@index([accountId, strategy], map: "idx_assets_account_strategy")
@@ -427,6 +433,97 @@ model Project {
   @@index([assetId])
   @@index([accountId])
   @@map("projects")
+}
+
+// ==================================================
+// INVESTOR MODULE — DRAW ENGINE (spec §2, §7)
+// Rehab draws tied to milestones, gated by a lien waiver before
+// release, with retainage (~10%) held back to punch-list. Used by Flip
+// and BRRRR renovation stages.
+// ==================================================
+
+model DrawSchedule {
+  id               String   @id @default(cuid())
+  assetId          String   @map("asset_id")
+  accountId        String   @map("account_id")
+  /// Retainage withheld from each release until punch-list (spec §7).
+  retainagePercent Float    @default(10) @map("retainage_percent")
+  /// Total rehab budget this schedule draws against (optional).
+  totalBudget      Float?   @map("total_budget")
+  status           String   @default("active") // active | complete
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  asset   Asset   @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  draws   Draw[]
+
+  @@index([assetId])
+  @@index([accountId])
+  @@map("draw_schedules")
+}
+
+model Draw {
+  id               String    @id @default(cuid())
+  drawScheduleId   String    @map("draw_schedule_id")
+  assetId          String    @map("asset_id")
+  /// Milestone this draw is tied to (e.g. "demo complete", "rough-in").
+  milestone        String
+  amount           Float
+  /// requested → verified (photos) → lien_waiver_received → released
+  /// (retainage withheld) → paid. The lien-waiver gate blocks release
+  /// until lienWaiverDocId is set.
+  status           String    @default("requested")
+  lienWaiverDocId  String?   @map("lien_waiver_doc_id")
+  verifyPhotosJson Json?     @map("verify_photos_json")
+  /// Dollar amount of retainage held back from this draw's release.
+  retainageHeld    Float?    @map("retainage_held")
+  /// Lender's release reference / confirmation id.
+  lenderReleaseRef String?   @map("lender_release_ref")
+  requestedAt      DateTime? @map("requested_at")
+  verifiedAt       DateTime? @map("verified_at")
+  releasedAt       DateTime? @map("released_at")
+  paidAt           DateTime? @map("paid_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  schedule DrawSchedule @relation(fields: [drawScheduleId], references: [id], onDelete: Cascade)
+  asset    Asset        @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([drawScheduleId])
+  @@index([assetId])
+  @@map("draws")
+}
+
+// ==================================================
+// INVESTOR MODULE — CAPITAL STACK (spec §2, §7)
+// The funding sources on a deal — private money, bridge, DSCR, seller
+// note, underlying loan (sub-to). Lenders are Contacts.
+// ==================================================
+
+model CapitalStackEntry {
+  id              String    @id @default(cuid())
+  assetId         String    @map("asset_id")
+  accountId       String    @map("account_id")
+  lenderContactId String?   @map("lender_contact_id")
+  /// private_money | bridge | dscr | seller_note | underlying_loan
+  type            String
+  principal       Float?
+  /// Annual interest rate as a human percent (e.g. 10 = 10%).
+  rate            Float?
+  balloonDate     DateTime? @map("balloon_date")
+  payoffBalance   Float?    @map("payoff_balance")
+  notes           String?
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  asset   Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  account Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  lender  Contact? @relation(fields: [lenderContactId], references: [id], onDelete: SetNull)
+
+  @@index([assetId])
+  @@index([accountId])
+  @@map("capital_stack_entries")
 }
 
 model Milestone {

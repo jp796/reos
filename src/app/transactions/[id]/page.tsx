@@ -31,6 +31,7 @@ import { ProductionToggle } from "./ProductionToggle";
 import { RezenCompliancePrepPanel } from "./RezenCompliancePrepPanel";
 import { ConvertListingButton } from "./ConvertListingButton";
 import { StagePanel } from "./StagePanel";
+import { DrawCapitalPanel } from "./DrawCapitalPanel";
 import {
   getStrategyTemplate,
   hasStageLifecycle,
@@ -634,6 +635,11 @@ export default async function TransactionDetailPage({
           )}
           currentStageKey={txn.asset.currentStageName}
         />
+      )}
+
+      {/* Investor draws + capital stack — principal deals only (spec §7). */}
+      {txn.asset && txn.asset.representation === "principal" && (
+        <DrawCapitalPanel assetId={txn.asset.id} />
       )}
 
       {/* Tasks — TC work queue, separate from milestones which track dates */}
