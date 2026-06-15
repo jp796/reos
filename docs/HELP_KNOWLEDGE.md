@@ -291,3 +291,12 @@ Rental/BRRRR, or Creative and the deal becomes a principal (investment)
 deal — the stage board, rehab draws, capital stack, and investor risk
 appear immediately. Switch back to Retail to hide them. (Backed by
 PATCH /api/assets/[id].)
+
+### Gmail scanning on investor deals (off until market)
+Investment deals (Flip, Wholesale, BRRRR) keep Gmail/SmartFolder OFF during
+acquisition and rehab — no inbox noise while you're not transacting by email.
+The SmartFolder activates automatically when the deal reaches its market-entry
+stage: Flip → "Prep to List", Wholesale → "Disposition", BRRRR → "Lease-Up".
+Until then the deal page shows "SmartFolder · waiting for market" with an
+"Activate Gmail now" button if you want it on early. Retail deals are
+unaffected — Gmail is on from creation.

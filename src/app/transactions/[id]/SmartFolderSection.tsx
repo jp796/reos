@@ -12,6 +12,11 @@ interface Props {
   backfillCount: number | null;
   eligible: boolean;
   eligibilityReason: string | null;
+  /** Investor deal not yet at market — Gmail is intentionally held off
+   *  until the deal goes to market (after rehab). */
+  gmailDeferred?: boolean;
+  /** The stage name where Gmail activates (e.g. "Prep to List"). */
+  marketEntryStageName?: string | null;
 }
 
 function fmtDate(iso: string) {
@@ -67,6 +72,49 @@ export function SmartFolderSection(props: Props) {
               {busy ? "Working…" : "Learn from folder"}
             </button>
           </div>
+        </div>
+        {msg && (
+          <div
+            className={`mt-3 rounded border px-3 py-2 text-xs ${isError ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}
+          >
+            {msg}
+          </div>
+        )}
+      </section>
+    );
+  }
+
+  // Investor deal still in acquisition / rehab — Gmail held off until
+  // the deal goes to market. Shows why, plus a manual override.
+  if (props.gmailDeferred) {
+    return (
+      <section className="mt-6 rounded-md border border-border bg-surface-2 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="text-xs uppercase tracking-wide text-text-muted">
+              SmartFolder · waiting for market
+            </div>
+            <div className="mt-1 text-sm text-text-muted">
+              Gmail scanning is off for this investment deal during
+              acquisition + rehab. It turns on automatically when the deal
+              reaches
+              {props.marketEntryStageName ? (
+                <span className="font-medium text-text"> {props.marketEntryStageName}</span>
+              ) : (
+                " market"
+              )}
+              .
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={setup}
+            disabled={busy}
+            className="shrink-0 rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-text-muted hover:border-brand-500 hover:text-brand-700 disabled:opacity-50"
+            title="Turn on Gmail scanning now, before the deal reaches market"
+          >
+            {busy ? "Activating…" : "Activate Gmail now"}
+          </button>
         </div>
         {msg && (
           <div

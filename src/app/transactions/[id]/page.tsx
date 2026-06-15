@@ -37,6 +37,8 @@ import { readEntitlements } from "@/lib/entitlements";
 import {
   getStrategyTemplate,
   hasStageLifecycle,
+  hasReachedMarketEntry,
+  marketEntryStage,
 } from "@/services/core/strategyTemplates";
 import type { Strategy } from "@/services/core/DealClassifierService";
 import { computeInvestorRisk } from "@/services/core/InvestorRiskService";
@@ -248,6 +250,20 @@ export default async function TransactionDetailPage({
   const investorEntitled = (await readEntitlements(actor.accountId)).includes(
     "investor",
   );
+
+  // Gmail deferral (JP's workflow): an investor deal stays Gmail-quiet
+  // through acquisition + rehab and only activates the SmartFolder at its
+  // market-entry stage. Retail deals are never deferred.
+  const isPrincipalDeal = txn.asset?.representation === "principal";
+  const gmailDeferred =
+    isPrincipalDeal &&
+    !hasReachedMarketEntry(
+      txn.asset!.strategy as Strategy,
+      txn.asset!.currentStageName,
+    );
+  const marketEntryName = isPrincipalDeal
+    ? (marketEntryStage(txn.asset!.strategy as Strategy)?.name ?? null)
+    : null;
 
   // Run the file audit server-side so MissingItemsAlert renders
   // synchronously with the page (no spinner, no flicker). Skip when
@@ -575,6 +591,7 @@ export default async function TransactionDetailPage({
         setupAt={txn.smartFolderSetupAt?.toISOString() ?? null}
         backfillCount={txn.smartFolderBackfillCount}
         eligible={
+          !gmailDeferred &&
           txn.createdAt >= SMART_FOLDER_CUTOFF &&
           !!txn.propertyAddress &&
           !txn.smartFolderFilterId
@@ -586,6 +603,8 @@ export default async function TransactionDetailPage({
               ? "no_property_address"
               : null
         }
+        gmailDeferred={gmailDeferred}
+        marketEntryStageName={marketEntryName}
       />
 
       <FinancialsForm

@@ -367,9 +367,15 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // SmartFolder (Contract = Folder skill)
+  // SmartFolder (Contract = Folder skill).
+  // Investor deals stay Gmail-quiet through acquisition + rehab — the
+  // SmartFolder is deferred until the deal reaches its market-entry
+  // stage (Flip→Prep-to-List, Wholesale→Disposition, BRRRR→Lease-Up),
+  // where the advance-stage route activates it. Retail deals scaffold
+  // immediately as before.
   let smartFolder: unknown = null;
   if (
+    classification.representation !== "principal" &&
     env.GOOGLE_CLIENT_ID &&
     env.GOOGLE_CLIENT_SECRET &&
     env.GOOGLE_REDIRECT_URI

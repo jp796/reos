@@ -43,6 +43,11 @@ export interface StageTemplate {
   /** Recurring hold/servicing stage (Rental Under-Management, Creative
    *  Loan-Servicing) — does not terminate. Phase 3+. */
   isRecurring?: boolean;
+  /** The stage where the deal "goes to market" — sale/lease comms begin.
+   *  Investor deals keep Gmail/SmartFolder OFF until they reach this
+   *  stage (no inbox noise during acquisition + rehab), then activate.
+   *  Retail deals ignore this (Gmail is on from creation). */
+  marketEntry?: boolean;
 }
 
 // ── Wholesale — 5 stages (spec §6.2) ──────────────────────────────────
@@ -86,6 +91,7 @@ const WHOLESALE: StageTemplate[] = [
     key: "disposition",
     name: "Marketing to Buyers / Disposition",
     order: 2,
+    marketEntry: true,
     tasks: [
       { key: "photos_to_marketing", name: "Upload photos to marketing", ownerRole: "agent" },
       { key: "blast_cash_buyers", name: "Blast cash-buyers list", ownerRole: "agent" },
@@ -192,6 +198,7 @@ const FLIP: StageTemplate[] = [
     key: "prep_to_list",
     name: "Prep to List",
     order: 3,
+    marketEntry: true,
     tasks: [
       { key: "cleaning", name: "Professional cleaning", ownerRole: "agent" },
       { key: "staging", name: "Soft staging", ownerRole: "agent" },
@@ -310,6 +317,7 @@ const RENTAL_BRRRR: StageTemplate[] = [
     key: "lease_up",
     name: "Lease-Up (Tenant Placement)",
     order: 3,
+    marketEntry: true,
     tasks: [
       { key: "make_ready", name: "Make-ready / clean", ownerRole: "agent" },
       { key: "landlord_insurance", name: "Switch to landlord / dwelling insurance", ownerRole: "agent" },
@@ -499,4 +507,29 @@ export function isRecurringStage(
 ): boolean {
   if (!stageKey) return false;
   return stageByKey(strategy, stageKey)?.isRecurring === true;
+}
+
+/** The "go to market" stage for a strategy (where sale/lease comms — and
+ *  Gmail activation — begin), or null if the strategy has none. */
+export function marketEntryStage(strategy: Strategy): StageTemplate | null {
+  return getStrategyTemplate(strategy).find((s) => s.marketEntry) ?? null;
+}
+
+/**
+ * Has an investor deal reached the point where Gmail should turn on?
+ * True once currentStage's order >= the market-entry stage's order. A
+ * strategy with no market-entry stage (e.g. creative hold) returns false
+ * — Gmail stays manual-only there. Strategies with no lifecycle
+ * (retail) are handled by the caller (Gmail on from creation).
+ */
+export function hasReachedMarketEntry(
+  strategy: Strategy,
+  currentStageKey: string | null | undefined,
+): boolean {
+  const entry = marketEntryStage(strategy);
+  if (!entry) return false;
+  if (!currentStageKey) return false;
+  const current = stageByKey(strategy, currentStageKey);
+  if (!current) return false;
+  return current.order >= entry.order;
 }

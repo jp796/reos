@@ -10,6 +10,8 @@ import {
   stageByKey,
   nextStage,
   humanTasks,
+  marketEntryStage,
+  hasReachedMarketEntry,
 } from "./strategyTemplates";
 
 function assert(cond: unknown, msg: string): asserts cond {
@@ -124,6 +126,32 @@ check("flip nextStage walks all 7 and ends", () => {
     key = n?.key ?? null;
   }
   assert(count === 7, `walked ${count} flip stages`);
+});
+
+check("market-entry stage is correct per strategy", () => {
+  assert(marketEntryStage("flip")?.key === "prep_to_list", "flip → prep_to_list");
+  assert(marketEntryStage("wholesale")?.key === "disposition", "wholesale → disposition");
+  assert(marketEntryStage("rental_brrrr")?.key === "lease_up", "rental → lease_up");
+  assert(marketEntryStage("retail") === null, "retail → none");
+});
+
+check("Gmail stays off pre-market, on at/after market entry (flip)", () => {
+  // Before market: acquisition + rehab stages → not reached.
+  assert(!hasReachedMarketEntry("flip", "under_contract_purchase"), "under contract not reached");
+  assert(!hasReachedMarketEntry("flip", "rehab"), "rehab not reached");
+  // At market entry and beyond → reached.
+  assert(hasReachedMarketEntry("flip", "prep_to_list"), "prep_to_list reached");
+  assert(hasReachedMarketEntry("flip", "on_market"), "on_market reached");
+  assert(hasReachedMarketEntry("flip", "sold"), "sold reached");
+  // No stage yet → not reached.
+  assert(!hasReachedMarketEntry("flip", null), "null not reached");
+});
+
+check("wholesale reaches market at disposition; BRRRR at lease_up", () => {
+  assert(!hasReachedMarketEntry("wholesale", "under_contract"), "wholesale UC not reached");
+  assert(hasReachedMarketEntry("wholesale", "disposition"), "wholesale disposition reached");
+  assert(!hasReachedMarketEntry("rental_brrrr", "renovations"), "BRRRR reno not reached");
+  assert(hasReachedMarketEntry("rental_brrrr", "lease_up"), "BRRRR lease_up reached");
 });
 
 console.log(`\n${passed} passed.`);
