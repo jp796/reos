@@ -32,6 +32,8 @@ import { RezenCompliancePrepPanel } from "./RezenCompliancePrepPanel";
 import { ConvertListingButton } from "./ConvertListingButton";
 import { StagePanel } from "./StagePanel";
 import { DrawCapitalPanel } from "./DrawCapitalPanel";
+import { DealTypeControl } from "./DealTypeControl";
+import { readEntitlements } from "@/lib/entitlements";
 import {
   getStrategyTemplate,
   hasStageLifecycle,
@@ -241,6 +243,12 @@ export default async function TransactionDetailPage({
   const complianceSystem = account?.brokerageProfile?.complianceSystem ?? null;
   const isRezenShop = complianceSystem === "rezen";
 
+  // Investor entitlement gates the Deal-type control (the front door to
+  // the investor PM surfaces).
+  const investorEntitled = (await readEntitlements(actor.accountId)).includes(
+    "investor",
+  );
+
   // Run the file audit server-side so MissingItemsAlert renders
   // synchronously with the page (no spinner, no flicker). Skip when
   // disabled — saves the Document scan for brokerages running their
@@ -362,6 +370,12 @@ export default async function TransactionDetailPage({
           />
           {txn.status === "listing" && (
             <ConvertListingButton transactionId={txn.id} />
+          )}
+          {investorEntitled && txn.asset && (
+            <DealTypeControl
+              assetId={txn.asset.id}
+              strategy={txn.asset.strategy}
+            />
           )}
           <PartiesQuickEdit
             transactionId={txn.id}

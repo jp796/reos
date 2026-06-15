@@ -283,3 +283,11 @@ strategy. Investment P&L dollars fill in as deal economics are entered.
 If auto-detect picks the wrong deal kind, change strategy / representation /
 title path (and record a hybrid agency commission component) via
 PATCH /api/assets/[id]. Changing strategy restarts the stage lifecycle.
+
+### Making a deal an investment deal (the front door)
+On any transaction page, owners/coordinators with the investor module
+enabled see a **Deal type** dropdown in the header. Pick Flip, Wholesale,
+Rental/BRRRR, or Creative and the deal becomes a principal (investment)
+deal — the stage board, rehab draws, capital stack, and investor risk
+appear immediately. Switch back to Retail to hide them. (Backed by
+PATCH /api/assets/[id].)
