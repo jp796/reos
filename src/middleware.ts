@@ -127,11 +127,7 @@ export function middleware(req: NextRequest) {
 
   const loginUrl = new URL("/login", req.url);
   loginUrl.searchParams.set("callbackUrl", pathname + (search ?? ""));
-  const res = NextResponse.redirect(loginUrl);
-  // TEMP debug: surface the host values middleware sees so we can verify
-  // canonical-host detection in prod. Remove after confirming.
-  res.headers.set("x-dbg-hosts", `xf=${fwdHost}|h=${rawHost}|nu=${nuHost}`);
-  return res;
+  return NextResponse.redirect(loginUrl);
 }
 
 // Match everything except Next.js internals + static file extensions.
