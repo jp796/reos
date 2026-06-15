@@ -9,6 +9,7 @@ import { prisma } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 import { requireSession, assertSameAccount } from "@/lib/require-session";
 import { parseInputDate } from "@/lib/dates";
+import { isCurrentStageComplete, advanceStage } from "@/services/core/StageEngine";
 
 const VALID_ASSIGNEES = new Set([
   "coordinator",
@@ -93,7 +94,29 @@ export async function PATCH(
   }
 
   const updated = await prisma.task.update({ where: { id: tid }, data });
-  return NextResponse.json({ ok: true, task: updated });
+
+  // Investor auto-advance (spec §8.1): completing the last open task of
+  // the Asset's current stage advances the lifecycle and instantiates
+  // the next stage's tasks. Only fires for stage-template tasks
+  // (assetId + stageKey set) on a completion edit. Non-blocking.
+  let stageAdvance:
+    | { from: string | null; to: string | null; created: number }
+    | null = null;
+  if (updated.assetId && updated.stageKey && body.completedAt) {
+    try {
+      if (await isCurrentStageComplete(prisma, updated.assetId)) {
+        const r = await advanceStage(prisma, { assetId: updated.assetId });
+        if (r.advanced) stageAdvance = { from: r.from, to: r.to, created: r.created };
+      }
+    } catch (err) {
+      console.warn(
+        "auto-advance after task completion failed (non-blocking):",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
+  return NextResponse.json({ ok: true, task: updated, stageAdvance });
 }
 
 export async function DELETE(

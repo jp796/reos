@@ -89,4 +89,41 @@ check("every task key is unique within its stage", () => {
   }
 });
 
+check("flip has 7 stages, rental & creative have 6", () => {
+  assert(getStrategyTemplate("flip").length === 7, "flip 7");
+  assert(getStrategyTemplate("rental_brrrr").length === 6, "rental 6");
+  assert(getStrategyTemplate("creative").length === 6, "creative 6");
+});
+
+check("all investor strategies have lifecycles; retail does not", () => {
+  for (const s of ["wholesale", "flip", "rental_brrrr", "creative"] as const) {
+    assert(hasStageLifecycle(s), `${s} should have a lifecycle`);
+  }
+  assert(!hasStageLifecycle("retail"), "retail none");
+});
+
+check("rental Under-Management and creative Loan-Servicing are recurring", () => {
+  assert(stageByKey("rental_brrrr", "under_management")?.isRecurring === true, "rental recurring");
+  assert(stageByKey("creative", "loan_servicing_hold")?.isRecurring === true, "creative recurring");
+});
+
+check("every stage order is contiguous 0..n-1 for all strategies", () => {
+  for (const s of ["wholesale", "flip", "rental_brrrr", "creative"] as const) {
+    getStrategyTemplate(s).forEach((stage, i) =>
+      assert(stage.order === i, `${s} stage ${i} order=${stage.order}`),
+    );
+  }
+});
+
+check("flip nextStage walks all 7 and ends", () => {
+  let key: string | null = "potential";
+  let count = 0;
+  while (key) {
+    count++;
+    const n = nextStage("flip", key);
+    key = n?.key ?? null;
+  }
+  assert(count === 7, `walked ${count} flip stages`);
+});
+
 console.log(`\n${passed} passed.`);
