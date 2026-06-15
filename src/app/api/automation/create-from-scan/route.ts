@@ -31,6 +31,9 @@ import {
 } from "@/services/integrations/GmailService";
 import { AutomationAuditService } from "@/services/integrations/FollowUpBossService";
 import { SmartFolderService } from "@/services/automation/SmartFolderService";
+import { classifyDeal } from "@/services/core/DealClassifierService";
+import { applyStrategyTemplate } from "@/services/core/StageEngine";
+import { hasStageLifecycle } from "@/services/core/strategyTemplates";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -73,6 +76,18 @@ interface Body {
   lenderName?: string | null;
   contractStage?: string | null;
   threadId?: string | null;
+  // ── Investor-module signals (spec §5). Optional — the retail Gmail
+  // scan never sends these, so a scanned contract classifies as
+  // retail/agency. Richer intake paths (voice, manual investor entry)
+  // pass them to drive flip / wholesale / BRRRR / creative detection. ──
+  contractText?: string | null;
+  rehabBudget?: boolean | null;
+  resaleIntent?: boolean | null;
+  rentEstimate?: boolean | null;
+  refinanceIntent?: boolean | null;
+  assignmentClause?: boolean | null;
+  cashBuyerDisposition?: boolean | null;
+  twoClosingIntent?: boolean | null;
 }
 
 export async function POST(req: NextRequest) {
@@ -187,10 +202,40 @@ export async function POST(req: NextRequest) {
       ? body.contractStage
       : "executed";
 
+  // ── Investor module (spec §2, §5): auto-detect the deal kind and
+  // create the parent Asset (the spine). For a retail Gmail scan no
+  // investor signals are present → classifies retail/agency, giving a
+  // degenerate 1:1 Asset that's invisible to the existing retail UI.
+  // The Transaction links to it via assetId. ──
+  const classification = classifyDeal({
+    text: body.contractText ?? null,
+    hasRehabBudget: body.rehabBudget ?? undefined,
+    hasResaleIntent: body.resaleIntent ?? undefined,
+    hasRentEstimate: body.rentEstimate ?? undefined,
+    hasRefinanceIntent: body.refinanceIntent ?? undefined,
+    hasAssignmentClause: body.assignmentClause ?? undefined,
+    hasCashBuyerDisposition: body.cashBuyerDisposition ?? undefined,
+    twoClosingIntent: body.twoClosingIntent ?? undefined,
+    hasClientParty: !!(body.buyerName || body.sellerName),
+    hasCommissionExpectation: !!(sellerPct || sellerAmt || buyerPct || buyerAmt),
+  });
+  const asset = await prisma.asset.create({
+    data: {
+      accountId: account.id,
+      ownerUserId: actingUserId,
+      address: body.address.slice(0, 240),
+      representation: classification.representation,
+      strategy: classification.strategy,
+      titlePath: classification.titlePath,
+      creativeSubstructure: classification.creativeSubstructure,
+    },
+  });
+
   const txn = await prisma.transaction.create({
     data: {
       accountId: account.id,
       contactId: contact.id,
+      assetId: asset.id,
       propertyAddress: body.address.slice(0, 240),
       transactionType: side === "sell" ? "seller" : "buyer",
       side,
@@ -301,6 +346,27 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  // Investor stage lifecycle (spec §6): for strategies that have a
+  // stage template (wholesale, and later flip/BRRRR/creative), seed
+  // stage-1 tasks onto the deal so the PM board starts populated.
+  // Retail is a no-op (no lifecycle). Non-blocking — a failure here
+  // must not fail the deal creation.
+  let stageSeeded: { stageKey: string | null; created: number } | null = null;
+  if (hasStageLifecycle(classification.strategy)) {
+    try {
+      const r = await applyStrategyTemplate(prisma, {
+        assetId: asset.id,
+        transactionId: txn.id,
+      });
+      stageSeeded = { stageKey: r.stageKey, created: r.created };
+    } catch (err) {
+      console.warn(
+        "stage seeding on create-from-scan failed (non-blocking):",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
   // SmartFolder (Contract = Folder skill)
   let smartFolder: unknown = null;
   if (
@@ -360,9 +426,17 @@ export async function POST(req: NextRequest) {
     created: true,
     transactionId: txn.id,
     contactId: contact.id,
+    assetId: asset.id,
+    classification: {
+      strategy: classification.strategy,
+      representation: classification.representation,
+      titlePath: classification.titlePath,
+      confidence: classification.confidence,
+    },
     milestonesCreated,
     grossCommission,
     earnestDueDerived,
+    stageSeeded,
     smartFolder,
   });
 }

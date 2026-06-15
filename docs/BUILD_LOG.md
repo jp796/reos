@@ -74,6 +74,27 @@ isolated to Phase 0 per JP).
 
 > ⚠️ Interceptor CLI not installed in this env — the new Settings toggle and lens filter are build-verified (next build + tsc) and serving, but not visually confirmed in-browser. Eyeball at Settings → Account and /transactions, or install Interceptor (skill Update workflow).
 
+### Session: 2026-06-14 (cont. 2) — Phase 0 classifier wiring + Phase 1 Wholesale
+
+**Finishes Phase 0** (classifier→intake) **and starts Phase 1** (Wholesale wedge).
+
+| File | Change |
+|------|--------|
+| `src/app/api/automation/create-from-scan/route.ts` | Every new deal now classifies (`classifyDeal`) + creates a parent **Asset** with strategy/representation/title_path, links `assetId`. Accepts optional investor signals in the body. Seeds stage-1 tasks for lifecycle strategies. Returns classification + stageSeeded. |
+| `prisma/schema.prisma` + `migrations/20260614210000_investor_phase1_stage_tasks` | `Task.assetId` (FK) + `Task.stageKey` + `Task.templateKey`, additive. Asset↔Task back-relation. |
+| `src/services/core/strategyTemplates.ts` | NEW. Wholesale 5-stage template (spec §6.2) as deterministic data + helpers (firstStage/nextStage/stageByKey/humanTasks). Flip/BRRRR/creative reserved (empty). |
+| `src/services/core/strategyTemplates.test.ts` | NEW. 9 assertions, all passing. |
+| `src/services/core/StageEngine.ts` | NEW. `applyStrategyTemplate` / `advanceStage` / `isCurrentStageComplete`. Stage tasks carry assetId+stageKey+templateKey (deduped), hang off the Asset's primary txn so they show in the existing TaskPanel. `auto` tasks not queued as human tasks. |
+| `src/app/api/assets/[id]/advance-stage/route.ts` | NEW. Tenancy-guarded stage advance. |
+| `src/app/transactions/[id]/StagePanel.tsx` + `page.tsx` | NEW panel — strategy + ordered stages + Advance button; gated to deals whose Asset has a lifecycle. Page query now includes `asset`. |
+| `docs/HELP_KNOWLEDGE.md` | Added investor-module section (entitlement, lens, deal kinds, lifecycle). |
+
+**Verify:** `bun tsx strategyTemplates.test.ts` → 9 passed · classifier 12 passed · `bunx tsc --noEmit` → 0 errors.
+
+**Behavior note:** create-from-scan now ALWAYS creates an Asset (retail → degenerate agency Asset). Additive — existing retail queries/UI unchanged; new retail deals show under the Retail lens.
+
+**Next:** auto-advance on task completion · cash-buyers segment · Drive/Chat auto-scaffold for `(auto)` tasks · then Flip (Phase 2: Draw engine + holding-cost meter).
+
 ---
 
 ## Session: 2026-06-13 — Scan info card + contact card fields

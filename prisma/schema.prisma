@@ -400,6 +400,7 @@ model Asset {
   account      Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
   transactions Transaction[]
   projects     Project[]
+  tasks        Task[]
 
   @@index([accountId])
   @@index([accountId, strategy], map: "idx_assets_account_strategy")
@@ -460,6 +461,16 @@ model Task {
   id            String    @id @default(cuid())
   transactionId String    @map("transaction_id")
   milestoneId   String?   @map("milestone_id")
+  /// Investor module (spec §2, §6): when this task was instantiated
+  /// from a strategy stage template, assetId links it to the Asset and
+  /// stageKey records which stage produced it (drives auto-advance —
+  /// a stage completes when all its non-auto tasks are done). Null for
+  /// ordinary retail TC tasks.
+  assetId       String?   @map("asset_id")
+  stageKey      String?   @map("stage_key")
+  /// Template task key (StageTemplate.tasks[].key) — dedupes
+  /// re-instantiation of the same stage.
+  templateKey   String?   @map("template_key")
   fubTaskId     String?   @unique @map("fub_task_id")
   title         String
   description   String?
@@ -473,9 +484,11 @@ model Task {
 
   transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
   milestone   Milestone?  @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  asset       Asset?      @relation(fields: [assetId], references: [id], onDelete: Cascade)
 
   @@index([transactionId])
   @@index([milestoneId])
+  @@index([assetId, stageKey], map: "idx_tasks_asset_stage")
   @@index([dueAt, completedAt])
   @@map("tasks")
 }

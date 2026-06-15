@@ -97,7 +97,17 @@ Tag legend: ✅ exists · 🔧 partial · 🔴 missing. Update as phases land.
   - [x] `scripts/backfill-assets.ts` (dry-run-safe, idempotent)
   - [x] Settings UI to grant the `investor` entitlement (owner-only toggle, Settings → Account) + `POST/GET /api/account/entitlements`
   - [x] Retail / Investment / All lens on `/transactions` (gated by entitlement; investment = Asset.representation principal, retail = agency + legacy null-asset)
-  - [~] Auto-detect classifier (§5) — pure `classifyDeal()` built + 12 unit tests passing (`src/services/core/DealClassifierService.ts`). **Remaining: wire it into the intake/create-from-scan pipeline so it actually creates an Asset with the classified fields.** Deferred to its own step (behavior change to core intake → run with the extraction-quality skill + fixtures).
+  - [x] Auto-detect classifier (§5) — `classifyDeal()` (12 tests) **wired into `create-from-scan`**: every new deal now creates a parent Asset with classified `strategy`/`representation`/`title_path`. Retail scans → agency/retail degenerate Asset (invisible to retail UI). Optional investor signals accepted in the body for richer intake paths.
+
+- [~] **Phase 1 — Wholesale wedge** (spec §6.2). *Started 2026-06-14.*
+  - [x] Wholesale 5-stage template as deterministic data + engine helpers (`strategyTemplates.ts`, 9 tests)
+  - [x] `StageEngine.ts` — `applyStrategyTemplate` / `advanceStage` / `isCurrentStageComplete`; tasks carry `assetId`+`stageKey`+`templateKey`, surface in the existing TaskPanel
+  - [x] Migration `20260614210000_investor_phase1_stage_tasks` (Task.assetId/stageKey/templateKey, additive)
+  - [x] Intake seeds stage-1 tasks for lifecycle strategies (wholesale)
+  - [x] `POST /api/assets/[id]/advance-stage` (tenancy-guarded) + `StagePanel` on the deal page (gated to lifecycle deals)
+  - [ ] Auto-advance on task completion (currently manual "Advance stage" button)
+  - [ ] Cash-buyers saved segment (Contact.rolesJson → disposition channel)
+  - [ ] Drive/Chat auto-scaffold for the `(auto)` stage tasks (Phase deps §7/§11)
 - [ ] **Phase 1 — Wholesale wedge** (lightest lift; validates auto-detect + auto-advance + Chat + cash-buyers list).
 - [ ] **Phase 2 — Flip + Draw engine + Holding-cost meter.**
 - [ ] **Phase 3 — Rental/BRRRR** (Lease-Up, refi 2nd closing, recurring-task engine).

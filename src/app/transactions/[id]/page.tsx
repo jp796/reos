@@ -30,6 +30,12 @@ import { PartiesQuickEdit } from "./PartiesQuickEdit";
 import { ProductionToggle } from "./ProductionToggle";
 import { RezenCompliancePrepPanel } from "./RezenCompliancePrepPanel";
 import { ConvertListingButton } from "./ConvertListingButton";
+import { StagePanel } from "./StagePanel";
+import {
+  getStrategyTemplate,
+  hasStageLifecycle,
+} from "@/services/core/strategyTemplates";
+import type { Strategy } from "@/services/core/DealClassifierService";
 import { SocialPostsPanel } from "./SocialPostsPanel";
 import { EsignPanel } from "./EsignPanel";
 import { SMART_FOLDER_CUTOFF } from "@/services/automation/SmartFolderService";
@@ -66,6 +72,17 @@ function fmtMoney(n: number | null | undefined) {
     currency: "USD",
     maximumFractionDigits: 0,
   }).format(n);
+}
+
+function strategyLabel(s: string): string {
+  const map: Record<string, string> = {
+    retail: "Retail",
+    flip: "Flip",
+    wholesale: "Wholesale",
+    rental_brrrr: "Rental / BRRRR",
+    creative: "Creative Finance",
+  };
+  return map[s] ?? s;
 }
 
 function statusBadge(status: string) {
@@ -112,6 +129,14 @@ export default async function TransactionDetailPage({
     where: { id, accountId: actor.accountId },
     include: {
       contact: true,
+      asset: {
+        select: {
+          id: true,
+          strategy: true,
+          representation: true,
+          currentStageName: true,
+        },
+      },
       milestones: { orderBy: { dueAt: "asc" } },
       tasks: { orderBy: { dueAt: "asc" } },
       documents: { orderBy: { uploadedAt: "desc" } },
@@ -596,6 +621,20 @@ export default async function TransactionDetailPage({
           }
         />
       </TransactionTimeline>
+
+      {/* Investor strategy lifecycle — only for deals whose Asset has a
+          stage template (wholesale, etc.). Stage tasks land in the Tasks
+          panel below; this drives the current stage + advance. */}
+      {txn.asset && hasStageLifecycle(txn.asset.strategy as Strategy) && (
+        <StagePanel
+          assetId={txn.asset.id}
+          strategyLabel={strategyLabel(txn.asset.strategy)}
+          stages={getStrategyTemplate(txn.asset.strategy as Strategy).map(
+            (s) => ({ key: s.key, name: s.name }),
+          )}
+          currentStageKey={txn.asset.currentStageName}
+        />
+      )}
 
       {/* Tasks — TC work queue, separate from milestones which track dates */}
       <TaskPanel

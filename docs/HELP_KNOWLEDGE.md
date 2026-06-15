@@ -229,3 +229,34 @@ It follows the ESIGN Act / UETA evidence model: explicit consent
 trail. Notarized documents (e.g. deeds) still go through your title
 company. (Endpoints: POST /api/transactions/[id]/esign with fields;
 public GET/POST under /api/sign/[token]/*.)
+
+## Investor module (beta)
+
+REOS extends beyond retail transaction coordination to real estate
+**investing** — flips, wholesale, rentals/BRRRR, and creative finance —
+on the same account, same contacts, same engines. It's an entitlement,
+not a separate app.
+
+### Turning it on
+The account owner enables it at **Settings → Account → Investor module**
+(toggle). Your existing retail transactions are unaffected. (Endpoint:
+POST /api/account/entitlements { investor: boolean } — owner only.)
+
+### The Retail / Investment / All lens
+Once enabled, the Transactions page gets a top **Retail / Investment /
+All** filter. It does not split your data — title companies, lenders,
+and inspectors stay shared. "Investment" shows principal-owned deals;
+"Retail" shows agency deals plus all your existing transactions.
+
+### Deal kinds (auto-detected)
+When a deal is created, REOS classifies it — retail, flip, wholesale,
+rental/BRRRR, or creative — from the contract + intake signals, and
+creates an **Asset** (the deal spine). You can override the
+classification.
+
+### Strategy lifecycle (Wholesale shipped first)
+Investor deals follow a stage lifecycle (e.g. Wholesale: Lead Analysis →
+Under Contract → Disposition → Assignment/Close → Closed). The deal page
+shows the current stage and an **Advance stage** button; advancing seeds
+that stage's tasks into the Tasks panel. (Endpoint: POST
+/api/assets/[id]/advance-stage.)
