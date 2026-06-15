@@ -37,6 +37,7 @@ import {
   hasStageLifecycle,
 } from "@/services/core/strategyTemplates";
 import type { Strategy } from "@/services/core/DealClassifierService";
+import { computeInvestorRisk } from "@/services/core/InvestorRiskService";
 import { SocialPostsPanel } from "./SocialPostsPanel";
 import { EsignPanel } from "./EsignPanel";
 import { SMART_FOLDER_CUTOFF } from "@/services/automation/SmartFolderService";
@@ -135,6 +136,7 @@ export default async function TransactionDetailPage({
           id: true,
           strategy: true,
           representation: true,
+          titlePath: true,
           currentStageName: true,
         },
       },
@@ -255,6 +257,45 @@ export default async function TransactionDetailPage({
 
   const risk = new RiskScoringService().compute({ transaction: txn });
   const health = riskHealth(risk.score);
+
+  // Investor risk (spec §10) — computed for principal deals from stored
+  // draw + capital data. Cheap: two aggregates + one row.
+  let investorRisk: ReturnType<typeof computeInvestorRisk> | null = null;
+  if (txn.asset && txn.asset.representation === "principal") {
+    const [drawAgg, nearestBalloon, sched] = await Promise.all([
+      prisma.draw.aggregate({
+        where: { assetId: txn.asset.id },
+        _sum: { amount: true },
+      }),
+      prisma.capitalStackEntry.findFirst({
+        where: { assetId: txn.asset.id, balloonDate: { not: null } },
+        select: { balloonDate: true },
+        orderBy: { balloonDate: "asc" },
+      }),
+      prisma.drawSchedule.findFirst({
+        where: { assetId: txn.asset.id, status: "active" },
+        select: { totalBudget: true },
+      }),
+    ]);
+    const daysHeld = txn.contractDate
+      ? Math.floor((Date.now() - txn.contractDate.getTime()) / 86_400_000)
+      : null;
+    const balloonHorizonDays = nearestBalloon?.balloonDate
+      ? Math.floor(
+          (nearestBalloon.balloonDate.getTime() - Date.now()) / 86_400_000,
+        )
+      : null;
+    const r = computeInvestorRisk({
+      strategy: txn.asset.strategy as Strategy,
+      titlePath: txn.asset.titlePath,
+      rehabBudget: sched?.totalBudget ?? null,
+      rehabSpent: drawAgg._sum.amount ?? null,
+      daysHeld,
+      balloonHorizonDays,
+      exitFunded: false,
+    });
+    if (r.factors.length > 0) investorRisk = r;
+  }
 
   return (
     <main className="mx-auto max-w-6xl">
@@ -635,6 +676,30 @@ export default async function TransactionDetailPage({
           )}
           currentStageKey={txn.asset.currentStageName}
         />
+      )}
+
+      {/* Investor risk signals (spec §10) — principal deals, shown only
+          when there's something to flag. */}
+      {investorRisk && (
+        <section className="mt-8 rounded-md border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/40 dark:bg-amber-950/30">
+          <div className="flex items-center justify-between">
+            <div className="reos-label text-amber-800 dark:text-amber-200">
+              Investor risk
+            </div>
+            <div className="font-display text-display-md font-semibold text-amber-800 dark:text-amber-200">
+              {investorRisk.score}
+              <span className="ml-1 font-sans text-sm font-normal opacity-60">/ 100</span>
+            </div>
+          </div>
+          <ul className="mt-3 space-y-1 text-sm text-amber-900 dark:text-amber-100">
+            {investorRisk.factors.map((x, i) => (
+              <li key={i} className="flex items-start justify-between gap-3">
+                <span>{x.description}</span>
+                <span className="shrink-0 tabular-nums opacity-70">+{x.impact}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       {/* Investor draws + capital stack — principal deals only (spec §7). */}

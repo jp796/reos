@@ -260,3 +260,26 @@ Under Contract → Disposition → Assignment/Close → Closed). The deal page
 shows the current stage and an **Advance stage** button; advancing seeds
 that stage's tasks into the Tasks panel. (Endpoint: POST
 /api/assets/[id]/advance-stage.)
+
+### Rehab draws & capital stack (investor)
+Flip and BRRRR deals get a draw board: request a draw against a milestone,
+verify it, attach a lien waiver, then release. REOS holds retainage (default
+10%) until punch-list. A draw cannot be released without a lien waiver. The
+capital stack tracks funding sources (private money, bridge, DSCR, seller
+note, underlying loan) and warns when a balloon is within 90 days. (Endpoints:
+/api/assets/[id]/draws, /api/assets/[id]/capital.)
+
+### Cash buyers (wholesale disposition)
+Settings → your contacts can be tagged as cash buyers at /contacts/cash-buyers.
+Search to add, then "Copy all emails" to blast the segment when a wholesale
+deal goes to market.
+
+### Production — revenue type
+Investor-entitled accounts see a Revenue type split on /production: agency
+GCI (retail commission) vs investment deals closed/active, broken down by
+strategy. Investment P&L dollars fill in as deal economics are entered.
+
+### Overriding a deal's classification
+If auto-detect picks the wrong deal kind, change strategy / representation /
+title path (and record a hybrid agency commission component) via
+PATCH /api/assets/[id]. Changing strategy restarts the stage lifecycle.

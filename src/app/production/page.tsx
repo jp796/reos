@@ -17,7 +17,19 @@ import { NextResponse } from "next/server";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/require-session";
+import { readEntitlements } from "@/lib/entitlements";
 import { ExcludeRowButton } from "./ExcludeRowButton";
+
+function strategyLabel(s: string): string {
+  const m: Record<string, string> = {
+    retail: "Retail",
+    flip: "Flip",
+    wholesale: "Wholesale",
+    rental_brrrr: "Rental / BRRRR",
+    creative: "Creative",
+  };
+  return m[s] ?? s;
+}
 
 export const dynamic = "force-dynamic";
 
@@ -148,6 +160,47 @@ export default async function ProductionPage({
     ]);
 
   /* ------------------------------------------------------------------
+   * INVESTOR REVENUE SPLIT (spec §9) — unified Production: agency
+   * commission vs investment P&L, tagged by revenue type. Only for
+   * investor-entitled accounts; never alters the retail numbers above.
+   * ------------------------------------------------------------------ */
+  const investorEntitled = (await readEntitlements(accountId)).includes(
+    "investor",
+  );
+  const closedThisYear = investorEntitled
+    ? await prisma.transaction.findMany({
+        where: {
+          accountId,
+          status: "closed",
+          closingDate: { gte: yearStart, lt: yearEnd },
+          excludeFromProduction: false,
+        },
+        select: {
+          financials: { select: { grossCommission: true } },
+          asset: { select: { representation: true, strategy: true } },
+        },
+      })
+    : [];
+  const investmentActive = investorEntitled
+    ? await prisma.asset.count({
+        where: { accountId, representation: "principal", status: "active" },
+      })
+    : 0;
+
+  let agencyGci = 0;
+  const investmentByStrategy: Record<string, number> = {};
+  let investmentClosed = 0;
+  for (const t of closedThisYear) {
+    if (t.asset?.representation === "principal") {
+      investmentClosed++;
+      const s = t.asset.strategy ?? "principal";
+      investmentByStrategy[s] = (investmentByStrategy[s] ?? 0) + 1;
+    } else {
+      agencyGci += t.financials?.grossCommission ?? 0;
+    }
+  }
+
+  /* ------------------------------------------------------------------
    * PIPELINE FUNNEL — leads → active → closed by source, plus
    * conversion% and avg days from contract to close. Used to drive
    * the "where do my best deals come from" question.
@@ -259,6 +312,62 @@ export default async function ProductionPage({
 
   return (
     <main className="mx-auto max-w-6xl">
+      {investorEntitled && (
+        <section className="mb-6 rounded-md border border-border bg-surface p-4">
+          <div className="reos-label mb-3">Revenue type · {year}</div>
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            <div>
+              <div className="text-xs uppercase tracking-wide text-text-muted">
+                Agency GCI (retail)
+              </div>
+              <div className="mt-0.5 font-display text-display-md font-semibold tabular-nums">
+                {fmtMoney(agencyGci || null)}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wide text-text-muted">
+                Investment deals closed
+              </div>
+              <div className="mt-0.5 font-display text-display-md font-semibold tabular-nums">
+                {investmentClosed}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wide text-text-muted">
+                Investment active
+              </div>
+              <div className="mt-0.5 font-display text-display-md font-semibold tabular-nums">
+                {investmentActive}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wide text-text-muted">
+                By strategy (closed)
+              </div>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {Object.keys(investmentByStrategy).length === 0 ? (
+                  <span className="text-sm text-text-muted">—</span>
+                ) : (
+                  Object.entries(investmentByStrategy).map(([s, n]) => (
+                    <span
+                      key={s}
+                      className="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-text"
+                    >
+                      {strategyLabel(s)} {n}
+                    </span>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-text-muted">
+            Investment P&amp;L dollars populate as deal economics are entered
+            (purchase, rehab, sale). Agency commission rolls up from closed
+            retail transactions.
+          </p>
+        </section>
+      )}
+
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="reos-label">Production</div>

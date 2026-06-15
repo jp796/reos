@@ -152,3 +152,25 @@ API status should all appear on the transaction detail page — no manual re-ent
 - Per-slot doc pinning in Rezen compliance prep
 - Send-to-Rezen stub live
 - 4 migration columns confirmed in prod DB
+
+### Session: 2026-06-14 (cont. 3) — Phases 1–5 COMPLETE
+
+Drove the full investor module to completion (all spec §6 strategies + §7/§9/§10 engines).
+
+| Area | Files |
+|------|------|
+| All templates (Flip/Rental/Creative) | `strategyTemplates.ts` (+ tests, 14) |
+| Auto-advance on task completion (§8.1) | `tasks/[tid]/route.ts` |
+| Economics (§9) | `DealEconomicsService.ts` (+ tests, 7) |
+| Holding-cost meter (§7) | `HoldingCostMeter.ts` (+ tests, 4) |
+| Draw engine + capital stack (§7) | `DrawEngine.ts` (+ tests, 7), migration `20260614223000`, `/api/assets/[id]/draws*`, `/capital`, `DrawCapitalPanel.tsx` |
+| Recurring engine (§7) | `StageEngine.generateRecurringTasks` + `/api/assets/recurring/generate` |
+| Investor risk (§10) | `InvestorRiskService.ts` (+ tests, 9), wired into deal page |
+| Cash-buyers segment (§7) | `/api/contacts/cash-buyers`, `/contacts/cash-buyers` page |
+| Unified Production (§9) | revenue-split section on `/production` |
+| Hybrid + override (§1/§5) | `PATCH /api/assets/[id]` (classification + agencyComponent) |
+| Drive/Chat scaffold (§7/§11) | `DealWorkspaceService.ts` — flag-gated OFF (boundary documented) |
+
+**Verify:** 53 unit tests green · `bunx tsc --noEmit` 0 errors · 2 deploys green this session (logic chunk + Phase 2 migration), final chunk deploying now.
+
+**Remaining to ACTIVATE (not code — ops):** add Drive scope to DEFAULT_SCOPES + re-consent and provision Google Chat API to flip `INVESTOR_DRIVE_ENABLED`/`INVESTOR_CHAT_ENABLED` on. Legal review (§13) before scaling Creative.

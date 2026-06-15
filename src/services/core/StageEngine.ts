@@ -27,6 +27,7 @@ import {
   stageByKey,
   humanTasks,
   hasStageLifecycle,
+  isRecurringStage,
   type StageTemplate,
 } from "./strategyTemplates";
 
@@ -109,6 +110,60 @@ export async function applyStrategyTemplate(
     data: { currentStageName: stage.key },
   });
   return { applied: true, stageKey: stage.key, created };
+}
+
+/** Month key (YYYY-MM) used to tag recurring task instances. */
+export function monthKeyOf(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/**
+ * Recurring-task engine (spec §7): for an Asset sitting in a recurring
+ * stage (Rental Under-Management, Creative Loan-Servicing), generate
+ * this month's task set. Tasks are tagged `templateKey = key#YYYY-MM`
+ * so each month gets its own set and re-runs are idempotent. Safe to
+ * call daily from the morning tick — it only creates the missing month.
+ */
+export async function generateRecurringTasks(
+  db: Db,
+  opts: { assetId: string; asOf?: Date },
+): Promise<{ generated: number; monthKey: string | null }> {
+  const asset = await db.asset.findUnique({
+    where: { id: opts.assetId },
+    select: { id: true, strategy: true, currentStageName: true },
+  });
+  if (!asset?.currentStageName) return { generated: 0, monthKey: null };
+  const strategy = asset.strategy as Strategy;
+  if (!isRecurringStage(strategy, asset.currentStageName)) {
+    return { generated: 0, monthKey: null };
+  }
+  const stage = stageByKey(strategy, asset.currentStageName);
+  if (!stage) return { generated: 0, monthKey: null };
+  const txnId = await primaryTransactionId(db, asset.id);
+  if (!txnId) return { generated: 0, monthKey: null };
+
+  const monthKey = monthKeyOf(opts.asOf ?? new Date());
+  let generated = 0;
+  for (const t of humanTasks(stage)) {
+    const templateKey = `${t.key}#${monthKey}`;
+    const exists = await db.task.findFirst({
+      where: { assetId: asset.id, stageKey: stage.key, templateKey },
+      select: { id: true },
+    });
+    if (exists) continue;
+    await db.task.create({
+      data: {
+        transactionId: txnId,
+        assetId: asset.id,
+        stageKey: stage.key,
+        templateKey,
+        title: `${t.name} (${monthKey})`,
+        description: `${stage.name} · recurring · owner: ${t.ownerRole}`,
+      },
+    });
+    generated++;
+  }
+  return { generated, monthKey };
 }
 
 /** True when every human task in the Asset's current stage is complete. */

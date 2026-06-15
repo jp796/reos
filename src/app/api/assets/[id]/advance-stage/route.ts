@@ -11,6 +11,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/require-session";
 import { advanceStage } from "@/services/core/StageEngine";
+import { scaffoldDealWorkspace } from "@/services/automation/DealWorkspaceService";
 
 export const runtime = "nodejs";
 
@@ -33,5 +34,16 @@ export async function POST(
   }
 
   const result = await advanceStage(prisma, { assetId: asset.id });
+
+  // Auto-scaffold the deal workspace (Drive/Chat) on advance. No-op
+  // unless the integration flags are on (spec §7, §11). Non-blocking.
+  if (result.advanced) {
+    try {
+      await scaffoldDealWorkspace(prisma, { assetId: asset.id });
+    } catch {
+      // scaffoldDealWorkspace is contractually non-throwing; ignore.
+    }
+  }
+
   return NextResponse.json({ ok: true, ...result });
 }

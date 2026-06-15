@@ -99,20 +99,36 @@ Tag legend: ✅ exists · 🔧 partial · 🔴 missing. Update as phases land.
   - [x] Retail / Investment / All lens on `/transactions` (gated by entitlement; investment = Asset.representation principal, retail = agency + legacy null-asset)
   - [x] Auto-detect classifier (§5) — `classifyDeal()` (12 tests) **wired into `create-from-scan`**: every new deal now creates a parent Asset with classified `strategy`/`representation`/`title_path`. Retail scans → agency/retail degenerate Asset (invisible to retail UI). Optional investor signals accepted in the body for richer intake paths.
 
-- [~] **Phase 1 — Wholesale wedge** (spec §6.2). *Started 2026-06-14.*
-  - [x] Wholesale 5-stage template as deterministic data + engine helpers (`strategyTemplates.ts`, 9 tests)
-  - [x] `StageEngine.ts` — `applyStrategyTemplate` / `advanceStage` / `isCurrentStageComplete`; tasks carry `assetId`+`stageKey`+`templateKey`, surface in the existing TaskPanel
-  - [x] Migration `20260614210000_investor_phase1_stage_tasks` (Task.assetId/stageKey/templateKey, additive)
-  - [x] Intake seeds stage-1 tasks for lifecycle strategies (wholesale)
-  - [x] `POST /api/assets/[id]/advance-stage` (tenancy-guarded) + `StagePanel` on the deal page (gated to lifecycle deals)
-  - [ ] Auto-advance on task completion (currently manual "Advance stage" button)
-  - [ ] Cash-buyers saved segment (Contact.rolesJson → disposition channel)
-  - [ ] Drive/Chat auto-scaffold for the `(auto)` stage tasks (Phase deps §7/§11)
-- [ ] **Phase 1 — Wholesale wedge** (lightest lift; validates auto-detect + auto-advance + Chat + cash-buyers list).
-- [ ] **Phase 2 — Flip + Draw engine + Holding-cost meter.**
-- [ ] **Phase 3 — Rental/BRRRR** (Lease-Up, refi 2nd closing, recurring-task engine).
-- [ ] **Phase 4 — Creative Finance** (servicing engine, balloon/payment alerts; ship after legal review §13).
-- [ ] **Phase 5 — Hybrid deals + unified Production/reconciliation.**
+- [x] **Phase 1 — Wholesale wedge** (§6.2): 5-stage template, StageEngine
+  (apply/advance/complete), migration `20260614210000`, intake seeding,
+  `advance-stage` API + StagePanel, **auto-advance on task completion** (§8.1),
+  **cash-buyers segment** (`/contacts/cash-buyers`), **Drive/Chat scaffold**
+  (`DealWorkspaceService`, flag-gated — see boundary note).
+- [x] **Phase 2 — Flip + Draw engine + Holding-cost meter**: Flip 7-stage (§6.1);
+  `DrawEngine` (lien-waiver gate + retainage), migration `20260614223000`
+  (DrawSchedule/Draw), draw APIs + `DrawCapitalPanel`; `HoldingCostMeter` (§7);
+  `CapitalStackEntry` + API + UI.
+- [x] **Phase 3 — Rental/BRRRR**: 6-stage (§6.3) incl. Lease-Up + Refinance;
+  recurring-task engine (`generateRecurringTasks` + `/api/assets/recurring/generate`).
+- [x] **Phase 4 — Creative Finance**: 6-stage (§6.4) incl. recurring Loan-Servicing;
+  risk signals incl. underlying-payment-late (top severity) + balloon alerts (§10).
+  ⚠️ §13 — tracks/checklists/services only; never generates legal instruments. Confirm with counsel before scaling.
+- [x] **Phase 5 — Hybrid + unified Production**: per-strategy economics
+  (`DealEconomicsService`, §9) + `reconcile()`; Production revenue-split
+  (agency GCI vs investment); hybrid + classification override via `PATCH /api/assets/[id]`.
+
+### Integration boundary (honest status)
+
+`DealWorkspaceService` (Drive folder tree + Google Chat space, §7/§11) is
+**built + wired but feature-flagged OFF** (`INVESTOR_DRIVE_ENABLED`,
+`INVESTOR_CHAT_ENABLED`). Going live needs the Drive scope added to
+`DEFAULT_SCOPES` + user re-consent, and the Google Chat API + scopes
+provisioned. Until then it's a safe no-op. Everything else is live.
+
+### Engines & tests (all green)
+
+`DealClassifierService` (12) · `strategyTemplates` (14) · `DealEconomicsService` (7)
+· `HoldingCostMeter` (4) · `DrawEngine` (7) · `InvestorRiskService` (9) = **53 unit tests**.
 
 ---
 

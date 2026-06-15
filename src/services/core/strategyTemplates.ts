@@ -490,3 +490,13 @@ export function nextStage(
 export function humanTasks(stage: StageTemplate): TaskTemplate[] {
   return stage.tasks.filter((t) => !t.auto);
 }
+
+/** True when the given stage of a strategy is recurring (hold/servicing
+ *  — Rental Under-Management, Creative Loan-Servicing). */
+export function isRecurringStage(
+  strategy: Strategy,
+  stageKey: string | null | undefined,
+): boolean {
+  if (!stageKey) return false;
+  return stageByKey(strategy, stageKey)?.isRecurring === true;
+}
