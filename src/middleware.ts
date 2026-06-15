@@ -88,14 +88,16 @@ export function middleware(req: NextRequest) {
   // back to the apex (AUTH_URL). A user who starts on www therefore
   // fails with "InvalidCheck: pkceCodeVerifier could not be parsed".
   // Force every www.* request to the apex so sign-in starts and ends on
-  // one origin. 308 preserves method + body.
-  const host = req.headers.get("host") ?? "";
-  if (host.toLowerCase().startsWith("www.")) {
-    const apex = host.slice(4);
-    return NextResponse.redirect(
-      `https://${apex}${pathname}${search ?? ""}`,
-      308,
-    );
+  // one origin. 308 preserves method + body. NOTE: read the host from
+  // nextUrl (which honors X-Forwarded-Host), NOT the raw Host header —
+  // behind the Cloud Run domain mapping the raw Host is the internal
+  // *.run.app and would never match "www.".
+  const hostname = req.nextUrl.hostname.toLowerCase();
+  if (hostname.startsWith("www.")) {
+    const apexUrl = req.nextUrl.clone();
+    apexUrl.hostname = hostname.slice(4);
+    apexUrl.port = "";
+    return NextResponse.redirect(apexUrl, 308);
   }
 
   if (isPublic(pathname)) return NextResponse.next();
