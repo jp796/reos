@@ -88,14 +88,20 @@ export function middleware(req: NextRequest) {
   // back to the apex (AUTH_URL). A user who starts on www therefore
   // fails with "InvalidCheck: pkceCodeVerifier could not be parsed".
   // Force every www.* request to the apex so sign-in starts and ends on
-  // one origin. 308 preserves method + body. NOTE: read the host from
-  // nextUrl (which honors X-Forwarded-Host), NOT the raw Host header —
-  // behind the Cloud Run domain mapping the raw Host is the internal
-  // *.run.app and would never match "www.".
-  const hostname = req.nextUrl.hostname.toLowerCase();
-  if (hostname.startsWith("www.")) {
+  // one origin. Behind the Cloud Run domain mapping the public host can
+  // surface in any of X-Forwarded-Host / Host / nextUrl, so check all
+  // three. 308 preserves method + body.
+  const fwdHost = (req.headers.get("x-forwarded-host") ?? "")
+    .split(",")[0]
+    .trim()
+    .toLowerCase();
+  const rawHost = (req.headers.get("host") ?? "").toLowerCase();
+  const nuHost = req.nextUrl.hostname.toLowerCase();
+  const wwwHost = [fwdHost, rawHost, nuHost].find((h) => h.startsWith("www."));
+  if (wwwHost) {
     const apexUrl = req.nextUrl.clone();
-    apexUrl.hostname = hostname.slice(4);
+    apexUrl.protocol = "https:";
+    apexUrl.hostname = wwwHost.slice(4);
     apexUrl.port = "";
     return NextResponse.redirect(apexUrl, 308);
   }
@@ -121,7 +127,11 @@ export function middleware(req: NextRequest) {
 
   const loginUrl = new URL("/login", req.url);
   loginUrl.searchParams.set("callbackUrl", pathname + (search ?? ""));
-  return NextResponse.redirect(loginUrl);
+  const res = NextResponse.redirect(loginUrl);
+  // TEMP debug: surface the host values middleware sees so we can verify
+  // canonical-host detection in prod. Remove after confirming.
+  res.headers.set("x-dbg-hosts", `xf=${fwdHost}|h=${rawHost}|nu=${nuHost}`);
+  return res;
 }
 
 // Match everything except Next.js internals + static file extensions.
