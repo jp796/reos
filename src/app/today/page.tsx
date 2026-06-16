@@ -21,6 +21,7 @@ import {
 import { ReconcileSSButton } from "./ReconcileSSButton";
 import { PostCloseTickButton } from "./PostCloseTickButton";
 import { requireSession } from "@/lib/require-session";
+import { dealVisibilityWhere } from "@/lib/deal-visibility";
 import { cn } from "@/lib/cn";
 
 export const dynamic = "force-dynamic";
@@ -84,7 +85,10 @@ export default async function TodayPage({
     scope === "mine" && actingUserId
       ? { assignedUserId: actingUserId }
       : {};
-  const txnTenantFilter = { accountId: actingAccountId };
+  const txnTenantFilter =
+    actor instanceof Response
+      ? { accountId: actingAccountId }
+      : { accountId: actingAccountId, ...dealVisibilityWhere(actor) };
 
   const now = new Date();
   const weekFromNow = new Date(now.getTime() + 7 * DAY_MS);

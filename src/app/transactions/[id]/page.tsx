@@ -35,6 +35,8 @@ import { DrawCapitalPanel } from "./DrawCapitalPanel";
 import { EconomicsPanel } from "./EconomicsPanel";
 import { DealTypeControl } from "./DealTypeControl";
 import { readEntitlements } from "@/lib/entitlements";
+import { isDealVisible, canToggleRestriction } from "@/lib/deal-visibility";
+import { VisibilityToggle } from "./VisibilityToggle";
 import {
   getStrategyTemplate,
   hasStageLifecycle,
@@ -186,6 +188,11 @@ export default async function TransactionDetailPage({
   });
 
   if (!txn) return notFound();
+
+  // Per-deal privacy: a restricted deal is a clean 404 for anyone who
+  // isn't the assignee or an owner/admin — same shape as a cross-tenant
+  // miss, so its existence isn't even confirmable.
+  if (!isDealVisible(actor, txn)) return notFound();
 
   const contact = txn.contact;
   const signerOptions = [
@@ -393,6 +400,15 @@ export default async function TransactionDetailPage({
             <DealTypeControl
               assetId={txn.asset.id}
               strategy={txn.asset.strategy}
+            />
+          )}
+          {canToggleRestriction(actor.role) && (
+            <VisibilityToggle
+              transactionId={txn.id}
+              initialRestricted={txn.restrictedToAssignee}
+              assigneeName={
+                team.find((t) => t.id === txn.assignedUserId)?.name ?? null
+              }
             />
           )}
           <PartiesQuickEdit

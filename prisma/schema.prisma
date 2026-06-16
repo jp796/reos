@@ -296,6 +296,13 @@ model Transaction {
   /// (defaults to the creating user on auto-create). Defer-SET so we
   /// don't block on a user row during transaction auto-create paths.
   assignedUserId         String?   @map("assigned_user_id")
+  /// Per-deal visibility lock. When true, this deal is hidden from
+  /// everyone EXCEPT the assigned user (assignedUserId) and account
+  /// owners/admins — used for sensitive deals (e.g. the owner's own
+  /// principal/investor deals). Default false = account-wide visible,
+  /// so existing deals are unchanged. Enforced on every discovery/view
+  /// surface via lib/deal-visibility.ts.
+  restrictedToAssignee   Boolean   @default(false) @map("restricted_to_assignee")
   // Contract extraction: pending review + last applied timestamp
   pendingContractJson    Json?     @map("pending_contract_json")
   contractExtractedAt    DateTime? @map("contract_extracted_at")

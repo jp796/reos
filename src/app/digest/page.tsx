@@ -15,6 +15,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/require-session";
+import { dealVisibilityWhere } from "@/lib/deal-visibility";
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +59,7 @@ export default async function DigestPage() {
   const closedLast7 = await prisma.transaction.findMany({
     where: {
       accountId: actor.accountId,
+      ...dealVisibilityWhere(actor),
       status: "closed",
       excludeFromProduction: false,
       isDemo: false,
@@ -71,6 +73,7 @@ export default async function DigestPage() {
   const closingNext7 = await prisma.transaction.findMany({
     where: {
       accountId: actor.accountId,
+      ...dealVisibilityWhere(actor),
       status: { in: ["active", "pending"] },
       closingDate: { gt: now, lte: weekFromNow },
     },
@@ -83,6 +86,7 @@ export default async function DigestPage() {
     where: {
       transaction: {
         accountId: actor.accountId,
+        ...dealVisibilityWhere(actor),
         status: { in: ["active", "pending"] },
       },
       completedAt: null,
@@ -95,7 +99,7 @@ export default async function DigestPage() {
 
   // 4. Silent deals — active, last comm event >14d ago (or none).
   const silentCandidates = await prisma.transaction.findMany({
-    where: { accountId: actor.accountId, status: "active" },
+    where: { accountId: actor.accountId, ...dealVisibilityWhere(actor), status: "active" },
     include: {
       contact: true,
       communicationEvents: {

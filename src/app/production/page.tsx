@@ -18,6 +18,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/require-session";
 import { readEntitlements } from "@/lib/entitlements";
+import { dealVisibilityWhere } from "@/lib/deal-visibility";
 import {
   economicsFromBag,
   headlineMetric,
@@ -87,6 +88,7 @@ export default async function ProductionPage({
       prisma.transaction.findMany({
         where: {
           accountId,
+          ...dealVisibilityWhere(actor),
           status: "closed",
           excludeFromProduction: false,
           isDemo: false,
@@ -176,6 +178,7 @@ export default async function ProductionPage({
     ? await prisma.transaction.findMany({
         where: {
           accountId,
+          ...dealVisibilityWhere(actor),
           status: "closed",
           closingDate: { gte: yearStart, lt: yearEnd },
           excludeFromProduction: false,

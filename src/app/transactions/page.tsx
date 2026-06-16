@@ -14,6 +14,7 @@ import { CalendarSyncButton } from "./CalendarSyncButton";
 import { QuickCloseButton } from "./QuickCloseButton";
 import { cn } from "@/lib/cn";
 import { readEntitlements } from "@/lib/entitlements";
+import { dealVisibilityWhere } from "@/lib/deal-visibility";
 
 export const dynamic = "force-dynamic";
 
@@ -89,8 +90,13 @@ export default async function TransactionsPage({
   const actingUserId = actor instanceof Response ? null : actor.userId;
   // Tenant scope — every query below MUST include this. Without it
   // the list leaks every transaction across every tenant in the DB.
+  // Base scope = tenant + per-deal visibility. Folding visibility in
+  // here means the main query AND every count below respect it in one
+  // shot — no restricted deal can leak through a forgotten count.
   const accountWhere =
-    actor instanceof Response ? { accountId: "__none__" } : { accountId: actor.accountId };
+    actor instanceof Response
+      ? { accountId: "__none__" }
+      : { accountId: actor.accountId, ...dealVisibilityWhere(actor) };
 
   // Investor entitlement gates the Retail/Investment lens. Retail-only
   // accounts never see it (and a stale ?lens= is ignored for them).

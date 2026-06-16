@@ -14,6 +14,7 @@ import { NextResponse } from "next/server";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/require-session";
+import { dealVisibilityWhere } from "@/lib/deal-visibility";
 import { Home, Plus } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -41,7 +42,7 @@ export default async function ListingsPage() {
   if (actor instanceof NextResponse) return notFound();
 
   const listings = await prisma.transaction.findMany({
-    where: { accountId: actor.accountId, status: "listing" },
+    where: { accountId: actor.accountId, ...dealVisibilityWhere(actor), status: "listing" },
     include: {
       contact: true,
       financials: { select: { salePrice: true } },

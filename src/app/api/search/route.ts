@@ -13,6 +13,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/require-session";
+import { dealVisibilityWhere } from "@/lib/deal-visibility";
 
 export const dynamic = "force-dynamic";
 
@@ -52,11 +53,18 @@ export async function GET(req: NextRequest) {
     prisma.transaction.findMany({
       where: {
         accountId: actor.accountId,
-        OR: [
-          { propertyAddress: { contains: like, mode: "insensitive" } },
-          { city: { contains: like, mode: "insensitive" } },
-          { zip: { contains: like, mode: "insensitive" } },
-          { contact: { fullName: { contains: like, mode: "insensitive" } } },
+        // AND (not a 2nd top-level OR) so the search-term OR and the
+        // visibility OR don't collide.
+        AND: [
+          {
+            OR: [
+              { propertyAddress: { contains: like, mode: "insensitive" } },
+              { city: { contains: like, mode: "insensitive" } },
+              { zip: { contains: like, mode: "insensitive" } },
+              { contact: { fullName: { contains: like, mode: "insensitive" } } },
+            ],
+          },
+          dealVisibilityWhere(actor),
         ],
       },
       take: 10,
