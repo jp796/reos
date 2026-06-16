@@ -18,6 +18,11 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/require-session";
 import { readEntitlements } from "@/lib/entitlements";
+import {
+  economicsFromBag,
+  headlineMetric,
+} from "@/services/core/DealEconomicsService";
+import type { Strategy } from "@/services/core/DealClassifierService";
 import { ExcludeRowButton } from "./ExcludeRowButton";
 
 function strategyLabel(s: string): string {
@@ -177,7 +182,9 @@ export default async function ProductionPage({
         },
         select: {
           financials: { select: { grossCommission: true } },
-          asset: { select: { representation: true, strategy: true } },
+          asset: {
+            select: { representation: true, strategy: true, economicsJson: true },
+          },
         },
       })
     : [];
@@ -190,11 +197,18 @@ export default async function ProductionPage({
   let agencyGci = 0;
   const investmentByStrategy: Record<string, number> = {};
   let investmentClosed = 0;
+  let investmentPnl = 0; // summed headline metric across closed investment deals
   for (const t of closedThisYear) {
     if (t.asset?.representation === "principal") {
       investmentClosed++;
       const s = t.asset.strategy ?? "principal";
       investmentByStrategy[s] = (investmentByStrategy[s] ?? 0) + 1;
+      const econ = economicsFromBag(
+        t.asset.strategy as Strategy,
+        (t.asset.economicsJson as Record<string, unknown> | null) ?? null,
+      );
+      const headline = headlineMetric(econ).value;
+      if (headline != null) investmentPnl += headline;
     } else {
       agencyGci += t.financials?.grossCommission ?? 0;
     }
@@ -315,13 +329,21 @@ export default async function ProductionPage({
       {investorEntitled && (
         <section className="mb-6 rounded-md border border-border bg-surface p-4">
           <div className="reos-label mb-3">Revenue type · {year}</div>
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
             <div>
               <div className="text-xs uppercase tracking-wide text-text-muted">
                 Agency GCI (retail)
               </div>
               <div className="mt-0.5 font-display text-display-md font-semibold tabular-nums">
                 {fmtMoney(agencyGci || null)}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wide text-text-muted">
+                Investment P&amp;L
+              </div>
+              <div className="mt-0.5 font-display text-display-md font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">
+                {fmtMoney(investmentPnl || null)}
               </div>
             </div>
             <div>

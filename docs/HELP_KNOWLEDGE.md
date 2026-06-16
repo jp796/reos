@@ -300,3 +300,16 @@ stage: Flip → "Prep to List", Wholesale → "Disposition", BRRRR → "Lease-Up
 Until then the deal page shows "SmartFolder · waiting for market" with an
 "Activate Gmail now" button if you want it on early. Retail deals are
 unaffected — Gmail is on from creation.
+
+### Deal economics (investor profit / ROI / cash flow)
+On a principal (investment) deal, the Deal economics panel takes the inputs for
+that strategy — Flip: purchase / rehab / holding / sale; Wholesale: assignment
+fee / EMD; Rental: rents / opex / debt service / invested / cash-out; Creative:
+payments / balloon — and computes the metrics live (profit + ROI + days-to-flip,
+cap rate + DSCR + cash flow, spread, etc.). Save to feed the deal into the
+unified Production P&L. (Endpoint: PATCH /api/assets/[id]/economics.)
+
+### Production — investment P&L
+The /production Revenue type panel now shows Investment P&L alongside Agency GCI:
+the summed headline metric (flip profit, wholesale spread, rental/creative cash
+flow) across closed investment deals that have economics entered.

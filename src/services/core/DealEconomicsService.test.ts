@@ -3,7 +3,13 @@
  * Run with: bun tsx src/services/core/DealEconomicsService.test.ts
  */
 
-import { computeEconomics, reconcile } from "./DealEconomicsService";
+import {
+  computeEconomics,
+  reconcile,
+  economicsFromBag,
+  buildEconomicsInput,
+  headlineMetric,
+} from "./DealEconomicsService";
 
 function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) throw new Error(`ASSERT FAILED: ${msg}`);
@@ -114,6 +120,48 @@ check("reconcile computes variance + pct", () => {
   near(r.variancePct!, 0.125, "variancePct");
   const empty = reconcile(null, 5);
   assert(empty.variance === null, "null projected → null variance");
+});
+
+check("economicsFromBag computes flip from a stored string bag", () => {
+  // Simulates economicsJson: strings from form inputs + ISO dates.
+  const bag = {
+    purchasePrice: "100000",
+    rehabBudget: "40000",
+    holdingCosts: "8000",
+    buyingCosts: "2000",
+    salePrice: "210000",
+    sellingCosts: "15000",
+    purchaseDate: "2026-01-01",
+    saleDate: "2026-05-01",
+    notAField: "ignored",
+  };
+  const e = economicsFromBag("flip", bag) as Extract<
+    ReturnType<typeof economicsFromBag>,
+    { kind: "flip" }
+  >;
+  near(e.allInCost, 150000, "allIn from bag");
+  near(e.profit, 45000, "profit from bag");
+  near(e.roi!, 0.3, "roi from bag");
+  assert(e.daysToFlip === 120, `daysToFlip=${e.daysToFlip}`);
+});
+
+check("buildEconomicsInput drops empty + parses $ , % formatting", () => {
+  const input = buildEconomicsInput({
+    purchasePrice: "$120,000",
+    rehabBudget: "",
+    holdingCosts: null,
+    saleDate: "2026-06-01",
+  }) as Record<string, unknown>;
+  assert(input.purchasePrice === 120000, `parsed=${input.purchasePrice}`);
+  assert(!("rehabBudget" in input), "empty dropped");
+  assert(!("holdingCosts" in input), "null dropped");
+  assert(input.saleDate instanceof Date, "date coerced");
+});
+
+check("headlineMetric returns the right number per strategy", () => {
+  assert(headlineMetric(economicsFromBag("flip", { purchasePrice: "100000", salePrice: "150000" })).label === "Projected profit", "flip label");
+  assert(headlineMetric(economicsFromBag("wholesale", { assignmentFee: "12000" })).value === 12000, "wholesale value");
+  assert(headlineMetric(economicsFromBag("rental_brrrr", { monthlyRent: "2000", monthlyDebtService: "900" })).label === "Monthly cash flow", "rental label");
 });
 
 console.log(`\n${passed} passed.`);

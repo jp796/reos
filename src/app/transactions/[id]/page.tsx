@@ -32,6 +32,7 @@ import { RezenCompliancePrepPanel } from "./RezenCompliancePrepPanel";
 import { ConvertListingButton } from "./ConvertListingButton";
 import { StagePanel } from "./StagePanel";
 import { DrawCapitalPanel } from "./DrawCapitalPanel";
+import { EconomicsPanel } from "./EconomicsPanel";
 import { DealTypeControl } from "./DealTypeControl";
 import { readEntitlements } from "@/lib/entitlements";
 import {
@@ -142,6 +143,7 @@ export default async function TransactionDetailPage({
           representation: true,
           titlePath: true,
           currentStageName: true,
+          economicsJson: true,
         },
       },
       milestones: { orderBy: { dueAt: "asc" } },
@@ -733,6 +735,18 @@ export default async function TransactionDetailPage({
             ))}
           </ul>
         </section>
+      )}
+
+      {/* Investor deal economics — principal deals only (spec §9).
+          Inputs + live profit/ROI/cash-flow; feeds the Production P&L. */}
+      {txn.asset && txn.asset.representation === "principal" && (
+        <EconomicsPanel
+          assetId={txn.asset.id}
+          strategy={txn.asset.strategy as Strategy}
+          initial={
+            (txn.asset.economicsJson as Record<string, unknown> | null) ?? null
+          }
+        />
       )}
 
       {/* Investor draws + capital stack — principal deals only (spec §7). */}

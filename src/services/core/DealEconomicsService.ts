@@ -252,3 +252,67 @@ export function reconcile(
   const variancePct = projected !== 0 ? r4(variance / Math.abs(projected)) : null;
   return { variance, variancePct };
 }
+
+// ── Input bag <-> typed input ─────────────────────────────────────────
+// The Asset stores a flat bag of raw economics inputs (numbers + ISO
+// date strings) on economicsJson. These helpers convert that bag into a
+// typed EconomicsInput and surface each strategy's headline number, so
+// the deal page and the Production rollup share one source of truth.
+
+const DATE_KEYS = new Set([
+  "purchaseDate",
+  "saleDate",
+  "contractDate",
+  "assignedDate",
+  "balloonDate",
+]);
+
+/** Coerce a stored input bag (strings/numbers) into a typed
+ *  EconomicsInput — date keys → Date, everything else → number. Empty
+ *  values are dropped so calculators see null, not NaN. */
+export function buildEconomicsInput(
+  bag: Record<string, unknown> | null | undefined,
+): EconomicsInput {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(bag ?? {})) {
+    if (v == null || v === "") continue;
+    if (DATE_KEYS.has(k)) {
+      const d = v instanceof Date ? v : new Date(String(v));
+      if (!Number.isNaN(d.getTime())) out[k] = d;
+    } else {
+      const n =
+        typeof v === "number" ? v : parseFloat(String(v).replace(/[,$\s%]/g, ""));
+      if (Number.isFinite(n)) out[k] = n;
+    }
+  }
+  return out as EconomicsInput;
+}
+
+/** Compute economics straight from a stored bag. */
+export function economicsFromBag(
+  strategy: Strategy,
+  bag: Record<string, unknown> | null | undefined,
+): DealEconomics {
+  return computeEconomics(strategy, buildEconomicsInput(bag));
+}
+
+/** The single headline number per strategy — used by the Production
+ *  rollup to sum investment P&L and by the deal page for the big stat. */
+export function headlineMetric(e: DealEconomics): {
+  label: string;
+  value: number | null;
+} {
+  switch (e.kind) {
+    case "flip":
+      return { label: "Projected profit", value: e.profit };
+    case "wholesale":
+      return { label: "Assignment fee", value: e.spread };
+    case "rental_brrrr":
+      return { label: "Monthly cash flow", value: e.monthlyCashFlow };
+    case "creative":
+      return { label: "Monthly cash flow", value: e.monthlyCashFlow };
+    case "retail":
+    default:
+      return { label: "Net commission", value: e.netCommission };
+  }
+}
