@@ -166,6 +166,39 @@ export async function generateRecurringTasks(
   return { generated, monthKey };
 }
 
+/**
+ * Set an Asset to a SPECIFIC stage (used by the kanban board when a card
+ * is dragged to an arbitrary column — vs advanceStage which only steps
+ * forward by one). Sets currentStageName and instantiates that stage's
+ * tasks (idempotent). Validates the stage belongs to the strategy.
+ */
+export async function setStage(
+  db: Db,
+  opts: { assetId: string; stageKey: string },
+): Promise<{ ok: boolean; stageKey: string | null; created: number }> {
+  const asset = await db.asset.findUnique({
+    where: { id: opts.assetId },
+    select: { id: true, strategy: true },
+  });
+  if (!asset) return { ok: false, stageKey: null, created: 0 };
+  const strategy = asset.strategy as Strategy;
+  const stage = stageByKey(strategy, opts.stageKey);
+  if (!stage) return { ok: false, stageKey: null, created: 0 };
+  const txnId = await primaryTransactionId(db, asset.id);
+  if (!txnId) return { ok: false, stageKey: null, created: 0 };
+
+  const created = await instantiateStage(db, {
+    assetId: asset.id,
+    transactionId: txnId,
+    stage,
+  });
+  await db.asset.update({
+    where: { id: asset.id },
+    data: { currentStageName: stage.key },
+  });
+  return { ok: true, stageKey: stage.key, created };
+}
+
 /** True when every human task in the Asset's current stage is complete. */
 export async function isCurrentStageComplete(
   db: Db,

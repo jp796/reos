@@ -313,3 +313,10 @@ unified Production P&L. (Endpoint: PATCH /api/assets/[id]/economics.)
 The /production Revenue type panel now shows Investment P&L alongside Agency GCI:
 the summed headline metric (flip profit, wholesale spread, rental/creative cash
 flow) across closed investment deals that have economics entered.
+
+### Investment board (Monday.com-style kanban)
+Investor-entitled accounts get a Board nav item (/board) — a kanban of investment
+(principal) deals as cards in stage columns. Pick a strategy (Flip/Wholesale/
+Rental/Creative) via the tabs; columns are that strategy's stages. Drag a card to
+a column to move the deal to that stage (it seeds that stage's tasks). Retail
+deals never appear here. (Endpoint: POST /api/assets/[id]/set-stage.)

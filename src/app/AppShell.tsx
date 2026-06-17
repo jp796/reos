@@ -10,6 +10,7 @@ import {
   Radar,
   Signpost,
   FolderCheck,
+  KanbanSquare,
   TrendingUp,
   Filter,
   Megaphone,
@@ -38,6 +39,7 @@ const NAV = [
   { href: "/voice", label: "Voice intake", icon: Mic },
   { href: "/listings", label: "Listings", icon: Signpost },
   { href: "/transactions", label: "Transactions", icon: FolderCheck },
+  { href: "/board", label: "Board", icon: KanbanSquare, investorOnly: true },
   { href: "/production", label: "Production", icon: TrendingUp },
   { href: "/sources", label: "Sources", icon: Filter },
   { href: "/marketing", label: "Marketing", icon: Megaphone },
@@ -60,6 +62,8 @@ interface ShellUser {
   email: string | null;
   image: string | null;
   role: string | null;
+  /** Investor module entitlement — gates the Board nav item. */
+  investor?: boolean;
 }
 
 export function AppShell({
@@ -224,7 +228,9 @@ function SidebarContents({
         </span>
       </Link>
       <nav className="flex flex-col gap-0.5">
-        {NAV.map((item) => {
+        {NAV.filter(
+          (item) => !("investorOnly" in item && item.investorOnly) || user?.investor,
+        ).map((item) => {
           const active =
             pathname === item.href ||
             (item.href !== "/" && pathname.startsWith(item.href));

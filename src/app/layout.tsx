@@ -3,6 +3,7 @@ import { Montserrat } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "./ThemeProvider";
 import { AppShell } from "./AppShell";
+import { normalizeEntitlements } from "@/lib/entitlements";
 import { ToastProvider } from "./ToastProvider";
 import { TermsAcceptModal } from "./TermsAcceptModal";
 import { PendingDeletionBanner } from "./PendingDeletionBanner";
@@ -95,12 +96,20 @@ export default async function RootLayout({
   // countdown on every page so the owner can't lose track and miss
   // the restore window.
   let deletionScheduledAt: string | null = null;
+  let investorEntitled = false;
   if (session?.user?.email) {
     const acctRow = await prisma.user.findUnique({
       where: { email: session.user.email.toLowerCase() },
-      select: { account: { select: { deletionRequestedAt: true } } },
+      select: {
+        account: {
+          select: { deletionRequestedAt: true, entitlementsJson: true },
+        },
+      },
     });
     deletionScheduledAt = acctRow?.account?.deletionRequestedAt?.toISOString() ?? null;
+    investorEntitled = normalizeEntitlements(
+      acctRow?.account?.entitlementsJson ?? null,
+    ).includes("investor");
   }
 
   async function doSignOut() {
@@ -120,7 +129,10 @@ export default async function RootLayout({
       >
         <ThemeProvider>
           <ToastProvider>
-            <AppShell user={user} signOutAction={doSignOut}>
+            <AppShell
+              user={user ? { ...user, investor: investorEntitled } : null}
+              signOutAction={doSignOut}
+            >
               {deletionScheduledAt && (
                 <PendingDeletionBanner scheduledAt={deletionScheduledAt} />
               )}
