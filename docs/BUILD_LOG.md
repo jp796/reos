@@ -174,3 +174,18 @@ Drove the full investor module to completion (all spec §6 strategies + §7/§9/
 **Verify:** 53 unit tests green · `bunx tsc --noEmit` 0 errors · 2 deploys green this session (logic chunk + Phase 2 migration), final chunk deploying now.
 
 **Remaining to ACTIVATE (not code — ops):** add Drive scope to DEFAULT_SCOPES + re-consent and provision Google Chat API to flip `INVESTOR_DRIVE_ENABLED`/`INVESTOR_CHAT_ENABLED` on. Legal review (§13) before scaling Creative.
+
+### Session: 2026-06-17 — Atlas Agent Phase A (tool layer)
+
+Spec: docs/ATLAS_AGENT_SPEC.md. Built the deterministic action layer the
+conversational agent will drive (the "no mistakes" core).
+
+| File | Change |
+|------|--------|
+| `src/services/ai/AtlasTools.ts` | NEW. Tool registry + typed executors: find_deal (read), add_task, complete_task, set_deadline, advance_stage, set_stage, add_note (write). Each validates args (zod), resolves the deal with tenancy + per-deal-visibility enforced, calls an existing engine, writes an AutomationAuditLog row, returns actual state. Tiers (read/write/sensitive) + requiresConfirmation + openAiToolSpecs + executeTool dispatcher. |
+| `src/services/ai/AtlasTools.test.ts` | NEW. 6 tests — registry integrity, tier gating, deny-by-default, schema rejection. |
+| `src/app/api/atlas/execute/route.ts` | NEW. POST /api/atlas/execute — the single server-side action point (auth + tenancy + audit), called after a confirmed write. |
+
+**Verify:** AtlasTools 6 passed · tsc 0 errors. Additive (new files only) — no behavior change to existing surfaces.
+
+**Next (Phase A.2):** wire askAtlas tool-calling loop (read auto, write → proposed actions) + chat UI confirm flow + Telegram confirm state. Then Phase B/C/D per spec.

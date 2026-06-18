@@ -1,0 +1,380 @@
+/**
+ * AtlasTools — the deterministic action layer for the Atlas agent.
+ *
+ * THE "NO MISTAKES" CONTRACT: the LLM can only act through these typed
+ * tools. Each tool (1) validates its args with a strict schema, (2)
+ * resolves + tenancy/visibility/role-checks the target deal, (3) calls
+ * an existing deterministic engine, (4) writes an audit row, and (5)
+ * returns the ACTUAL new state. A hallucinated value can't land, because
+ * every write goes through validation + a real engine — never free text.
+ *
+ * Tiers drive the confirmation UX (the chat/Telegram layer reads these):
+ *   read      → auto-run, no confirmation
+ *   write     → reversible; confirm before executing
+ *   sensitive → irreversible / outward-facing; double-confirm
+ *
+ * This module performs NO LLM calls and renders NO UI — it's the engine
+ * the conversational layer drives. Pure-ish + unit-tested.
+ */
+
+import { z } from "zod";
+import type { PrismaClient } from "@prisma/client";
+import { isDealVisible } from "@/lib/deal-visibility";
+import { advanceStage, setStage } from "@/services/core/StageEngine";
+import { stageByKey, getStrategyTemplate } from "@/services/core/strategyTemplates";
+import type { Strategy } from "@/services/core/DealClassifierService";
+
+export type ToolTier = "read" | "write" | "sensitive";
+
+export interface AtlasActor {
+  userId: string;
+  accountId: string;
+  role: string;
+}
+
+export type ToolResult =
+  | { ok: true; summary: string; data?: unknown }
+  | { ok: false; error: string; reason?: "not_found" | "ambiguous" | "forbidden" | "invalid" };
+
+interface ToolDef {
+  tier: ToolTier;
+  description: string;
+  schema: z.ZodTypeAny;
+  run: (db: PrismaClient, actor: AtlasActor, args: unknown) => Promise<ToolResult>;
+}
+
+// Map a friendly deadline kind → the Transaction date column it sets.
+const DEADLINE_FIELDS: Record<string, string> = {
+  contract: "contractDate",
+  closing: "closingDate",
+  possession: "possessionDate",
+  inspection: "inspectionDate",
+  inspection_objection: "inspectionObjectionDate",
+  title_commitment: "titleDeadline",
+  title_objection: "titleObjectionDate",
+  financing: "financingDeadline",
+  appraisal: "appraisalDate",
+  walkthrough: "walkthroughDate",
+  earnest_money: "earnestMoneyDueDate",
+};
+
+// ── Audit ─────────────────────────────────────────────────────────────
+async function audit(
+  db: PrismaClient,
+  actor: AtlasActor,
+  opts: {
+    transactionId?: string | null;
+    entityType: string;
+    entityId?: string | null;
+    action: string;
+    decision: "applied" | "failed";
+  },
+) {
+  await db.automationAuditLog.create({
+    data: {
+      accountId: actor.accountId,
+      transactionId: opts.transactionId ?? null,
+      entityType: opts.entityType,
+      entityId: opts.entityId ?? null,
+      ruleName: `atlas:${opts.action} (by ${actor.userId})`,
+      actionType: opts.action.startsWith("complete") ? "update" : "create",
+      sourceType: "manual",
+      confidenceScore: 1.0,
+      decision: opts.decision,
+    },
+  });
+}
+
+// ── Deal resolution (tenancy + visibility enforced) ───────────────────
+interface ResolvedDeal {
+  id: string;
+  address: string | null;
+  assetId: string | null;
+  strategy: Strategy | null;
+  currentStageName: string | null;
+  restrictedToAssignee: boolean;
+  assignedUserId: string | null;
+}
+
+/**
+ * Resolve a deal by id or fuzzy address. Returns at most one — if the
+ * query matches several open deals it returns an "ambiguous" miss so the
+ * agent asks rather than guesses. Hidden deals are never returned.
+ */
+async function resolveDeal(
+  db: PrismaClient,
+  actor: AtlasActor,
+  query: string,
+): Promise<{ deal: ResolvedDeal } | { error: ToolResult }> {
+  const q = query.trim();
+  const rows = await db.transaction.findMany({
+    where: {
+      accountId: actor.accountId,
+      OR: [
+        { id: q },
+        { propertyAddress: { contains: q, mode: "insensitive" } },
+        { contact: { fullName: { contains: q, mode: "insensitive" } } },
+      ],
+    },
+    select: {
+      id: true,
+      propertyAddress: true,
+      assetId: true,
+      restrictedToAssignee: true,
+      assignedUserId: true,
+      status: true,
+      asset: { select: { strategy: true, currentStageName: true } },
+    },
+    take: 10,
+    orderBy: { updatedAt: "desc" },
+  });
+
+  const visible = rows.filter((r) =>
+    isDealVisible(actor, {
+      restrictedToAssignee: r.restrictedToAssignee,
+      assignedUserId: r.assignedUserId,
+    }),
+  );
+  if (visible.length === 0) {
+    return { error: { ok: false, error: `No deal found matching "${q}".`, reason: "not_found" } };
+  }
+  // Prefer a single open match; if several, it's ambiguous.
+  const open = visible.filter((r) => !["closed", "dead"].includes(r.status));
+  const pool = open.length > 0 ? open : visible;
+  if (pool.length > 1) {
+    const list = pool.slice(0, 5).map((r) => r.propertyAddress ?? r.id).join("; ");
+    return {
+      error: {
+        ok: false,
+        error: `"${q}" matches ${pool.length} deals: ${list}. Which one?`,
+        reason: "ambiguous",
+      },
+    };
+  }
+  const r = pool[0];
+  return {
+    deal: {
+      id: r.id,
+      address: r.propertyAddress,
+      assetId: r.assetId,
+      strategy: (r.asset?.strategy as Strategy) ?? null,
+      currentStageName: r.asset?.currentStageName ?? null,
+      restrictedToAssignee: r.restrictedToAssignee,
+      assignedUserId: r.assignedUserId,
+    },
+  };
+}
+
+// ── Tool registry ─────────────────────────────────────────────────────
+export const ATLAS_TOOLS: Record<string, ToolDef> = {
+  find_deal: {
+    tier: "read",
+    description: "Find a deal by address or contact name and return a short status summary.",
+    schema: z.object({ deal: z.string().min(1) }),
+    run: async (db, actor, args) => {
+      const { deal } = args as { deal: string };
+      const r = await resolveDeal(db, actor, deal);
+      if ("error" in r) return r.error;
+      const d = r.deal;
+      const open = await db.task.count({ where: { transactionId: d.id, completedAt: null } });
+      return {
+        ok: true,
+        summary: `${d.address ?? d.id} · ${d.strategy ?? "retail"}${d.currentStageName ? ` · stage ${d.currentStageName}` : ""} · ${open} open task(s)`,
+        data: { id: d.id, assetId: d.assetId, strategy: d.strategy, stage: d.currentStageName },
+      };
+    },
+  },
+
+  add_task: {
+    tier: "write",
+    description: "Add a task to a deal. Optional due date (YYYY-MM-DD) and assignee role.",
+    schema: z.object({
+      deal: z.string().min(1),
+      title: z.string().min(1).max(200),
+      dueDate: z.string().optional(),
+      priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
+    }),
+    run: async (db, actor, args) => {
+      const a = args as { deal: string; title: string; dueDate?: string; priority?: string };
+      const r = await resolveDeal(db, actor, a.deal);
+      if ("error" in r) return r.error;
+      const due = a.dueDate ? new Date(a.dueDate) : null;
+      if (a.dueDate && Number.isNaN(due!.getTime())) {
+        return { ok: false, error: `Invalid due date "${a.dueDate}".`, reason: "invalid" };
+      }
+      const task = await db.task.create({
+        data: {
+          transactionId: r.deal.id,
+          title: a.title,
+          dueAt: due,
+          priority: a.priority ?? "normal",
+        },
+      });
+      await audit(db, actor, { transactionId: r.deal.id, entityType: "task", entityId: task.id, action: "add_task", decision: "applied" });
+      return { ok: true, summary: `Added task "${a.title}"${due ? ` due ${a.dueDate}` : ""} to ${r.deal.address}.`, data: { taskId: task.id } };
+    },
+  },
+
+  complete_task: {
+    tier: "write",
+    description: "Mark a task complete on a deal, matched by title.",
+    schema: z.object({ deal: z.string().min(1), title: z.string().min(1) }),
+    run: async (db, actor, args) => {
+      const a = args as { deal: string; title: string };
+      const r = await resolveDeal(db, actor, a.deal);
+      if ("error" in r) return r.error;
+      const matches = await db.task.findMany({
+        where: { transactionId: r.deal.id, completedAt: null, title: { contains: a.title, mode: "insensitive" } },
+        select: { id: true, title: true },
+        take: 5,
+      });
+      if (matches.length === 0) return { ok: false, error: `No open task matching "${a.title}".`, reason: "not_found" };
+      if (matches.length > 1) {
+        return { ok: false, error: `"${a.title}" matches ${matches.length} tasks: ${matches.map((m) => m.title).join("; ")}. Be specific.`, reason: "ambiguous" };
+      }
+      await db.task.update({ where: { id: matches[0].id }, data: { completedAt: new Date() } });
+      await audit(db, actor, { transactionId: r.deal.id, entityType: "task", entityId: matches[0].id, action: "complete_task", decision: "applied" });
+      return { ok: true, summary: `Completed "${matches[0].title}" on ${r.deal.address}.` };
+    },
+  },
+
+  set_deadline: {
+    tier: "write",
+    description: `Set a deadline/date on a deal. kind is one of: ${Object.keys(DEADLINE_FIELDS).join(", ")}. date is YYYY-MM-DD.`,
+    schema: z.object({
+      deal: z.string().min(1),
+      kind: z.enum(Object.keys(DEADLINE_FIELDS) as [string, ...string[]]),
+      date: z.string().min(1),
+    }),
+    run: async (db, actor, args) => {
+      const a = args as { deal: string; kind: string; date: string };
+      const r = await resolveDeal(db, actor, a.deal);
+      if ("error" in r) return r.error;
+      const field = DEADLINE_FIELDS[a.kind];
+      const d = new Date(a.date);
+      if (Number.isNaN(d.getTime())) return { ok: false, error: `Invalid date "${a.date}".`, reason: "invalid" };
+      await db.transaction.update({ where: { id: r.deal.id }, data: { [field]: d } });
+      await audit(db, actor, { transactionId: r.deal.id, entityType: "transaction", entityId: r.deal.id, action: "set_deadline", decision: "applied" });
+      return { ok: true, summary: `Set ${a.kind.replace(/_/g, " ")} = ${a.date} on ${r.deal.address}.` };
+    },
+  },
+
+  advance_stage: {
+    tier: "write",
+    description: "Advance an investor deal to the next stage of its lifecycle (seeds that stage's tasks).",
+    schema: z.object({ deal: z.string().min(1) }),
+    run: async (db, actor, args) => {
+      const a = args as { deal: string };
+      const r = await resolveDeal(db, actor, a.deal);
+      if ("error" in r) return r.error;
+      if (!r.deal.assetId || !r.deal.strategy) return { ok: false, error: `${r.deal.address} isn't an investor deal.`, reason: "invalid" };
+      const res = await advanceStage(db, { assetId: r.deal.assetId });
+      await audit(db, actor, { transactionId: r.deal.id, entityType: "transaction", entityId: r.deal.assetId, action: "advance_stage", decision: "applied" });
+      if (res.done) return { ok: true, summary: `${r.deal.address} is already at the final stage.` };
+      return { ok: true, summary: `Advanced ${r.deal.address} → ${res.to} · ${res.created} task(s) added.` };
+    },
+  },
+
+  set_stage: {
+    tier: "write",
+    description: "Move an investor deal to a specific stage (by stage name or key).",
+    schema: z.object({ deal: z.string().min(1), stage: z.string().min(1) }),
+    run: async (db, actor, args) => {
+      const a = args as { deal: string; stage: string };
+      const r = await resolveDeal(db, actor, a.deal);
+      if ("error" in r) return r.error;
+      if (!r.deal.assetId || !r.deal.strategy) return { ok: false, error: `${r.deal.address} isn't an investor deal.`, reason: "invalid" };
+      // Match the stage by key, else by case-insensitive name contains.
+      const stages = getStrategyTemplate(r.deal.strategy);
+      const hit =
+        stageByKey(r.deal.strategy, a.stage) ??
+        stages.find((s) => s.name.toLowerCase().includes(a.stage.toLowerCase()));
+      if (!hit) {
+        return { ok: false, error: `No stage "${a.stage}" for ${r.deal.strategy}. Stages: ${stages.map((s) => s.name).join(", ")}.`, reason: "not_found" };
+      }
+      const res = await setStage(db, { assetId: r.deal.assetId, stageKey: hit.key });
+      if (!res.ok) return { ok: false, error: `Couldn't move ${r.deal.address} to ${hit.name}.`, reason: "invalid" };
+      await audit(db, actor, { transactionId: r.deal.id, entityType: "transaction", entityId: r.deal.assetId, action: "set_stage", decision: "applied" });
+      return { ok: true, summary: `Moved ${r.deal.address} → ${hit.name} · ${res.created} task(s) added.` };
+    },
+  },
+
+  add_note: {
+    tier: "write",
+    description: "Add a note to a deal's log.",
+    schema: z.object({ deal: z.string().min(1), body: z.string().min(1).max(2000) }),
+    run: async (db, actor, args) => {
+      const a = args as { deal: string; body: string };
+      const r = await resolveDeal(db, actor, a.deal);
+      if ("error" in r) return r.error;
+      const note = await db.transactionNote.create({
+        data: { transactionId: r.deal.id, authorUserId: actor.userId, body: a.body },
+      });
+      await audit(db, actor, { transactionId: r.deal.id, entityType: "transaction", entityId: note.id, action: "add_note", decision: "applied" });
+      return { ok: true, summary: `Noted on ${r.deal.address}: "${a.body.slice(0, 80)}".` };
+    },
+  },
+};
+
+// ── Public surface ────────────────────────────────────────────────────
+
+export function toolNames(): string[] {
+  return Object.keys(ATLAS_TOOLS);
+}
+
+/** Tier lookup; unknown tools are treated as sensitive (deny-by-default). */
+export function toolTier(name: string): ToolTier {
+  return ATLAS_TOOLS[name]?.tier ?? "sensitive";
+}
+
+/** A write/sensitive tool must be confirmed before it runs. */
+export function requiresConfirmation(name: string): boolean {
+  return toolTier(name) !== "read";
+}
+
+/** OpenAI function-calling specs for the conversational layer (next phase). */
+export function openAiToolSpecs(): Array<{
+  type: "function";
+  function: { name: string; description: string; parameters: Record<string, unknown> };
+}> {
+  return Object.entries(ATLAS_TOOLS).map(([name, def]) => ({
+    type: "function",
+    function: {
+      name,
+      description: def.description,
+      // Zod → minimal JSON-schema-ish object. The conversational layer
+      // can swap in a fuller converter later; args are re-validated here
+      // regardless, so this is only a hint to the model.
+      parameters: { type: "object", additionalProperties: true },
+    },
+  }));
+}
+
+/**
+ * Execute a tool by name with raw args. Validates args, runs the
+ * deterministic executor (which enforces tenancy/visibility + audits),
+ * and never throws into the caller — failures come back as ToolResult.
+ */
+export async function executeTool(
+  db: PrismaClient,
+  actor: AtlasActor,
+  name: string,
+  rawArgs: unknown,
+): Promise<ToolResult> {
+  const def = ATLAS_TOOLS[name];
+  if (!def) return { ok: false, error: `Unknown tool "${name}".`, reason: "invalid" };
+  const parsed = def.schema.safeParse(rawArgs);
+  if (!parsed.success) {
+    return { ok: false, error: `Invalid arguments for ${name}: ${parsed.error.issues.map((i) => i.message).join("; ")}`, reason: "invalid" };
+  }
+  try {
+    return await def.run(db, actor, parsed.data);
+  } catch (e) {
+    try {
+      await audit(db, actor, { entityType: "transaction", action: name, decision: "failed" });
+    } catch {
+      /* audit best-effort */
+    }
+    return { ok: false, error: e instanceof Error ? e.message : "tool failed" };
+  }
+}
