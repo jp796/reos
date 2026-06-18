@@ -107,25 +107,36 @@ async function resolveDeal(
   query: string,
 ): Promise<{ deal: ResolvedDeal } | { error: ToolResult }> {
   const q = query.trim();
+  // Tokenize the query (drop tiny words + filler) and match a deal when
+  // ALL significant tokens appear in its address or contact name — so
+  // "3453 Willard" finds "3453 N Farm Road 83, Willard, MO".
+  const STOP = new Set(["the", "at", "on", "for", "deal", "st", "rd", "ave", "dr"]);
+  const tokens = q
+    .toLowerCase()
+    .split(/[\s,]+/)
+    .filter((t) => t.length >= 2 && !STOP.has(t));
+  const select = {
+    id: true,
+    propertyAddress: true,
+    assetId: true,
+    restrictedToAssignee: true,
+    assignedUserId: true,
+    status: true,
+    contact: { select: { fullName: true } },
+    asset: { select: { strategy: true, currentStageName: true } },
+  } as const;
+
+  const orTerms: Record<string, unknown>[] = [{ id: q }];
+  const probe = tokens.length > 0 ? tokens : [q.toLowerCase()];
+  for (const t of probe) {
+    orTerms.push({ propertyAddress: { contains: t, mode: "insensitive" } });
+    orTerms.push({ contact: { fullName: { contains: t, mode: "insensitive" } } });
+  }
+
   const rows = await db.transaction.findMany({
-    where: {
-      accountId: actor.accountId,
-      OR: [
-        { id: q },
-        { propertyAddress: { contains: q, mode: "insensitive" } },
-        { contact: { fullName: { contains: q, mode: "insensitive" } } },
-      ],
-    },
-    select: {
-      id: true,
-      propertyAddress: true,
-      assetId: true,
-      restrictedToAssignee: true,
-      assignedUserId: true,
-      status: true,
-      asset: { select: { strategy: true, currentStageName: true } },
-    },
-    take: 10,
+    where: { accountId: actor.accountId, OR: orTerms },
+    select,
+    take: 25,
     orderBy: { updatedAt: "desc" },
   });
 
@@ -138,9 +149,26 @@ async function resolveDeal(
   if (visible.length === 0) {
     return { error: { ok: false, error: `No deal found matching "${q}".`, reason: "not_found" } };
   }
-  // Prefer a single open match; if several, it's ambiguous.
-  const open = visible.filter((r) => !["closed", "dead"].includes(r.status));
-  const pool = open.length > 0 ? open : visible;
+
+  // Exact id wins outright.
+  const idHit = visible.find((r) => r.id === q);
+  let pool = visible;
+  if (!idHit) {
+    // Score by how many query tokens appear in address + contact name;
+    // keep the best-matching set.
+    const scored = visible.map((r) => {
+      const hay = `${r.propertyAddress ?? ""} ${r.contact?.fullName ?? ""}`.toLowerCase();
+      return { r, matched: probe.filter((t) => hay.includes(t)).length };
+    });
+    const best = Math.max(...scored.map((s) => s.matched));
+    pool = scored.filter((s) => s.matched === best).map((s) => s.r);
+    // Prefer open deals within the best-matching set.
+    const open = pool.filter((r) => !["closed", "dead"].includes(r.status));
+    if (open.length > 0) pool = open;
+  } else {
+    pool = [idHit];
+  }
+
   if (pool.length > 1) {
     const list = pool.slice(0, 5).map((r) => r.propertyAddress ?? r.id).join("; ");
     return {
@@ -332,7 +360,85 @@ export function requiresConfirmation(name: string): boolean {
   return toolTier(name) !== "read";
 }
 
-/** OpenAI function-calling specs for the conversational layer (next phase). */
+/** Human-readable one-liner for a proposed action (the confirmation
+ *  prompt shown before a write runs). */
+export function previewAction(name: string, args: Record<string, unknown>): string {
+  const deal = String(args.deal ?? "the deal");
+  switch (name) {
+    case "add_task":
+      return `Add task "${args.title}"${args.dueDate ? ` (due ${args.dueDate})` : ""} to ${deal}`;
+    case "complete_task":
+      return `Complete task "${args.title}" on ${deal}`;
+    case "set_deadline":
+      return `Set ${String(args.kind).replace(/_/g, " ")} = ${args.date} on ${deal}`;
+    case "advance_stage":
+      return `Advance ${deal} to the next stage`;
+    case "set_stage":
+      return `Move ${deal} to stage "${args.stage}"`;
+    case "add_note":
+      return `Add note to ${deal}: "${String(args.body).slice(0, 60)}"`;
+    default:
+      return `${name} ${JSON.stringify(args)}`;
+  }
+}
+
+// Explicit JSON-schema params so the model knows exactly what each tool
+// takes. Args are STILL re-validated by the zod schema in executeTool —
+// this is the model's guide, the zod schema is the gate.
+const PARAM_SCHEMAS: Record<string, Record<string, unknown>> = {
+  find_deal: {
+    type: "object",
+    required: ["deal"],
+    properties: { deal: { type: "string", description: "property address or contact name" } },
+  },
+  add_task: {
+    type: "object",
+    required: ["deal", "title"],
+    properties: {
+      deal: { type: "string", description: "address or contact name" },
+      title: { type: "string" },
+      dueDate: { type: "string", description: "YYYY-MM-DD" },
+      priority: { type: "string", enum: ["low", "normal", "high", "urgent"] },
+    },
+  },
+  complete_task: {
+    type: "object",
+    required: ["deal", "title"],
+    properties: {
+      deal: { type: "string" },
+      title: { type: "string", description: "task title or a distinctive part of it" },
+    },
+  },
+  set_deadline: {
+    type: "object",
+    required: ["deal", "kind", "date"],
+    properties: {
+      deal: { type: "string" },
+      kind: { type: "string", enum: Object.keys(DEADLINE_FIELDS) },
+      date: { type: "string", description: "YYYY-MM-DD" },
+    },
+  },
+  advance_stage: {
+    type: "object",
+    required: ["deal"],
+    properties: { deal: { type: "string" } },
+  },
+  set_stage: {
+    type: "object",
+    required: ["deal", "stage"],
+    properties: {
+      deal: { type: "string" },
+      stage: { type: "string", description: "stage name or key (e.g. 'Rehab')" },
+    },
+  },
+  add_note: {
+    type: "object",
+    required: ["deal", "body"],
+    properties: { deal: { type: "string" }, body: { type: "string" } },
+  },
+};
+
+/** OpenAI function-calling specs for the conversational layer. */
 export function openAiToolSpecs(): Array<{
   type: "function";
   function: { name: string; description: string; parameters: Record<string, unknown> };
@@ -342,10 +448,7 @@ export function openAiToolSpecs(): Array<{
     function: {
       name,
       description: def.description,
-      // Zod → minimal JSON-schema-ish object. The conversational layer
-      // can swap in a fuller converter later; args are re-validated here
-      // regardless, so this is only a hint to the model.
-      parameters: { type: "object", additionalProperties: true },
+      parameters: PARAM_SCHEMAS[name] ?? { type: "object", additionalProperties: true },
     },
   }));
 }

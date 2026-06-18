@@ -189,3 +189,16 @@ conversational agent will drive (the "no mistakes" core).
 **Verify:** AtlasTools 6 passed · tsc 0 errors. Additive (new files only) — no behavior change to existing surfaces.
 
 **Next (Phase A.2):** wire askAtlas tool-calling loop (read auto, write → proposed actions) + chat UI confirm flow + Telegram confirm state. Then Phase B/C/D per spec.
+
+### Session: 2026-06-17 (cont.) — Atlas Agent Phase A.2 (conversational loop)
+
+| File | Change |
+|------|--------|
+| `src/services/ai/AtlasChatService.ts` | askAtlas is now AGENTIC: bounded tool-loop — read tools auto-run, write tools return as proposedActions (NOT executed). Returns {text, proposedActions}. Signature now (db, actor, text). Prompt hardened to MANDATE find_deal before acting/claiming-no-deal (fixed mini answering from context). |
+| `src/services/ai/AtlasTools.ts` | Real per-tool JSON param schemas (openAiToolSpecs) so the model calls tools correctly. previewAction() for confirm prompts. resolveDeal made token-based (all significant words must match → "3453 Willard" finds the full address). |
+| `prisma/schema.prisma` + `migrations/20260617130000_atlas_pending_actions` | AtlasPendingAction (per account/user/channel) — parks a proposed write until "yes". |
+| `src/app/api/integrations/telegram/webhook/route.ts` | Resolves actor by AUTH_ALLOWED_EMAILS (FIXED account.findFirst tenant bug). yes/no confirm flow over the pending store; proposals upserted + previewed; stale pending cleared on a non-confirm turn. |
+
+**Verify (against real prod DB + OpenAI):** full loop ask→find_deal→propose add_task→execute→DB persisted→cleaned up ✓. tsc 0 · AtlasTools 6 tests. Two real bugs found+fixed mid-verify: token matching + the findFirst tenant bug.
+
+**Next:** in-app chat UI (Telegram is live); proactive nudges (Phase C); money/external tools double-confirm (Phase D).

@@ -533,6 +533,28 @@ model CapitalStackEntry {
   @@map("capital_stack_entries")
 }
 
+// ==================================================
+// ATLAS AGENT — pending confirmations (spec: confirm-before-write)
+// A write the agent proposes over a stateless channel (Telegram) is
+// parked here until the user replies "yes". One pending set per
+// (account, user, channel); a new proposal replaces the old.
+// ==================================================
+
+model AtlasPendingAction {
+  id          String   @id @default(cuid())
+  accountId   String   @map("account_id")
+  userId      String   @map("user_id")
+  channel     String   @default("telegram")
+  /// Array of { tool, args, preview } awaiting confirmation.
+  actionsJson Json     @map("actions_json")
+  summary     String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([accountId, userId, channel])
+  @@map("atlas_pending_actions")
+}
+
 model Milestone {
   id              String    @id @default(cuid())
   transactionId   String    @map("transaction_id")

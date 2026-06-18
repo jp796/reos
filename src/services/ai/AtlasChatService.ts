@@ -11,6 +11,13 @@
  */
 
 import type { PrismaClient } from "@prisma/client";
+import {
+  openAiToolSpecs,
+  executeTool,
+  toolTier,
+  previewAction,
+  type AtlasActor,
+} from "./AtlasTools";
 
 const MODEL = process.env.OPENAI_CHAT_MODEL ?? "gpt-4o-mini";
 
@@ -32,7 +39,22 @@ Reply rules:
   give what you DO have first, then note the limitation. Don't say "no data" without
   trying.
 - No pleasantries. No "I hope this helps". No "let me know if".
-- Telegram Markdown: *bold*, _italic_, \`mono\`. Use sparingly. Plain text is fine.`;
+- Telegram Markdown: *bold*, _italic_, \`mono\`. Use sparingly. Plain text is fine.
+
+ACTIONS — you can DO things, not just answer:
+- Tools: find_deal (look up), add_task, complete_task, set_deadline, advance_stage,
+  set_stage, add_note.
+- CRITICAL: whenever the user asks about, or wants to change, a SPECIFIC deal, you
+  MUST call the find_deal tool FIRST with their wording (e.g. "3453 Willard") to
+  resolve it — even if you think you see it in CONTEXT, and ESPECIALLY before
+  concluding a deal doesn't exist. NEVER say "no deal found" unless find_deal itself
+  returned not_found. The CONTEXT list is a hint, not the source of truth — the tools are.
+- After find_deal succeeds, call the write tool, passing the SAME deal string.
+- WRITE tools (add/complete task, set deadline, advance/set stage, add note) are NOT
+  executed until the user confirms — when you call one it's held; reply telling the
+  user exactly what you'll do and that you need a "yes". Don't claim it's done.
+- If the user is vague and several deals could match, ASK — never guess.
+- Only state facts you got from a tool result or CONTEXT. Never invent.`;
 
 interface MilestoneLite {
   type: string;
@@ -223,48 +245,121 @@ async function buildContext(
   };
 }
 
+export interface ProposedAction {
+  tool: string;
+  args: Record<string, unknown>;
+  preview: string;
+}
 export interface AtlasReply {
   text: string;
+  /** Write actions the model wants to take — held until the user
+   *  confirms. Empty when the turn was read-only / informational. */
+  proposedActions: ProposedAction[];
 }
 
+interface ToolCall {
+  id: string;
+  function?: { name?: string; arguments?: string };
+}
+
+/**
+ * Agentic Atlas turn. Runs a bounded tool-calling loop: READ tools
+ * execute immediately and feed back; WRITE tools are collected as
+ * proposed actions and NOT executed (the caller confirms, then runs
+ * them via executeTool / the execute endpoint). Returns the reply text
+ * plus any pending actions.
+ */
 export async function askAtlas(
   db: PrismaClient,
-  accountId: string,
+  actor: AtlasActor,
   userText: string,
 ): Promise<AtlasReply> {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY not configured");
   }
-  const ctx = await buildContext(db, accountId);
+  const ctx = await buildContext(db, actor.accountId);
+  const tools = openAiToolSpecs();
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
+  const messages: Array<Record<string, unknown>> = [
+    { role: "system", content: SYSTEM },
+    {
+      role: "system",
+      content: `CONTEXT (account: ${ctx.account.businessName}):\n${JSON.stringify(ctx)}`,
     },
-    body: JSON.stringify({
-      model: MODEL,
-      temperature: 0.2,
-      max_tokens: 600,
-      messages: [
-        { role: "system", content: SYSTEM },
-        {
-          role: "system",
-          content: `CONTEXT (account: ${ctx.account.businessName}):\n${JSON.stringify(ctx, null, 2)}`,
-        },
-        { role: "user", content: userText.slice(0, 2000) },
-      ],
-    }),
-  });
+    { role: "user", content: userText.slice(0, 2000) },
+  ];
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`OpenAI ${res.status}: ${body.slice(0, 200)}`);
+  const proposedActions: ProposedAction[] = [];
+  let finalText = "";
+
+  for (let round = 0; round < 4; round++) {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        temperature: 0.2,
+        max_tokens: 700,
+        messages,
+        tools,
+        tool_choice: "auto",
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`OpenAI ${res.status}: ${body.slice(0, 200)}`);
+    }
+    const data = (await res.json()) as {
+      choices?: Array<{ message?: { content?: string; tool_calls?: ToolCall[] } }>;
+    };
+    const m = data.choices?.[0]?.message;
+    if (!m) break;
+
+    const calls = m.tool_calls ?? [];
+    if (process.env.ATLAS_DEBUG) {
+      console.error(`[atlas round ${round}] calls=${calls.map((c) => c.function?.name).join(",") || "(none)"} content=${(m.content ?? "").slice(0, 80)}`);
+    }
+    if (calls.length === 0) {
+      finalText = (m.content ?? "").trim();
+      break;
+    }
+
+    // Keep the assistant message (with tool_calls) in history.
+    messages.push(m as unknown as Record<string, unknown>);
+    for (const tc of calls) {
+      const name = tc.function?.name ?? "";
+      let args: Record<string, unknown> = {};
+      try {
+        args = JSON.parse(tc.function?.arguments || "{}");
+      } catch {
+        /* leave args empty → executeTool will reject */
+      }
+      if (toolTier(name) === "read") {
+        const result = await executeTool(db, actor, name, args);
+        messages.push({
+          role: "tool",
+          tool_call_id: tc.id,
+          content: result.ok ? result.summary : `Error: ${result.error}`,
+        });
+      } else {
+        proposedActions.push({ tool: name, args, preview: previewAction(name, args) });
+        messages.push({
+          role: "tool",
+          tool_call_id: tc.id,
+          content:
+            "PENDING_CONFIRMATION — not executed yet; it will run only after the user confirms.",
+        });
+      }
+    }
   }
-  const data = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  const text = data.choices?.[0]?.message?.content?.trim();
-  return { text: text || "(empty reply)" };
+
+  if (!finalText) {
+    finalText = proposedActions.length
+      ? "Here's what I'll do — confirm to proceed."
+      : "(no reply)";
+  }
+  return { text: finalText, proposedActions };
 }

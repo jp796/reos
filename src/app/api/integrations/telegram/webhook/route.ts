@@ -19,11 +19,16 @@
  */
 
 import { NextResponse, type NextRequest } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { askAtlas } from "@/services/ai/AtlasChatService";
+import { executeTool, type AtlasActor } from "@/services/ai/AtlasTools";
 import { TelegramService } from "@/services/integrations/TelegramService";
 import { logError } from "@/lib/log";
+
+const YES = new Set(["yes", "y", "yep", "yeah", "confirm", "ok", "okay", "do it", "go", "proceed", "sure", "yes please"]);
+const NO = new Set(["no", "n", "nope", "cancel", "stop", "nvm", "never mind"]);
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -66,18 +71,46 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  // 3. Find the (single-tenant) account to scope queries.
-  const account = await prisma.account.findFirst({ select: { id: true } });
-  if (!account) return NextResponse.json({ ok: true });
+  // 3. Resolve the acting user. Telegram is the owner's private channel,
+  //    so the agent acts AS the primary allowed (owner) user — inheriting
+  //    their account, role, and visibility. Resolve by AUTH_ALLOWED_EMAILS
+  //    (the first existing user), NOT account.findFirst() — that returns
+  //    an arbitrary tenant when several accounts exist (the classic bug).
+  const allowedEmails = (process.env.AUTH_ALLOWED_EMAILS ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  let actorUser: { id: string; role: string; accountId: string | null } | null = null;
+  for (const email of allowedEmails) {
+    actorUser = await prisma.user.findFirst({
+      where: { email },
+      select: { id: true, role: true, accountId: true },
+    });
+    if (actorUser?.accountId) break;
+    actorUser = null;
+  }
+  if (!actorUser || !actorUser.accountId) return NextResponse.json({ ok: true });
+  const actor: AtlasActor = {
+    userId: actorUser.id,
+    accountId: actorUser.accountId,
+    role: actorUser.role || "owner",
+  };
 
   const tg = new TelegramService();
   const text = msg.text.trim();
+  const lower = text.toLowerCase();
+  const pendingKey = {
+    accountId_userId_channel: {
+      accountId: actor.accountId,
+      userId: actor.userId,
+      channel: "telegram",
+    },
+  };
 
-  // /start, /help, /reset → quick canned replies, skip the LLM.
   if (text === "/start") {
     await tg
       .sendMessage(
-        "*Atlas online.*\nAsk me anything about your active deals — closings, gaps, risks, what's overdue. Try _what's closing this week?_",
+        "*Atlas online.*\nAsk about your deals — or tell me to DO things: _add a task to 509 Bent_, _move 3453 Willard to rehab_, _set closing on Main St to Aug 1_. I'll confirm before any change.",
       )
       .catch(() => {});
     return NextResponse.json({ ok: true });
@@ -85,26 +118,68 @@ export async function POST(req: NextRequest) {
   if (text === "/help") {
     await tg
       .sendMessage(
-        "*Examples*\n• what's closing this week?\n• which deals are missing earnest money?\n• which transaction has the highest risk?\n• status of 509 Bent Avenue\n• show me the last 5 closings",
+        "*Ask*\n• what's closing this week?\n• status of 509 Bent\n\n*Do* (I confirm first)\n• add task 'call lender' to 509 Bent due friday\n• move 3453 Willard to rehab\n• set inspection on Main St to 7/20\n• note on 509 Bent: seller wants a leaseback",
       )
       .catch(() => {});
     return NextResponse.json({ ok: true });
   }
 
   try {
-    const reply = await askAtlas(prisma, account.id, text);
-    // Telegram caps message body at 4096 chars.
-    const safe = reply.text.slice(0, 3900);
-    await tg.sendMessage(safe);
+    // Confirmation of a previously-proposed write?
+    const pending = await prisma.atlasPendingAction.findUnique({ where: pendingKey });
+    if (pending && (YES.has(lower) || NO.has(lower))) {
+      if (NO.has(lower)) {
+        await prisma.atlasPendingAction.delete({ where: { id: pending.id } });
+        await tg.sendMessage("Cancelled — nothing changed.").catch(() => {});
+        return NextResponse.json({ ok: true });
+      }
+      const actions =
+        (pending.actionsJson as Array<{ tool: string; args: Record<string, unknown> }>) ?? [];
+      const lines: string[] = [];
+      for (const a of actions) {
+        const r = await executeTool(prisma, actor, a.tool, a.args);
+        lines.push(r.ok ? `✅ ${r.summary}` : `⚠️ ${r.error}`);
+      }
+      await prisma.atlasPendingAction.delete({ where: { id: pending.id } });
+      await tg.sendMessage((lines.join("\n") || "Done.").slice(0, 3900)).catch(() => {});
+      return NextResponse.json({ ok: true });
+    }
+
+    const reply = await askAtlas(prisma, actor, text);
+    if (reply.proposedActions.length > 0) {
+      await prisma.atlasPendingAction.upsert({
+        where: pendingKey,
+        create: {
+          accountId: actor.accountId,
+          userId: actor.userId,
+          channel: "telegram",
+          actionsJson: reply.proposedActions as unknown as Prisma.InputJsonValue,
+          summary: reply.text.slice(0, 200),
+        },
+        update: {
+          actionsJson: reply.proposedActions as unknown as Prisma.InputJsonValue,
+          summary: reply.text.slice(0, 200),
+        },
+      });
+      const previews = reply.proposedActions.map((a, i) => `${i + 1}. ${a.preview}`).join("\n");
+      await tg
+        .sendMessage(`${reply.text}\n\n${previews}\n\nReply *yes* to confirm, *no* to cancel.`.slice(0, 3900))
+        .catch(() => {});
+    } else {
+      // No proposal this turn — clear any stale pending so a later "yes"
+      // can't fire an old action.
+      await prisma.atlasPendingAction.deleteMany({
+        where: { accountId: actor.accountId, userId: actor.userId, channel: "telegram" },
+      });
+      await tg.sendMessage(reply.text.slice(0, 3900)).catch(() => {});
+    }
   } catch (e) {
     logError(e, {
       route: "/api/integrations/telegram/webhook",
       meta: { chat: senderChat, text: text.slice(0, 80) },
     });
     await tg
-      .sendMessage(
-        "Atlas hit an error — try again in a few seconds. (Logged.)",
-      )
+      .sendMessage("Atlas hit an error — try again in a few seconds. (Logged.)")
       .catch(() => {});
   }
 

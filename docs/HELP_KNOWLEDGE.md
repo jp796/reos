@@ -320,3 +320,11 @@ Investor-entitled accounts get a Board nav item (/board) — a kanban of investm
 Rental/Creative) via the tabs; columns are that strategy's stages. Drag a card to
 a column to move the deal to that stage (it seeds that stage's tasks). Retail
 deals never appear here. (Endpoint: POST /api/assets/[id]/set-stage.)
+
+### Talk to Atlas (Telegram) — take actions by chat
+Message the Telegram bot to DO things, not just ask. Atlas resolves the deal
+(find_deal), then for any change it PROPOSES and waits: "Add task … to 3453
+Willard — reply yes to confirm." Reply *yes* to execute, *no* to cancel.
+Supported: add/complete task, set a deadline, advance/set stage, add a note.
+Reads (status, what's closing) answer immediately. Every action is audited and
+runs as the owner with full visibility; writes never fire without a "yes".
