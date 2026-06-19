@@ -9,7 +9,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/app/ToastProvider";
 
-const ROLES = ["owner", "coordinator"] as const;
+const ROLES = ["owner", "admin", "coordinator"] as const;
 
 export function TeamRoleForm({
   userId,

@@ -3,7 +3,10 @@
  * POST /api/account/members  — owner invites a new member by email
  *
  * Body for POST:
- *   { email: string, role?: "coordinator" | "agent" }
+ *   { email: string, role?: "admin" | "coordinator" | "agent" }
+ *   admin = full deal access (sees all deals incl. restricted, can
+ *   toggle deal privacy) but NOT account control (owner-only actions
+ *   like billing / team management stay with the owner).
  *
  * The membership row is created in `pending` state (acceptedAt=null
  * if the user doesn't exist yet, or set immediately if their User row
@@ -21,7 +24,7 @@ export const runtime = "nodejs";
 
 const invite = z.object({
   email: z.string().email().toLowerCase(),
-  role: z.enum(["coordinator", "agent"]).default("coordinator"),
+  role: z.enum(["admin", "coordinator", "agent"]).default("coordinator"),
 });
 
 export async function GET() {

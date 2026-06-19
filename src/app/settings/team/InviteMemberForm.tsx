@@ -19,7 +19,9 @@ export function InviteMemberForm() {
   const router = useRouter();
   const toast = useToast();
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<"coordinator" | "agent">("coordinator");
+  const [role, setRole] = useState<"admin" | "coordinator" | "agent">(
+    "coordinator",
+  );
   const [busy, setBusy] = useState(false);
 
   async function submit(e: React.FormEvent) {
@@ -52,7 +54,7 @@ export function InviteMemberForm() {
       onSubmit={submit}
       className="rounded-md border border-border bg-surface p-4"
     >
-      <div className="mb-1 text-sm font-medium">Invite a TC or agent</div>
+      <div className="mb-1 text-sm font-medium">Invite an admin, TC, or agent</div>
       <p className="mb-3 text-xs text-text-muted">
         They'll get access on their next Google sign-in. They can flip
         between this workspace and their own using the workspace
@@ -69,9 +71,12 @@ export function InviteMemberForm() {
         />
         <select
           value={role}
-          onChange={(e) => setRole(e.target.value as "coordinator" | "agent")}
+          onChange={(e) =>
+            setRole(e.target.value as "admin" | "coordinator" | "agent")
+          }
           className="rounded border border-border bg-surface-2 px-2 py-1.5 text-sm text-text"
         >
+          <option value="admin">Admin (full deal access)</option>
           <option value="coordinator">Coordinator (TC)</option>
           <option value="agent">Agent (read)</option>
         </select>

@@ -1,6 +1,6 @@
 /**
  * POST /api/team/:id/role
- * Body: { role: "owner" | "coordinator" }
+ * Body: { role: "owner" | "admin" | "coordinator" }
  *
  * Owner-only. Changes another user's role within the same account.
  *
@@ -16,7 +16,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireOwner, assertSameAccount } from "@/lib/require-session";
 
-const VALID = new Set(["owner", "coordinator"]);
+const VALID = new Set(["owner", "admin", "coordinator"]);
 
 export async function POST(
   req: NextRequest,
