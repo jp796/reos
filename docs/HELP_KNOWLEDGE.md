@@ -325,9 +325,20 @@ deals never appear here. (Endpoint: POST /api/assets/[id]/set-stage.)
 Message the Telegram bot to DO things, not just ask. Atlas resolves the deal
 (find_deal), then for any change it PROPOSES and waits: "Add task … to 3453
 Willard — reply yes to confirm." Reply *yes* to execute, *no* to cancel.
-Supported: add/complete task, set a deadline, advance/set stage, add a note.
-Reads (status, what's closing) answer immediately. Every action is audited and
-runs as the owner with full visibility; writes never fire without a "yes".
+Supported: add/complete task, set a deadline, advance/set stage, add a note,
+and create a deal from an uploaded contract PDF/photo. Reads answer immediately.
+Every action is audited; writes never fire without a "yes".
+
+### Connect your own Telegram (per-user)
+Each teammate links their own phone: Settings → Notifications → "Connect
+Telegram" → tap the button (opens @REOSAtlasBot) → tap Start. After that, your
+messages to the bot act as YOU, in your home workspace, with your role's
+visibility. The card flips to "Connected" automatically; Disconnect unlinks it.
+A post-login banner on Today prompts anyone who hasn't linked yet. (Endpoints:
+GET/POST/DELETE /api/integrations/telegram/link; linking happens via the bot's
+/start <code> deep link.) Note: a teammate's Telegram talks to their HOME
+workspace — switching a teammate's Telegram into another workspace is a future
+enhancement.
 
 ### Team members & roles (invite a teammate)
 Owners add teammates at Settings → Team (/settings/team). The invite form
