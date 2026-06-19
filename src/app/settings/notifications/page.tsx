@@ -14,6 +14,7 @@ import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { isWebPushConfigured } from "@/services/integrations/WebPushService";
 import { NotificationsPanel } from "./NotificationsPanel";
+import { TelegramConnectPanel } from "./TelegramConnectPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +55,10 @@ export default async function NotificationsSettingsPage() {
             lastUsedAt: s.lastUsedAt?.toISOString() ?? null,
           }))}
         />
+      </div>
+
+      <div className="mt-6">
+        <TelegramConnectPanel />
       </div>
     </div>
   );

@@ -210,40 +210,96 @@ export async function POST(req: NextRequest) {
   const msg = update.message ?? update.edited_message;
   if (!msg) return NextResponse.json({ ok: true });
 
-  // 2. Chat-id allowlist
-  const allowedChat = (env.TELEGRAM_CHAT_ID ?? "").trim();
+  // 2. Identify the sender's chat. The webhook secret already proved
+  //    this call is from Telegram; per-user *linking* (not a single
+  //    hardcoded chat) decides whose account a message acts on.
   const senderChat = String(msg.chat?.id ?? "");
-  if (!allowedChat || allowedChat === "unset" || senderChat !== allowedChat) {
-    // Don't reveal anything to unauthorized chats — just no-op.
-    return NextResponse.json({ ok: true });
+  const tg = new TelegramService(senderChat);
+  const rawText = (msg.text ?? "").trim();
+
+  // 2a. Account linking. A deep link (t.me/<bot>?start=<code>) arrives
+  //     as "/start <code>". Bind this chat to the user who minted the
+  //     code so they can then talk to Atlas as themselves.
+  if (rawText.startsWith("/start")) {
+    const code = rawText.slice("/start".length).trim();
+    if (code) {
+      const target = await prisma.user.findUnique({
+        where: { telegramLinkCode: code },
+        select: { id: true, name: true },
+      });
+      if (target) {
+        try {
+          await prisma.user.update({
+            where: { id: target.id },
+            data: {
+              telegramChatId: senderChat,
+              telegramLinkCode: null,
+              telegramLinkedAt: new Date(),
+            },
+          });
+          await tg
+            .sendMessage(
+              `✅ *Linked!* Hi ${target.name ?? "there"} — I'm Atlas. Ask about your deals, or tell me to add a task, move a stage, or set a deadline. I confirm before any change.`,
+            )
+            .catch(() => {});
+        } catch (e) {
+          logError(e, { route: "/api/integrations/telegram/webhook", meta: { kind: "link" } });
+          await tg
+            .sendMessage("Couldn't finish linking — get a fresh link in REOS (Settings → Notifications → Connect Telegram).")
+            .catch(() => {});
+        }
+        return NextResponse.json({ ok: true });
+      }
+      await tg
+        .sendMessage("That link expired or was already used. In REOS open Settings → Notifications → Connect Telegram for a fresh one.")
+        .catch(() => {});
+      return NextResponse.json({ ok: true });
+    }
+    // bare /start — fall through; resolution below greets a linked user
+    // or prompts an unlinked one to connect.
   }
 
-  // 3. Resolve the acting user. Telegram is the owner's private channel,
-  //    so the agent acts AS the primary allowed (owner) user — inheriting
-  //    their account, role, and visibility. Resolve by AUTH_ALLOWED_EMAILS
-  //    (the first existing user), NOT account.findFirst() — that returns
-  //    an arbitrary tenant when several accounts exist (the classic bug).
-  const allowedEmails = (process.env.AUTH_ALLOWED_EMAILS ?? "")
-    .split(",")
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-  let actorUser: { id: string; role: string; accountId: string | null } | null = null;
-  for (const email of allowedEmails) {
-    actorUser = await prisma.user.findFirst({
-      where: { email },
-      select: { id: true, role: true, accountId: true },
-    });
-    if (actorUser?.accountId) break;
-    actorUser = null;
+  // 3. Resolve the acting user from the linked chat. Fall back to the
+  //    legacy env chat (AUTH_ALLOWED_EMAILS owner) so JP's existing
+  //    channel keeps working before he links his own. Acts in the
+  //    user's HOME account with their home role.
+  let actorUser:
+    | { id: string; role: string; accountId: string | null }
+    | null = await prisma.user.findFirst({
+    where: { telegramChatId: senderChat },
+    select: { id: true, role: true, accountId: true },
+  });
+  if (!actorUser) {
+    const envChat = (env.TELEGRAM_CHAT_ID ?? "").trim();
+    if (envChat && envChat !== "unset" && senderChat === envChat) {
+      const allowedEmails = (process.env.AUTH_ALLOWED_EMAILS ?? "")
+        .split(",")
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean);
+      for (const email of allowedEmails) {
+        const u = await prisma.user.findFirst({
+          where: { email },
+          select: { id: true, role: true, accountId: true },
+        });
+        if (u?.accountId) {
+          actorUser = u;
+          break;
+        }
+      }
+    }
   }
-  if (!actorUser || !actorUser.accountId) return NextResponse.json({ ok: true });
+  if (!actorUser || !actorUser.accountId) {
+    await tg
+      .sendMessage("Your Telegram isn't linked to a REOS account yet. In REOS open *Settings → Notifications → Connect Telegram* to link it.")
+      .catch(() => {});
+    return NextResponse.json({ ok: true });
+  }
   const actor: AtlasActor = {
     userId: actorUser.id,
     accountId: actorUser.accountId,
     role: actorUser.role || "owner",
   };
 
-  const tg = new TelegramService();
   const pendingKey = {
     accountId_userId_channel: {
       accountId: actor.accountId,
@@ -264,7 +320,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  const text = (msg.text ?? "").trim();
+  const text = rawText;
   if (!text) return NextResponse.json({ ok: true });
   const lower = text.toLowerCase();
 

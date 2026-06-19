@@ -20,6 +20,8 @@ import {
 } from "@/services/core/RiskScoringService";
 import { ReconcileSSButton } from "./ReconcileSSButton";
 import { PostCloseTickButton } from "./PostCloseTickButton";
+import { TelegramNudge } from "./TelegramNudge";
+import { TelegramService } from "@/services/integrations/TelegramService";
 import { requireSession } from "@/lib/require-session";
 import { dealVisibilityWhere } from "@/lib/deal-visibility";
 import { cn } from "@/lib/cn";
@@ -89,6 +91,17 @@ export default async function TodayPage({
     actor instanceof Response
       ? { accountId: actingAccountId }
       : { accountId: actingAccountId, ...dealVisibilityWhere(actor) };
+
+  // Telegram nudge: prompt the user to connect their own chat if the
+  // workspace has Telegram configured and they haven't linked yet.
+  let showTelegramNudge = false;
+  if (!(actor instanceof Response) && TelegramService.isConfigured()) {
+    const me = await prisma.user.findUnique({
+      where: { id: actor.userId },
+      select: { telegramChatId: true },
+    });
+    showTelegramNudge = !me?.telegramChatId;
+  }
 
   const now = new Date();
   const weekFromNow = new Date(now.getTime() + 7 * DAY_MS);
@@ -233,6 +246,7 @@ export default async function TodayPage({
 
   return (
     <main className="mx-auto max-w-6xl">
+      {showTelegramNudge && <TelegramNudge />}
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="font-display text-display-lg font-semibold">Today</h1>

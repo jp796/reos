@@ -155,8 +155,15 @@ model User {
   email         String    @unique
   emailVerified DateTime? @map("email_verified")
   image         String?
-  role          String    @default("owner") // owner, coordinator, assistant, tc, agent
+  role          String    @default("owner") // owner, admin, coordinator, assistant, tc, agent
   termsAcceptedAt DateTime? @map("terms_accepted_at")
+  // Per-user Telegram link. telegramChatId is the user's private chat
+  // with @REOSAtlasBot — inbound messages from that chat resolve to
+  // THIS user (and their active account). telegramLinkCode is a one-
+  // time deep-link token consumed by /start <code> during linking.
+  telegramChatId   String?   @unique @map("telegram_chat_id")
+  telegramLinkCode String?   @unique @map("telegram_link_code")
+  telegramLinkedAt DateTime? @map("telegram_linked_at")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 

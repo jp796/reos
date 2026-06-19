@@ -15,6 +15,15 @@ import { env } from "@/lib/env";
 const TG_API = "https://api.telegram.org";
 
 export class TelegramService {
+  /** Optional per-instance default chat. When set, sendMessage targets
+   * this chat unless an explicit chatId is passed — lets the webhook
+   * reply to whoever messaged (`new TelegramService(senderChatId)`)
+   * while the morning tick (`new TelegramService()`) uses the env chat. */
+  private readonly defaultChatId?: string | number;
+  constructor(defaultChatId?: string | number) {
+    this.defaultChatId = defaultChatId;
+  }
+
   static isConfigured(): boolean {
     // "unset" is the placeholder we write into Secret Manager when
     // the user hasn't filled in real values yet — treat it as missing.
@@ -23,16 +32,22 @@ export class TelegramService {
     return !!(t && c && t !== "unset" && c !== "unset");
   }
 
-  /** Send a message to the configured chat. Throws on non-2xx so
-   * the caller can audit. Markdown by default — keeps it readable
-   * on phone. */
+  /** Send a message. Defaults to the env chat (legacy single-channel
+   * morning brief) but accepts an explicit `chatId` so we can reply to
+   * a specific linked user's private chat. Throws on non-2xx so the
+   * caller can audit. Markdown by default — readable on phone. */
   async sendMessage(
     text: string,
-    opts: { parseMode?: "MarkdownV2" | "Markdown" | "HTML"; disablePreview?: boolean } = {},
+    opts: {
+      parseMode?: "MarkdownV2" | "Markdown" | "HTML";
+      disablePreview?: boolean;
+      chatId?: string | number;
+    } = {},
   ): Promise<void> {
-    if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) {
+    const chatId = opts.chatId ?? this.defaultChatId ?? env.TELEGRAM_CHAT_ID;
+    if (!env.TELEGRAM_BOT_TOKEN || !chatId) {
       throw new Error(
-        "Telegram not configured (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID missing)",
+        "Telegram not configured (TELEGRAM_BOT_TOKEN / chat id missing)",
       );
     }
     const url = `${TG_API}/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`;
@@ -40,7 +55,7 @@ export class TelegramService {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        chat_id: env.TELEGRAM_CHAT_ID,
+        chat_id: chatId,
         text,
         parse_mode: opts.parseMode ?? "Markdown",
         disable_web_page_preview: opts.disablePreview ?? true,
@@ -49,6 +64,28 @@ export class TelegramService {
     if (!res.ok) {
       const body = await res.text().catch(() => "");
       throw new Error(`Telegram ${res.status}: ${body.slice(0, 300)}`);
+    }
+  }
+
+  /** The bot's @username (for building t.me deep links). Cached per
+   * process. Returns null if the bot token is missing or getMe fails. */
+  private static _username: string | null = null;
+  async getBotUsername(): Promise<string | null> {
+    if (TelegramService._username) return TelegramService._username;
+    const token = env.TELEGRAM_BOT_TOKEN;
+    if (!token) return null;
+    try {
+      const res = await fetch(`${TG_API}/bot${token}/getMe`);
+      if (!res.ok) return null;
+      const j = (await res.json()) as {
+        ok: boolean;
+        result?: { username?: string };
+      };
+      const u = j.result?.username ?? null;
+      if (u) TelegramService._username = u;
+      return u;
+    } catch {
+      return null;
     }
   }
 
