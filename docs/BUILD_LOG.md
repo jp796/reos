@@ -202,3 +202,21 @@ conversational agent will drive (the "no mistakes" core).
 **Verify (against real prod DB + OpenAI):** full loop ask→find_deal→propose add_task→execute→DB persisted→cleaned up ✓. tsc 0 · AtlasTools 6 tests. Two real bugs found+fixed mid-verify: token matching + the findFirst tenant bug.
 
 **Next:** in-app chat UI (Telegram is live); proactive nudges (Phase C); money/external tools double-confirm (Phase D).
+
+### Session: 2026-06-18 — Atlas Agent Phase A.3 (create a deal from a Telegram upload)
+
+Goal: send the bot a contract PDF (or a photo of a contract) → Atlas
+extracts → proposes the deal → "yes" → deal created. Same
+confirm-before-write discipline as A.2; no direct writes.
+
+| File | Change |
+|------|--------|
+| `src/services/core/createDealFromExtraction.ts` | NEW. Shared deal-creation core (contact upsert → classify → Asset → Transaction → milestones → financials → stage seed) mirroring create-from-scan, so the agent path produces identical deals. Exports DealFields + CreateDealResult. Dedup on account+contact+address. |
+| `src/services/integrations/TelegramService.ts` | `downloadFile(fileId)` — Telegram 2-step getFile → fetch binary → Buffer. |
+| `src/services/ai/ContractExtractionService.ts` | `extractFromImages(buffers)` — feeds raw JPEG bytes to GPT-4o vision, reusing the same schema/normalize/relative-deadline pipeline. |
+| `src/services/ai/AtlasTools.ts` | `create_deal` tool (tier sensitive — always confirmed): zod `{address}.passthrough()`, runs createDealFromExtraction + audit, returns summary w/ /transactions link. PARAM_SCHEMAS + previewAction case added. |
+| `src/app/api/integrations/telegram/webhook/route.ts` | Upload branch: document/photo → `handleUpload` → download → extract (PDF=text, photo=vision) → `fieldsFromExtraction` → upsert pending create_deal → reply summary + "reply yes". |
+
+**Verify:** tsc 0 errors · deploy green (reos-00175-fws serving) · webhook 200 silent-reject without secret header. No new schema (AtlasPendingAction already deployed). E2E pending JP's real upload (1208 Windmill).
+
+**Next:** in-app chat UI (Phase B); proactive nudges (Phase C); money/external tools double-confirm (Phase D); add users Sheri + Heather.
