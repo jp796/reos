@@ -189,3 +189,37 @@ read-only and reversible tools before money/external ones.
 - **"Flawless" is a process, not a state** — it comes from the harness +
   regression evals on the tool layer, run before every change (like the
   extraction-quality harness already does).
+
+---
+
+## Phase A.3 — Create a deal from a Telegram upload (QUEUED)
+
+Goal: send the bot a contract PDF (or a photo of a contract) → Atlas extracts →
+proposes the deal → "yes" → deal created. Property pics → attach to a deal.
+
+Build steps (in order):
+1. **TelegramService.getFile + downloadFile** — Telegram's 2-step file API:
+   `getFile(file_id)` → `file_path`, then GET
+   `https://api.telegram.org/file/bot<TOKEN>/<file_path>` → Buffer. (Only
+   sendMessage exists today.)
+2. **Shared deal-creation service** — factor the creation logic out of
+   `create-from-scan/route.ts` into `createDealFromExtraction(db, actor, extraction)`
+   (contact upsert → classifyDeal → Asset → Transaction → milestones → financials).
+   Have BOTH the route and the new tool call it (no duplication). Refactor the route
+   carefully; behavior must be identical (verify the existing scan-create path still works).
+3. **create_deal AtlasTool** (tier: sensitive → always confirm). Args = the extracted
+   fields. Executor calls createDealFromExtraction; audits; returns the new deal link.
+4. **Webhook: handle `message.document`** (PDF) — download → ContractExtractionService
+   .extract(buffer) → build a create_deal proposed action → store pending → reply with
+   the extracted summary + "reply yes to create."
+5. **Webhook: handle `message.photo`** — needs a vision path that takes a raw image
+   buffer directly (current extractWithVision renders a PDF→images; add
+   `extractImagesWithVision(buffers)` for JPEGs). One photo of a contract → extract +
+   propose; multiple/property pics → "attach to which deal?" (attach as Documents).
+6. **Verify** end-to-end: send a real contract PDF to the bot → extract → yes → deal
+   created in prod → confirm fields landed → clean up the test deal.
+
+Guardrails: create_deal is sensitive-tier (explicit confirm), extracted fields shown
+before creation (never silent-create), tenancy via the resolved actor, audited.
+Risk: factoring create-from-scan is a load-bearing refactor — keep the route's existing
+behavior identical and re-verify the scan-create path.

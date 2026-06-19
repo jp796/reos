@@ -51,4 +51,26 @@ export class TelegramService {
       throw new Error(`Telegram ${res.status}: ${body.slice(0, 300)}`);
     }
   }
+
+  /**
+   * Download a file the user sent (document or photo) by its file_id.
+   * Telegram's two-step API: getFile → file_path, then fetch the binary
+   * from the file endpoint. Returns the bytes as a Buffer.
+   */
+  async downloadFile(fileId: string): Promise<Buffer> {
+    const token = env.TELEGRAM_BOT_TOKEN;
+    if (!token) throw new Error("Telegram not configured");
+    const metaRes = await fetch(`${TG_API}/bot${token}/getFile?file_id=${encodeURIComponent(fileId)}`);
+    if (!metaRes.ok) {
+      throw new Error(`Telegram getFile ${metaRes.status}: ${(await metaRes.text().catch(() => "")).slice(0, 200)}`);
+    }
+    const meta = (await metaRes.json()) as { ok: boolean; result?: { file_path?: string } };
+    const filePath = meta.result?.file_path;
+    if (!meta.ok || !filePath) throw new Error("Telegram getFile: no file_path");
+    const binRes = await fetch(`${TG_API}/file/bot${token}/${filePath}`);
+    if (!binRes.ok) {
+      throw new Error(`Telegram file download ${binRes.status}`);
+    }
+    return Buffer.from(await binRes.arrayBuffer());
+  }
 }

@@ -349,6 +349,68 @@ ${SCHEMA_HINT}`,
     return normalize(parsed);
   }
 
+  /**
+   * Extract from already-rasterized images (e.g. phone PHOTOS of a
+   * contract sent over Telegram) — feeds the image bytes straight to
+   * GPT-4o Vision, skipping the PDF→PNG render that extractWithVision
+   * does. Returns the same shape as extract(), with relative deadlines
+   * computed.
+   */
+  async extractFromImages(
+    imageBuffers: Buffer[],
+  ): Promise<ContractExtraction & { _path: "vision" }> {
+    if (imageBuffers.length === 0) throw new Error("extractFromImages: no images");
+    const imageContent = imageBuffers.slice(0, MAX_VISION_PAGES).map((b) => ({
+      type: "image_url" as const,
+      image_url: {
+        url: `data:image/jpeg;base64,${b.toString("base64")}`,
+        detail: "high" as const,
+      },
+    }));
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.openaiApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: VISION_MODEL,
+        temperature: 0,
+        response_format: { type: "json_object" },
+        max_tokens: 2000,
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `These ${imageBuffers.length} image(s) are photos of a signed real-estate contract. Read the filled-in values and extract per the schema:\n${SCHEMA_HINT}`,
+              },
+              ...imageContent,
+            ],
+          },
+        ],
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`OpenAI vision ${res.status}: ${body.slice(0, 300)}`);
+    }
+    const data = (await res.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const raw = data.choices?.[0]?.message?.content?.trim();
+    if (!raw) throw new Error("OpenAI vision returned empty body");
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new Error(`OpenAI vision non-JSON: ${raw.slice(0, 200)}`);
+    }
+    return { ...computeRelativeDeadlines(normalize(parsed)), _path: "vision" };
+  }
+
   async extractFromText(text: string): Promise<ContractExtraction> {
     const trimmed = text.slice(0, MAX_TEXT_CHARS);
     const userMsg = `Contract text (truncated to ${MAX_TEXT_CHARS} chars if longer):

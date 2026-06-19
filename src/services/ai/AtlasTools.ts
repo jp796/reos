@@ -23,6 +23,10 @@ import { isDealVisible } from "@/lib/deal-visibility";
 import { advanceStage, setStage } from "@/services/core/StageEngine";
 import { stageByKey, getStrategyTemplate } from "@/services/core/strategyTemplates";
 import type { Strategy } from "@/services/core/DealClassifierService";
+import {
+  createDealFromExtraction,
+  type DealFields,
+} from "@/services/core/createDealFromExtraction";
 
 export type ToolTier = "read" | "write" | "sensitive";
 
@@ -342,6 +346,36 @@ export const ATLAS_TOOLS: Record<string, ToolDef> = {
       return { ok: true, summary: `Noted on ${r.deal.address}: "${a.body.slice(0, 80)}".` };
     },
   },
+
+  create_deal: {
+    // Sensitive: creating a deal is significant — always confirmed. The
+    // Telegram upload flow extracts a contract, then proposes this with
+    // the extracted fields; "yes" runs it.
+    tier: "sensitive",
+    description: "Create a new deal from extracted/entered fields. Requires at least an address.",
+    schema: z.object({ address: z.string().min(1) }).passthrough(),
+    run: async (db, actor, args) => {
+      const fields = args as DealFields;
+      const r = await createDealFromExtraction(
+        db,
+        { accountId: actor.accountId, actingUserId: actor.userId },
+        fields,
+      );
+      await audit(db, actor, {
+        transactionId: r.transactionId,
+        entityType: "transaction",
+        entityId: r.transactionId,
+        action: "create_deal",
+        decision: "applied",
+      });
+      const verb = r.created ? "Created" : "Found existing";
+      return {
+        ok: true,
+        summary: `${verb} ${r.strategy} deal at ${fields.address} (${r.milestonesCreated} milestone(s)). Open: /transactions/${r.transactionId}`,
+        data: { transactionId: r.transactionId, assetId: r.assetId, created: r.created },
+      };
+    },
+  },
 };
 
 // ── Public surface ────────────────────────────────────────────────────
@@ -377,6 +411,8 @@ export function previewAction(name: string, args: Record<string, unknown>): stri
       return `Move ${deal} to stage "${args.stage}"`;
     case "add_note":
       return `Add note to ${deal}: "${String(args.body).slice(0, 60)}"`;
+    case "create_deal":
+      return `Create deal at ${args.address}${args.purchasePrice ? ` ($${Number(args.purchasePrice).toLocaleString()})` : ""}`;
     default:
       return `${name} ${JSON.stringify(args)}`;
   }
@@ -435,6 +471,17 @@ const PARAM_SCHEMAS: Record<string, Record<string, unknown>> = {
     type: "object",
     required: ["deal", "body"],
     properties: { deal: { type: "string" }, body: { type: "string" } },
+  },
+  create_deal: {
+    type: "object",
+    required: ["address"],
+    properties: {
+      address: { type: "string" },
+      buyerName: { type: "string" },
+      sellerName: { type: "string" },
+      purchasePrice: { type: "number" },
+      closingDate: { type: "string", description: "YYYY-MM-DD" },
+    },
   },
 };
 
