@@ -328,3 +328,28 @@ Willard — reply yes to confirm." Reply *yes* to execute, *no* to cancel.
 Supported: add/complete task, set a deadline, advance/set stage, add a note.
 Reads (status, what's closing) answer immediately. Every action is audited and
 runs as the owner with full visibility; writes never fire without a "yes".
+
+### Team members & roles (invite a teammate)
+Owners add teammates at Settings → Team (/settings/team). The invite form
+(under "Collaborators") takes an email + role and sends access on their next
+Google sign-in; they switch between their own workspace and yours via the
+sidebar workspace switcher. Roles:
+- **Owner** — full account control (billing, team, deletes) + sees everything.
+- **Admin** — full DEAL access: sees every deal including ones marked private
+  (restricted-to-assignee) and can toggle deal privacy. Does NOT get account
+  control — billing and team management stay owner-only. Use for a partner/
+  staffer who needs to work all your deals (incl. investment deals).
+- **Coordinator (TC)** — sees and works all non-private deals; cannot see
+  deals marked private unless assigned to them.
+- **Agent** — read access.
+Teammates must sign in with a Google-capable email (Google Workspace or Gmail);
+auth is Google-only. (API: POST /api/account/members; role change: POST
+/api/team/[id]/role.)
+
+### Free / discounted trials (coupons)
+Checkout accepts Stripe promotion codes (allow_promotion_codes is on for both
+signup and the billing portal). To give someone a free or $1 trial: create a
+coupon + promotion code in your Stripe Dashboard (Product catalog → Coupons),
+then have them sign up at /signup, pick a tier, and enter the code at checkout.
+They land in their OWN isolated workspace. Do not use AUTH_ALLOWED_EMAILS for
+external testers — that attaches them to an existing account.
