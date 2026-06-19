@@ -1,12 +1,8 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { ScanButton } from "./ScanButton";
-import { EarnestMoneyScanButton } from "./EarnestMoneyScanButton";
-import { InvoiceScanButton } from "./InvoiceScanButton";
-import { StaleContactCheckButton } from "./StaleContactCheckButton";
+import { TransactionsToolbar } from "./TransactionsToolbar";
 import { GmailSearchPanel } from "./GmailSearchPanel";
 import { AcceptedContractScanPanel } from "./AcceptedContractScanPanel";
-import { ManualContractUploadPanel } from "./ManualContractUploadPanel";
 import { QuickDeadButton } from "./QuickDeadButton";
 import { PendingMatchesPanel } from "./PendingMatchesPanel";
 import { PendingClosingUpdatesPanel } from "./PendingClosingUpdatesPanel";
@@ -225,12 +221,7 @@ export default async function TransactionsPage({
             from title-company emails during a Gmail scan
           </p>
         </div>
-        <div className="flex flex-col items-end gap-2">
-          <ScanButton />
-          <EarnestMoneyScanButton />
-          <InvoiceScanButton />
-          <StaleContactCheckButton />
-        </div>
+        <TransactionsToolbar />
       </header>
 
       {/* Lens — Retail / Investment / All (investor entitlement only).
@@ -366,11 +357,20 @@ export default async function TransactionsPage({
         })}
       </div>
 
-      <GmailSearchPanel />
-
-      <AcceptedContractScanPanel />
-
-      <ManualContractUploadPanel />
+      <details className="group mt-8 rounded-md border border-border bg-surface">
+        <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-text-muted hover:text-text">
+          <span className="inline-flex items-center gap-2">
+            <span className="text-text">Find in Gmail</span>
+            <span className="text-xs text-text-subtle">
+              search by name/address, or scan for accepted contracts
+            </span>
+          </span>
+        </summary>
+        <div className="border-t border-border p-4">
+          <GmailSearchPanel />
+          <AcceptedContractScanPanel />
+        </div>
+      </details>
 
       <PendingMatchesPanel />
 
