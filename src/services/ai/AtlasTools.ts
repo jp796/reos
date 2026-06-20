@@ -21,6 +21,7 @@ import { z } from "zod";
 import type { PrismaClient } from "@prisma/client";
 import { isDealVisible } from "@/lib/deal-visibility";
 import { gmailForAccount } from "@/services/integrations/gmailForAccount";
+import { syncDealCalendar } from "@/services/core/syncDealCalendar";
 import { advanceStage, setStage } from "@/services/core/StageEngine";
 import { stageByKey, getStrategyTemplate } from "@/services/core/strategyTemplates";
 import type { Strategy } from "@/services/core/DealClassifierService";
@@ -273,6 +274,40 @@ export const ATLAS_TOOLS: Record<string, ToolDef> = {
     },
   },
 
+  sync_calendar: {
+    // Sensitive: writes events to the user's external Google Calendar.
+    tier: "sensitive",
+    description:
+      "Add the deal's milestone timeline to the connected Google Calendar (one event per dated milestone). Idempotent — already-created events are skipped.",
+    schema: z.object({ deal: z.string().min(1) }),
+    run: async (db, actor, args) => {
+      const { deal } = args as { deal: string };
+      const r = await resolveDeal(db, actor, deal);
+      if ("error" in r) return r.error;
+      const d = r.deal;
+      const res = await syncDealCalendar(db, actor.accountId, d.id);
+      if (!res.connected) {
+        return {
+          ok: true,
+          summary:
+            "Google Calendar isn't connected — connect it in Settings → Integrations and I can add the timeline.",
+        };
+      }
+      await audit(db, actor, {
+        transactionId: d.id,
+        entityType: "transaction",
+        entityId: d.id,
+        action: "sync_calendar",
+        decision: "applied",
+      });
+      return {
+        ok: true,
+        summary: `Added ${res.created} event(s) to your calendar for ${d.address ?? deal}${res.alreadyLinked ? `, ${res.alreadyLinked} already there` : ""}.`,
+        data: { created: res.created, alreadyLinked: res.alreadyLinked },
+      };
+    },
+  },
+
   add_task: {
     tier: "write",
     description: "Add a task to a deal. Optional due date (YYYY-MM-DD) and assignee role.",
@@ -467,6 +502,8 @@ export function previewAction(name: string, args: Record<string, unknown>): stri
       return `Move ${deal} to stage "${args.stage}"`;
     case "add_note":
       return `Add note to ${deal}: "${String(args.body).slice(0, 60)}"`;
+    case "sync_calendar":
+      return `Add ${deal}'s timeline to your Google Calendar`;
     case "create_deal":
       return `Create deal at ${args.address}${args.purchasePrice ? ` ($${Number(args.purchasePrice).toLocaleString()})` : ""}`;
     default:
@@ -484,6 +521,11 @@ const PARAM_SCHEMAS: Record<string, Record<string, unknown>> = {
     properties: { deal: { type: "string", description: "property address or contact name" } },
   },
   check_inbox: {
+    type: "object",
+    required: ["deal"],
+    properties: { deal: { type: "string", description: "property address or contact name" } },
+  },
+  sync_calendar: {
     type: "object",
     required: ["deal"],
     properties: { deal: { type: "string", description: "property address or contact name" } },
