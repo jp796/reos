@@ -933,6 +933,12 @@ export default async function TransactionDetailPage({
               }
             />
           )}
+          <Link
+            href={`/transactions/${txn.id}/summary`}
+            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text-muted hover:border-brand-500 hover:text-brand-700"
+          >
+            Summary
+          </Link>
           <DeleteTransactionButton
             transactionId={txn.id}
             propertyAddress={txn.propertyAddress}

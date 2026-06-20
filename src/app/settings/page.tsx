@@ -17,6 +17,7 @@ import {
   Bell,
   Shield,
   ListChecks,
+  FileText,
 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -37,6 +38,7 @@ const PERSONAL: Section[] = [
   { href: "/settings/vendors", title: "Vendors", desc: "Title, lenders, inspectors — ranked by past deals", icon: Briefcase },
   { href: "/settings/intake", title: "Lead intake", desc: "Public form submissions — promote qualified leads", icon: Inbox },
   { href: "/settings/integrations", title: "Integrations", desc: "MLS photo sources + social posters (Buffer, Direct, Cowork)", icon: Briefcase },
+  { href: "/settings/summary-design", title: "Summary design", desc: "Brand the client transaction-summary PDF (logo, color, tagline)", icon: FileText },
   { href: "/settings/activity", title: "Activity", desc: "Recent changes across the workspace", icon: ScrollText },
 ];
 
