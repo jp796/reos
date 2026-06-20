@@ -22,6 +22,7 @@ import type { PrismaClient } from "@prisma/client";
 import { isDealVisible } from "@/lib/deal-visibility";
 import { gmailForAccount } from "@/services/integrations/gmailForAccount";
 import { syncDealCalendar } from "@/services/core/syncDealCalendar";
+import { draftReplyForDeal, DraftReplyError } from "@/services/core/draftEmailReply";
 import { advanceStage, setStage } from "@/services/core/StageEngine";
 import { stageByKey, getStrategyTemplate } from "@/services/core/strategyTemplates";
 import type { Strategy } from "@/services/core/DealClassifierService";
@@ -308,6 +309,47 @@ export const ATLAS_TOOLS: Record<string, ToolDef> = {
     },
   },
 
+  draft_reply: {
+    // Write: saves a Gmail draft on the user's account (never sends).
+    tier: "write",
+    description:
+      "Draft an AI reply to the most recent inbound email on a deal and SAVE it as a Gmail draft (never sends — the user reviews + sends in Gmail).",
+    schema: z.object({ deal: z.string().min(1) }),
+    run: async (db, actor, args) => {
+      const { deal } = args as { deal: string };
+      const r = await resolveDeal(db, actor, deal);
+      if ("error" in r) return r.error;
+      const d = r.deal;
+      const u = await db.user.findUnique({
+        where: { id: actor.userId },
+        select: { email: true },
+      });
+      if (!u?.email) {
+        return { ok: false, error: "Couldn't resolve your email.", reason: "invalid" };
+      }
+      try {
+        const res = await draftReplyForDeal(db, { accountId: actor.accountId, email: u.email }, d.id);
+        await audit(db, actor, {
+          transactionId: d.id,
+          entityType: "email_draft",
+          entityId: res.draftId,
+          action: "draft_reply",
+          decision: "applied",
+        });
+        return {
+          ok: true,
+          summary: `Drafted a reply to ${res.to} ("${res.subject}") on ${d.address ?? deal} — review + send in Gmail.`,
+          data: { draftId: res.draftId },
+        };
+      } catch (e) {
+        if (e instanceof DraftReplyError) {
+          return { ok: false, error: e.message, reason: "invalid" };
+        }
+        throw e;
+      }
+    },
+  },
+
   add_task: {
     tier: "write",
     description: "Add a task to a deal. Optional due date (YYYY-MM-DD) and assignee role.",
@@ -504,6 +546,8 @@ export function previewAction(name: string, args: Record<string, unknown>): stri
       return `Add note to ${deal}: "${String(args.body).slice(0, 60)}"`;
     case "sync_calendar":
       return `Add ${deal}'s timeline to your Google Calendar`;
+    case "draft_reply":
+      return `Draft a Gmail reply to the latest email on ${deal} (saved as a draft)`;
     case "create_deal":
       return `Create deal at ${args.address}${args.purchasePrice ? ` ($${Number(args.purchasePrice).toLocaleString()})` : ""}`;
     default:
@@ -526,6 +570,11 @@ const PARAM_SCHEMAS: Record<string, Record<string, unknown>> = {
     properties: { deal: { type: "string", description: "property address or contact name" } },
   },
   sync_calendar: {
+    type: "object",
+    required: ["deal"],
+    properties: { deal: { type: "string", description: "property address or contact name" } },
+  },
+  draft_reply: {
     type: "object",
     required: ["deal"],
     properties: { deal: { type: "string", description: "property address or contact name" } },
