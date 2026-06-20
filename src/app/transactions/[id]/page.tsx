@@ -54,6 +54,7 @@ import {
   riskHealthTone,
 } from "@/services/core/RiskScoringService";
 import { DealWorkspaceTabs } from "./DealWorkspaceTabs";
+import { DealAtlasChat } from "./DealAtlasChat";
 
 export const dynamic = "force-dynamic";
 
@@ -982,6 +983,12 @@ export default async function TransactionDetailPage({
         Transaction {txn.id} · Created {fmtDate(txn.createdAt)} · Last synced{" "}
         {fmtDate(txn.lastSyncedAt)}
       </footer>
+
+      {/* In-app Atlas chat — dockable, deal-scoped */}
+      <DealAtlasChat
+        transactionId={txn.id}
+        dealLabel={txn.propertyAddress || contact.fullName}
+      />
     </main>
   );
 }
