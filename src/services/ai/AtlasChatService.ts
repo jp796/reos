@@ -18,6 +18,7 @@ import {
   previewAction,
   type AtlasActor,
 } from "./AtlasTools";
+import { toDateInputValue } from "@/lib/dates";
 
 const MODEL = process.env.OPENAI_CHAT_MODEL ?? "gpt-4o-mini";
 
@@ -188,7 +189,7 @@ async function buildContext(
       id: account?.id ?? accountId,
       businessName: account?.businessName ?? "REOS",
     },
-    todayIso: now.toISOString().slice(0, 10),
+    todayIso: toDateInputValue(now),
     openDeals: open.map((t): DealLite => ({
       id: t.id,
       address: t.propertyAddress ?? "(no address)",
@@ -199,8 +200,8 @@ async function buildContext(
       contactPhone: t.contact.primaryPhone,
       side: t.side,
       status: t.status,
-      contractDate: t.contractDate?.toISOString().slice(0, 10) ?? null,
-      closingDate: t.closingDate?.toISOString().slice(0, 10) ?? null,
+      contractDate: toDateInputValue(t.contractDate) || null,
+      closingDate: toDateInputValue(t.closingDate) || null,
       daysToClose: t.closingDate ? dayDiff(t.closingDate, now) : null,
       riskScore: t.riskScore,
       lender: t.lenderName,
@@ -210,8 +211,8 @@ async function buildContext(
       milestones: t.milestones.map((m): MilestoneLite => ({
         type: m.type,
         label: m.label,
-        due: m.dueAt?.toISOString().slice(0, 10) ?? null,
-        done: m.completedAt?.toISOString().slice(0, 10) ?? null,
+        due: toDateInputValue(m.dueAt) || null,
+        done: toDateInputValue(m.completedAt) || null,
         overdue:
           !m.completedAt &&
           m.status === "pending" &&
@@ -220,7 +221,7 @@ async function buildContext(
       })),
       openTasks: t.tasks.map((tk) => ({
         title: tk.title,
-        due: tk.dueAt?.toISOString().slice(0, 10) ?? null,
+        due: toDateInputValue(tk.dueAt) || null,
         priority: tk.priority,
       })),
       documents: t.documents.map((d): DocLite => ({
@@ -238,7 +239,7 @@ async function buildContext(
     recentClosings: closings.map((t) => ({
       address: t.propertyAddress ?? t.contact.fullName,
       contact: t.contact.fullName,
-      closingDate: t.closingDate?.toISOString().slice(0, 10) ?? "",
+      closingDate: toDateInputValue(t.closingDate),
       salePrice: t.financials?.salePrice ?? null,
       grossCommission: t.financials?.grossCommission ?? null,
     })),

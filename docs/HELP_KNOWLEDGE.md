@@ -364,3 +364,25 @@ coupon + promotion code in your Stripe Dashboard (Product catalog → Coupons),
 then have them sign up at /signup, pick a tier, and enter the code at checkout.
 They land in their OWN isolated workspace. Do not use AUTH_ALLOWED_EMAILS for
 external testers — that attaches them to an existing account.
+
+### Tabbed deal workspace
+The deal page is organized into tabs: **Timeline · Tasks · Details ·
+Compliance · Files · Email**. The header, compliance alert, AI brief, and
+Notes stay pinned above the tabs. Tabs deep-link via the URL hash
+(e.g. `#files`). Tab badges show open-task count, missing-compliance count,
+and document count.
+
+### Per-transaction document library + upload
+Each transaction has its own document library (Files tab). Click **Upload
+files** to add any file(s) — they're stored on the deal, auto-classified for
+Rezen, counted in the compliance audit, and become selectable in the **E-sign**
+PDF picker. The intake wizard also bulk-attaches every file you upload during
+creation. (Endpoint: POST /api/transactions/:id/documents.)
+
+### In-app Atlas chat (on the deal)
+Every deal page has an **Ask Atlas** button (bottom-right) that opens a docked
+chat on the right — keep a tab/document open on the left and chat on the right.
+Atlas is scoped to that deal: ask questions (answered immediately) or tell it to
+do things (add task, set deadline, move stage, add note) — writes are proposed
+and require **Confirm** before they apply. Same brain as the Telegram bot.
+(Endpoint: POST /api/transactions/:id/atlas.)
