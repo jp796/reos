@@ -137,6 +137,24 @@ export function TaskPanel({
     }
   }
 
+  async function saveAsTemplate() {
+    const name = window.prompt("Save this deal's tasks as a template. Name:");
+    if (name === null) return;
+    try {
+      const res = await fetch(`/api/transactions/${transactionId}/save-as-task-template`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: name.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "save failed");
+      setTemplates([]); // force reload next open
+      toast.success("Saved as template", `${data.count} task(s) — "${data.name}"`);
+    } catch (e) {
+      toast.error("Couldn't save", e instanceof Error ? e.message : "unknown");
+    }
+  }
+
   async function patchTask(tid: string, patch: Partial<Task>) {
     const prev = items.find((t) => t.id === tid);
     if (!prev) return;
@@ -300,6 +318,16 @@ export function TaskPanel({
               ))
             )}
           </select>
+          {items.length > 0 && (
+            <button
+              type="button"
+              onClick={saveAsTemplate}
+              className="rounded border border-border bg-surface px-2 py-1 text-xs font-medium text-text-muted hover:border-brand-500 hover:text-brand-700"
+              title="Save these tasks as a reusable template"
+            >
+              Save as template
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setAdding((v) => !v)}

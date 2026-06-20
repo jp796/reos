@@ -101,6 +101,23 @@ export function CompliancePanel({
     }
   }
 
+  async function saveAsTemplate() {
+    const name = window.prompt("Save this deal's document checklist as a template. Name:");
+    if (name === null) return;
+    try {
+      const res = await fetch(`/api/transactions/${transactionId}/save-as-compliance-template`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: name.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "save failed");
+      window.alert(`Saved "${data.name}" — ${data.count} documents. Apply it to other deals from their Compliance tab.`);
+    } catch (e) {
+      window.alert(`Couldn't save: ${e instanceof Error ? e.message : "unknown"}`);
+    }
+  }
+
   async function fetchAudit() {
     setBusy(true);
     try {
@@ -185,6 +202,14 @@ export function CompliancePanel({
             )}
             {appliedName && <option value="__clear">↩ Revert to default</option>}
           </select>
+          <button
+            type="button"
+            onClick={saveAsTemplate}
+            className="rounded border border-border bg-surface px-2 py-1 text-xs text-text-muted hover:border-brand-500 hover:text-brand-700"
+            title="Save this checklist as a reusable template"
+          >
+            Save as template
+          </button>
           <button
             type="button"
             onClick={() => startTransition(() => void fetchAudit())}
