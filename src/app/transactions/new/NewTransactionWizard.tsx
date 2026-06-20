@@ -134,6 +134,7 @@ export function NewTransactionWizard() {
   const [strategy, setStrategy] = useState<Strategy>("flip");
   const [files, setFiles] = useState<File[]>([]);
   const [primaryIdx, setPrimaryIdx] = useState(0);
+  const [dragging, setDragging] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -380,19 +381,45 @@ export function NewTransactionWizard() {
           {/* Multi-file upload */}
           <div>
             <div className="mb-2 text-sm font-medium">Documents</div>
-            <button
-              type="button"
+            <div
+              role="button"
+              tabIndex={0}
               onClick={() => fileRef.current?.click()}
-              className="flex w-full flex-col items-center gap-1.5 rounded-lg border border-dashed border-border bg-surface px-4 py-8 text-center hover:border-brand-400"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  fileRef.current?.click();
+                }
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                if (!dragging) setDragging(true);
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                setDragging(false);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragging(false);
+                addFiles(e.dataTransfer.files);
+              }}
+              className={`flex w-full cursor-pointer flex-col items-center gap-1.5 rounded-lg border border-dashed px-4 py-8 text-center transition-colors ${
+                dragging ? "border-brand-500 bg-brand-50" : "border-border bg-surface hover:border-brand-400"
+              }`}
             >
               <Upload className="h-5 w-5 text-text-muted" />
               <span className="text-sm font-medium text-text">
-                {files.length ? "Add more files" : "Add files"}
+                {dragging
+                  ? "Drop to add"
+                  : files.length
+                    ? "Drop files here or click to add more"
+                    : "Drop files here or click to add"}
               </span>
               <span className="text-xs text-text-muted">
                 Purchase contract, listing agreement, disclosures, addenda — PDFs or photos
               </span>
-            </button>
+            </div>
             <input
               ref={fileRef}
               type="file"
