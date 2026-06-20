@@ -22,7 +22,11 @@ import type { PrismaClient } from "@prisma/client";
 import { isDealVisible } from "@/lib/deal-visibility";
 import { gmailForAccount } from "@/services/integrations/gmailForAccount";
 import { syncDealCalendar } from "@/services/core/syncDealCalendar";
-import { draftReplyForDeal, DraftReplyError } from "@/services/core/draftEmailReply";
+import {
+  draftReplyForDeal,
+  draftNewEmailForDeal,
+  DraftReplyError,
+} from "@/services/core/draftEmailReply";
 import { advanceStage, setStage } from "@/services/core/StageEngine";
 import { stageByKey, getStrategyTemplate } from "@/services/core/strategyTemplates";
 import type { Strategy } from "@/services/core/DealClassifierService";
@@ -350,6 +354,56 @@ export const ATLAS_TOOLS: Record<string, ToolDef> = {
     },
   },
 
+  draft_email: {
+    // Write: composes a NEW email + saves a Gmail draft (never sends).
+    tier: "write",
+    description:
+      "Compose a NEW email for a deal to a party (by role, name, or email address) about a topic, and SAVE it as a Gmail draft (never sends). Use for fresh emails like EMD instructions or a status update; use draft_reply to answer an inbound email.",
+    schema: z.object({
+      deal: z.string().min(1),
+      to: z.string().min(1),
+      about: z.string().min(1),
+    }),
+    run: async (db, actor, args) => {
+      const { deal, to, about } = args as { deal: string; to: string; about: string };
+      const r = await resolveDeal(db, actor, deal);
+      if ("error" in r) return r.error;
+      const d = r.deal;
+      const u = await db.user.findUnique({
+        where: { id: actor.userId },
+        select: { email: true },
+      });
+      if (!u?.email) {
+        return { ok: false, error: "Couldn't resolve your email.", reason: "invalid" };
+      }
+      try {
+        const res = await draftNewEmailForDeal(
+          db,
+          { accountId: actor.accountId, email: u.email },
+          d.id,
+          { to, about },
+        );
+        await audit(db, actor, {
+          transactionId: d.id,
+          entityType: "email_draft",
+          entityId: res.draftId,
+          action: "draft_email",
+          decision: "applied",
+        });
+        return {
+          ok: true,
+          summary: `Drafted an email to ${res.to} ("${res.subject}") on ${d.address ?? deal} — review + send in Gmail.`,
+          data: { draftId: res.draftId },
+        };
+      } catch (e) {
+        if (e instanceof DraftReplyError) {
+          return { ok: false, error: e.message, reason: "invalid" };
+        }
+        throw e;
+      }
+    },
+  },
+
   add_task: {
     tier: "write",
     description: "Add a task to a deal. Optional due date (YYYY-MM-DD) and assignee role.",
@@ -548,6 +602,8 @@ export function previewAction(name: string, args: Record<string, unknown>): stri
       return `Add ${deal}'s timeline to your Google Calendar`;
     case "draft_reply":
       return `Draft a Gmail reply to the latest email on ${deal} (saved as a draft)`;
+    case "draft_email":
+      return `Draft an email to ${args.to} about "${String(args.about).slice(0, 50)}" on ${deal} (saved as a Gmail draft)`;
     case "create_deal":
       return `Create deal at ${args.address}${args.purchasePrice ? ` ($${Number(args.purchasePrice).toLocaleString()})` : ""}`;
     default:
@@ -578,6 +634,15 @@ const PARAM_SCHEMAS: Record<string, Record<string, unknown>> = {
     type: "object",
     required: ["deal"],
     properties: { deal: { type: "string", description: "property address or contact name" } },
+  },
+  draft_email: {
+    type: "object",
+    required: ["deal", "to", "about"],
+    properties: {
+      deal: { type: "string", description: "property address or contact name" },
+      to: { type: "string", description: "recipient: a party role (buyer/seller/title/lender), a name, or an email address" },
+      about: { type: "string", description: "what the email should say / its purpose" },
+    },
   },
   add_task: {
     type: "object",
