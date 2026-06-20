@@ -47,6 +47,12 @@ const SECTIONS = [
     icon: ListChecks,
   },
   {
+    href: "/settings/compliance-templates",
+    title: "Compliance templates",
+    desc: "Reusable + AI-generated document checklists per deal",
+    icon: Shield,
+  },
+  {
     href: "/settings/vendors",
     title: "Vendors",
     desc: "Title, lenders, inspectors — ranked by past deals",

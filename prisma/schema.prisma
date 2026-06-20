@@ -97,6 +97,7 @@ model Account {
   pushSubscriptions         PushSubscription[]
   memberships               AccountMembership[]
   taskTemplates             TaskTemplate[]
+  complianceTemplates       ComplianceTemplate[]
 
   @@map("accounts")
 }
@@ -165,6 +166,28 @@ model TaskTemplate {
 
   @@index([accountId])
   @@map("task_templates")
+}
+
+/// User-defined (or AI-generated) compliance document checklist. When
+/// applied to a transaction, its items become that deal's required-doc
+/// audit (Transaction.complianceTemplateJson) — overriding the brokerage
+/// default for that deal only. itemsJson is an array of:
+///   { key, label, keywords: string[], sides?: ("buy"|"sell"|"both")[], detail? }
+model ComplianceTemplate {
+  id              String   @id @default(cuid())
+  accountId       String   @map("account_id")
+  name            String
+  description     String?
+  itemsJson       Json     @map("items_json")
+  source          String   @default("manual") // manual | ai
+  createdByUserId String?  @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+  @@map("compliance_templates")
 }
 
 model User {
@@ -334,6 +357,11 @@ model Transaction {
   /// so existing deals are unchanged. Enforced on every discovery/view
   /// surface via lib/deal-visibility.ts.
   restrictedToAssignee   Boolean   @default(false) @map("restricted_to_assignee")
+  // Applied compliance template — per-deal required-doc checklist that
+  // overrides the brokerage default for this deal only. Null = use the
+  // account/brokerage resolution.
+  complianceTemplateJson Json?     @map("compliance_template_json")
+  complianceTemplateName String?   @map("compliance_template_name")
   // Contract extraction: pending review + last applied timestamp
   pendingContractJson    Json?     @map("pending_contract_json")
   contractExtractedAt    DateTime? @map("contract_extracted_at")

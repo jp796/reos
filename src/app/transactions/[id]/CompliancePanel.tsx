@@ -48,10 +48,49 @@ const STAGE_LABELS: Record<string, string> = {
   post_close: "Post close",
 };
 
-export function CompliancePanel({ transactionId }: { transactionId: string }) {
+export function CompliancePanel({
+  transactionId,
+  appliedName: initialApplied = null,
+}: {
+  transactionId: string;
+  appliedName?: string | null;
+}) {
   const [audit, setAudit] = useState<Audit | null>(null);
   const [busy, setBusy] = useState(false);
   const [, startTransition] = useTransition();
+  const [templates, setTemplates] = useState<{ id: string; name: string; itemCount: number }[]>([]);
+  const [appliedName, setAppliedName] = useState<string | null>(initialApplied);
+  const [applying, setApplying] = useState(false);
+
+  async function loadTemplates() {
+    if (templates.length > 0) return;
+    try {
+      const res = await fetch("/api/compliance-templates");
+      const data = await res.json();
+      setTemplates(data.templates ?? []);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function applyTemplate(templateId: string, clear = false) {
+    setApplying(true);
+    try {
+      const res = await fetch(`/api/transactions/${transactionId}/apply-compliance-template`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(clear ? { clear: true } : { templateId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "apply failed");
+      setAppliedName(clear ? null : (data.applied ?? null));
+      await fetchAudit();
+    } catch {
+      /* surfaced via re-scan failing silently; keep UI simple */
+    } finally {
+      setApplying(false);
+    }
+  }
 
   async function fetchAudit() {
     setBusy(true);
@@ -106,17 +145,54 @@ export function CompliancePanel({ transactionId }: { transactionId: string }) {
             </span>
           )}
         </h2>
-        <button
-          type="button"
-          onClick={() => startTransition(() => void fetchAudit())}
-          disabled={busy}
-          className="inline-flex items-center gap-1 rounded border border-border bg-surface px-2 py-1 text-xs text-text-muted hover:border-border-strong hover:text-text disabled:opacity-50"
-          title="Re-scan after uploading or labeling new docs"
-        >
-          <RefreshCcw className={cn("h-3 w-3", busy && "animate-spin")} strokeWidth={2} />
-          Re-scan
-        </button>
+        <div className="flex items-center gap-1.5">
+          <select
+            defaultValue=""
+            disabled={applying}
+            onFocus={loadTemplates}
+            onMouseDown={loadTemplates}
+            onChange={(e) => {
+              const v = e.target.value;
+              e.target.value = "";
+              if (v === "__clear") applyTemplate("", true);
+              else if (v) applyTemplate(v);
+            }}
+            title="Apply a saved compliance checklist to this deal"
+            className="rounded border border-border bg-surface px-2 py-1 text-xs font-medium text-text-muted hover:border-brand-500 hover:text-brand-700 disabled:opacity-50"
+          >
+            <option value="" disabled>
+              {applying ? "Applying…" : "Apply checklist…"}
+            </option>
+            {templates.length === 0 ? (
+              <option value="" disabled>
+                No checklists — create in Settings
+              </option>
+            ) : (
+              templates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name} ({t.itemCount})
+                </option>
+              ))
+            )}
+            {appliedName && <option value="__clear">↩ Revert to default</option>}
+          </select>
+          <button
+            type="button"
+            onClick={() => startTransition(() => void fetchAudit())}
+            disabled={busy}
+            className="inline-flex items-center gap-1 rounded border border-border bg-surface px-2 py-1 text-xs text-text-muted hover:border-border-strong hover:text-text disabled:opacity-50"
+            title="Re-scan after uploading or labeling new docs"
+          >
+            <RefreshCcw className={cn("h-3 w-3", busy && "animate-spin")} strokeWidth={2} />
+            Re-scan
+          </button>
+        </div>
       </div>
+      {appliedName && (
+        <div className="mb-3 -mt-1 text-xs text-text-muted">
+          Using checklist: <span className="font-medium text-text">{appliedName}</span>
+        </div>
+      )}
 
       {!audit ? (
         <div className="rounded border border-dashed border-border bg-surface-2 p-4 text-sm text-text-muted">

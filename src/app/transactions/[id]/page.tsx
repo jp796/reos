@@ -596,7 +596,10 @@ export default async function TransactionDetailPage({
     <div className="space-y-6">
       {complianceAuditEnabled && (
         <div id="compliance-audit" className="scroll-mt-20">
-          <CompliancePanel transactionId={txn.id} />
+          <CompliancePanel
+            transactionId={txn.id}
+            appliedName={txn.complianceTemplateName}
+          />
         </div>
       )}
       {isRezenShop && (

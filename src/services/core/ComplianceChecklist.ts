@@ -20,6 +20,7 @@
  */
 
 import type { Document } from "@prisma/client";
+import { normalizeComplianceItems } from "./UserComplianceTemplates";
 
 export interface ComplianceRequirement {
   /** Stable id for state/side carryover. */
@@ -378,7 +379,7 @@ export async function auditTransactionCompliance(
 }> {
   const txn = await db.transaction.findUnique({
     where: { id: transactionId },
-    select: { side: true, state: true, accountId: true },
+    select: { side: true, state: true, accountId: true, complianceTemplateJson: true },
   });
   if (!txn) {
     return { missing: 0, present: 0, total: 0, items: [] };
@@ -393,15 +394,23 @@ export async function auditTransactionCompliance(
       source: true,
     },
   });
-  // Phase A: per-account checklist resolution. Falls back to the
-  // hardcoded UNIVERSAL+state-addons list when an account has no
-  // brokerage profile assigned (legacy data, fresh installs).
-  const reqs = await resolveChecklistForAccount(
-    db,
-    txn.accountId,
-    txn.side,
-    txn.state,
-  );
+  // Per-deal applied compliance template wins (opt-in). Items are
+  // side-filtered the same way requirementsFor does; null = use the
+  // account/brokerage resolution below.
+  const applied = normalizeComplianceItems(txn.complianceTemplateJson);
+  let reqs: ComplianceRequirement[];
+  if (applied.length > 0) {
+    reqs = applied.filter((r) => {
+      if (!r.sides || r.sides.length === 0) return true;
+      if (!txn.side) return true;
+      return r.sides.includes(txn.side as "buy" | "sell" | "both");
+    });
+  } else {
+    // Phase A: per-account checklist resolution. Falls back to the
+    // hardcoded UNIVERSAL+state-addons list when an account has no
+    // brokerage profile assigned (legacy data, fresh installs).
+    reqs = await resolveChecklistForAccount(db, txn.accountId, txn.side, txn.state);
+  }
   const items = computeCompliance(reqs, docs);
   const present = items.filter((i) => i.status === "present").length;
   const missing = items.length - present;
