@@ -71,6 +71,8 @@ export function SendPanel({
   const [pending, startTransition] = useTransition();
   const [sending, setSending] = useState(false);
   const [drafting, setDrafting] = useState(false);
+  const [scheduleAt, setScheduleAt] = useState("");
+  const [scheduling, setScheduling] = useState(false);
 
   /**
    * AI draft reply — calls /api/transactions/[id]/ai-draft-reply
@@ -204,6 +206,51 @@ export function SendPanel({
       toast.error("Send failed", e instanceof Error ? e.message : "unknown");
     } finally {
       setSending(false);
+    }
+  }
+
+  async function schedule() {
+    if (!to.trim() || !subject.trim() || !body.trim()) {
+      toast.error("Missing required fields");
+      return;
+    }
+    if (!scheduleAt) {
+      toast.error("Pick a send time");
+      return;
+    }
+    const when = new Date(scheduleAt);
+    if (Number.isNaN(when.getTime()) || when.getTime() < Date.now() + 60_000) {
+      toast.error("Pick a time at least a minute out");
+      return;
+    }
+    setScheduling(true);
+    try {
+      const res = await fetch(`/api/transactions/${transactionId}/schedule-email`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          to: to.split(",").map((s) => s.trim()).filter(Boolean),
+          cc: cc.split(",").map((s) => s.trim()).filter(Boolean),
+          subject,
+          body,
+          sendAt: when.toISOString(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? res.statusText);
+      toast.success("Scheduled", `Atlas will send it ${when.toLocaleString()}.`);
+      setSelectedId("");
+      setPreview(null);
+      setTo("");
+      setCc("");
+      setSubject("");
+      setBody("");
+      setScheduleAt("");
+      startTransition(() => router.refresh());
+    } catch (e) {
+      toast.error("Couldn't schedule", e instanceof Error ? e.message : "unknown");
+    } finally {
+      setScheduling(false);
     }
   }
 
@@ -360,15 +407,32 @@ export function SendPanel({
                     </span>
                   )}
                 </div>
-                <button
-                  type="button"
-                  onClick={send}
-                  disabled={sending || pending}
-                  className="inline-flex items-center gap-1.5 rounded bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
-                >
-                  <Send className="h-3.5 w-3.5" strokeWidth={2} />
-                  {sending ? "Sending…" : "Send via Gmail"}
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={send}
+                    disabled={sending || scheduling || pending}
+                    className="inline-flex items-center gap-1.5 rounded bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
+                  >
+                    <Send className="h-3.5 w-3.5" strokeWidth={2} />
+                    {sending ? "Sending…" : "Send via Gmail"}
+                  </button>
+                  <span className="text-xs text-text-subtle">or send later:</span>
+                  <input
+                    type="datetime-local"
+                    value={scheduleAt}
+                    onChange={(e) => setScheduleAt(e.target.value)}
+                    className="rounded border border-border bg-surface-2 px-2 py-1 text-xs text-text focus:border-brand-500 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={schedule}
+                    disabled={scheduling || sending || pending || !scheduleAt}
+                    className="inline-flex items-center gap-1.5 rounded border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text-muted hover:border-brand-500 hover:text-brand-700 disabled:opacity-50"
+                  >
+                    {scheduling ? "Scheduling…" : "Schedule"}
+                  </button>
+                </div>
               </div>
             </>
           )}

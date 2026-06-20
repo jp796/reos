@@ -190,6 +190,33 @@ model ComplianceTemplate {
   @@map("compliance_templates")
 }
 
+/// A user-authored email queued to send at a future time (Gmail-style
+/// "send later"). The hourly tick claims due rows atomically (status
+/// pending → sending) and sends once via the account's Gmail.
+model ScheduledEmail {
+  id             String    @id @default(cuid())
+  accountId      String    @map("account_id")
+  transactionId  String    @map("transaction_id")
+  createdByUserId String?  @map("created_by_user_id")
+  fromEmail      String    @map("from_email")
+  toJson         Json      @map("to_json")
+  ccJson         Json?     @map("cc_json")
+  subject        String
+  body           String
+  sendAt         DateTime  @map("send_at")
+  status         String    @default("pending") // pending | sending | sent | failed | canceled
+  attempts       Int       @default(0)
+  lastError      String?   @map("last_error")
+  sentAt         DateTime? @map("sent_at")
+  gmailMessageId String?   @map("gmail_message_id")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@index([status, sendAt])
+  @@index([transactionId])
+  @@map("scheduled_emails")
+}
+
 model User {
   id            String    @id @default(cuid())
   // Nullable because NextAuth's PrismaAdapter.createUser() only

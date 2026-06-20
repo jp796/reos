@@ -16,6 +16,7 @@ import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { requireSession } from "@/lib/require-session";
 import { tickPostClose } from "@/services/automation/PostCloseAutomation";
+import { processScheduledEmails } from "@/services/automation/ScheduledEmailService";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -33,5 +34,12 @@ export async function POST(req: NextRequest) {
   }
 
   const result = await tickPostClose(prisma);
-  return NextResponse.json({ ok: true, ...result });
+  // Piggyback the scheduled-email sweep on the hourly tick (no new cron).
+  let scheduledEmails = { claimed: 0, sent: 0, failed: 0 };
+  try {
+    scheduledEmails = await processScheduledEmails(prisma);
+  } catch {
+    /* never let the email sweep break the post-close tick */
+  }
+  return NextResponse.json({ ok: true, ...result, scheduledEmails });
 }
