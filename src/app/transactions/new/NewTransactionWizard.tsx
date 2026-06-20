@@ -259,6 +259,22 @@ export function NewTransactionWizard() {
         setErr(data.error ?? res.statusText);
         return;
       }
+      // Attach every uploaded file (contract + related docs) into the
+      // new deal's document library so nothing is lost. Best-effort —
+      // a failed attach shouldn't block opening the created deal.
+      if (data.transactionId && files.length > 0) {
+        try {
+          const fd = new FormData();
+          files.forEach((f) => fd.append("file", f));
+          fd.append("origin", "wizard");
+          await fetch(`/api/transactions/${data.transactionId}/documents`, {
+            method: "POST",
+            body: fd,
+          });
+        } catch {
+          /* non-blocking */
+        }
+      }
       startTransition(() => router.push(`/transactions/${data.transactionId}`));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "create failed");
@@ -389,10 +405,10 @@ export function NewTransactionWizard() {
                 ))}
               </ul>
             )}
-            {files.length > 1 && (
+            {files.length > 0 && (
               <p className="mt-1.5 text-xs text-text-subtle">
-                Atlas reads the file marked <b>contract</b>. The rest you can attach
-                on the deal&rsquo;s Documents tab.
+                Atlas reads the file marked <b>contract</b>; every file is saved to
+                the new deal&rsquo;s <b>Files</b> tab.
               </p>
             )}
           </div>

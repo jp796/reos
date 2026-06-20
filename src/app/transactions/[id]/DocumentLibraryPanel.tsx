@@ -98,6 +98,71 @@ function fmtConfidence(c: number | null): string {
   return `${Math.round(c * 100)}%`;
 }
 
+/**
+ * UploadDocsControl — drop ANY file(s) into this transaction's library.
+ * Posts to POST /api/transactions/:id/documents, then refreshes so the
+ * new docs appear here (and in the E-sign PDF picker + compliance audit).
+ */
+function UploadDocsControl({
+  transactionId,
+  variant = "button",
+}: {
+  transactionId: string;
+  variant?: "button" | "primary";
+}) {
+  const router = useRouter();
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [, startTransition] = useTransition();
+
+  async function upload(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setBusy(true);
+    try {
+      const fd = new FormData();
+      Array.from(files).forEach((f) => fd.append("file", f));
+      const res = await fetch(`/api/transactions/${transactionId}/documents`, {
+        method: "POST",
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "upload failed");
+      toast.success(
+        `Added ${data.count} file${data.count === 1 ? "" : "s"}`,
+        "They're in the library now.",
+      );
+      startTransition(() => router.refresh());
+    } catch (e) {
+      toast.error("Upload failed", e instanceof Error ? e.message : "unknown");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <label
+      className={
+        variant === "primary"
+          ? "inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-500"
+          : "inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text-muted hover:border-border-strong hover:text-text"
+      }
+    >
+      <UploadIcon className="h-3.5 w-3.5" />
+      {busy ? "Uploading…" : "Upload files"}
+      <input
+        type="file"
+        multiple
+        className="hidden"
+        disabled={busy}
+        onChange={(e) => {
+          upload(e.target.files);
+          e.target.value = "";
+        }}
+      />
+    </label>
+  );
+}
+
 export function DocumentLibraryPanel({ transactionId, documents }: Props) {
   if (documents.length === 0) {
     return (
@@ -105,20 +170,26 @@ export function DocumentLibraryPanel({ transactionId, documents }: Props) {
         <FileText className="mx-auto mb-2 h-6 w-6 text-text-muted" strokeWidth={1.5} />
         <h2 className="text-sm font-medium text-text">No documents yet</h2>
         <p className="mt-1 text-xs text-text-muted">
-          Upload a contract above or run a Gmail scan. Documents that land here are
-          automatically AI-classified for Rezen.
+          Upload any file for this deal, drop a contract above, or run a Gmail scan.
+          Documents that land here are auto-classified for Rezen and selectable in E-sign.
         </p>
+        <div className="mt-4 flex justify-center">
+          <UploadDocsControl transactionId={transactionId} variant="primary" />
+        </div>
       </section>
     );
   }
 
   return (
     <section className="mt-8">
-      <div className="mb-3 flex items-baseline justify-between">
+      <div className="mb-3 flex items-baseline justify-between gap-3">
         <h2 className="text-lg font-medium">Document library</h2>
-        <span className="text-xs text-text-muted">
-          {documents.length} file{documents.length === 1 ? "" : "s"} · Ready for Rezen prep
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-text-muted">
+            {documents.length} file{documents.length === 1 ? "" : "s"} · Ready for Rezen prep
+          </span>
+          <UploadDocsControl transactionId={transactionId} />
+        </div>
       </div>
       <ul className="space-y-2">
         {documents.map((d) => (
