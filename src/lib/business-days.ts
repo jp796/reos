@@ -1,31 +1,87 @@
 /**
  * Business-day math for contract deadlines.
  *
- * "Business days" in US real estate contracts = Mon-Fri, excluding
- * federal holidays (optional — baseline here skips only weekends,
- * since most state forms say "business days" with no holiday carve-
- * out and the agent can manually override via the editable timeline).
+ * "Business days" = Mon-Fri, excluding US federal holidays (observed).
+ * Brokers and title offices are closed on federal holidays, so a
+ * deadline that would land on (or be counted through) a holiday skips
+ * it. The agent can still override any date via the editable timeline.
  */
 
-/** Add N business days (Mon-Fri) to a date. Returns a new Date at
- * the same hh:mm:ss as input, advanced to the Nth following weekday. */
+// ── US federal holidays (observed) ─────────────────────────────────
+const holidayCache = new Map<number, Set<string>>();
+
+function ymd(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+/** Nth (1-based) `weekday` (0=Sun) of `month` (0-based) in `year`. */
+function nthWeekday(year: number, month: number, weekday: number, n: number): Date {
+  const first = new Date(year, month, 1);
+  const offset = (weekday - first.getDay() + 7) % 7;
+  return new Date(year, month, 1 + offset + (n - 1) * 7);
+}
+function lastWeekday(year: number, month: number, weekday: number): Date {
+  const last = new Date(year, month + 1, 0); // last day of month
+  const offset = (last.getDay() - weekday + 7) % 7;
+  return new Date(year, month, last.getDate() - offset);
+}
+/** Saturday holiday → observed Friday; Sunday → observed Monday. */
+function observed(d: Date): Date {
+  const day = d.getDay();
+  if (day === 6) return new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1);
+  if (day === 0) return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+  return d;
+}
+
+function federalHolidays(year: number): Set<string> {
+  const cached = holidayCache.get(year);
+  if (cached) return cached;
+  const dates: Date[] = [
+    observed(new Date(year, 0, 1)), // New Year's Day
+    nthWeekday(year, 0, 1, 3), // MLK Jr Day — 3rd Mon Jan
+    nthWeekday(year, 1, 1, 3), // Presidents Day — 3rd Mon Feb
+    lastWeekday(year, 4, 1), // Memorial Day — last Mon May
+    observed(new Date(year, 5, 19)), // Juneteenth
+    observed(new Date(year, 6, 4)), // Independence Day
+    nthWeekday(year, 8, 1, 1), // Labor Day — 1st Mon Sep
+    nthWeekday(year, 9, 1, 2), // Columbus Day — 2nd Mon Oct
+    observed(new Date(year, 10, 11)), // Veterans Day
+    nthWeekday(year, 10, 4, 4), // Thanksgiving — 4th Thu Nov
+    observed(new Date(year, 11, 25)), // Christmas
+  ];
+  const set = new Set(dates.map(ymd));
+  holidayCache.set(year, set);
+  return set;
+}
+
+/** True if `d` is a US federal holiday (observed). */
+export function isFederalHoliday(d: Date): boolean {
+  return federalHolidays(d.getFullYear()).has(ymd(d));
+}
+
+/** True if `d` is a non-working day (weekend or federal holiday). */
+function isNonBusinessDay(d: Date): boolean {
+  const day = d.getDay();
+  return day === 0 || day === 6 || isFederalHoliday(d);
+}
+
+/** Add N business days (Mon-Fri, skipping federal holidays). Returns a
+ * new Date at the same hh:mm:ss as input. */
 export function addBusinessDays(from: Date, n: number): Date {
   if (n <= 0) return new Date(from);
   const d = new Date(from);
   let added = 0;
   while (added < n) {
     d.setDate(d.getDate() + 1);
-    const day = d.getDay();
-    if (day !== 0 && day !== 6) added++; // skip Sun (0), Sat (6)
+    if (!isNonBusinessDay(d)) added++;
   }
   return d;
 }
 
 /** Snap a date forward to the next business day if it lands on a
- * weekend. Idempotent on weekdays. */
+ * weekend or federal holiday. Idempotent on business days. */
 export function nextBusinessDay(d: Date): Date {
   const out = new Date(d);
-  while (out.getDay() === 0 || out.getDay() === 6) {
+  while (isNonBusinessDay(out)) {
     out.setDate(out.getDate() + 1);
   }
   return out;

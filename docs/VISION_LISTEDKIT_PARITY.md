@@ -228,6 +228,7 @@ Design PDF; state holidays.
    font, sections).
 7. **Settings IA** — regroup into Personal / Admin (ListedKit layout).
 8. **State holidays** in business-day math (today: weekends only).
-9. **SMS interface to Atlas** (Twilio) — text Atlas across deals on the go.
+9. ~~SMS interface to Atlas (Twilio)~~ — **DEFERRED** (2026-06-20, JP): Telegram
+   is the mobile channel; no Twilio for now.
 10. **True doc-viewer split** — open a document on the left while chatting with
     Atlas on the right (today: Files tab + dockable chat = functional split).
