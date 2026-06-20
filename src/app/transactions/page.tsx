@@ -420,7 +420,10 @@ export default async function TransactionsPage({
                     href={`/transactions/${txn.id}`}
                     className="group/link min-w-0 flex-1"
                   >
-                    <div className="flex items-center gap-3">
+                    <div className="text-base font-bold text-text group-hover/link:text-brand-700">
+                      {txn.propertyAddress || "No property address yet"}
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-2">
                       <span className={statusBadge(txn.status)}>
                         {txn.status}
                       </span>
@@ -437,7 +440,7 @@ export default async function TransactionsPage({
                               : "Dual"}
                         </span>
                       )}
-                      <span className="text-sm font-medium text-text group-hover/link:text-brand-700">
+                      <span className="text-sm font-medium text-text">
                         {txn.contact.fullName}
                       </span>
                       {txn.assignedUser && (
@@ -451,14 +454,10 @@ export default async function TransactionsPage({
                           ).split(" ")[0]}
                         </span>
                       )}
-                    </div>
-                    <div className="mt-1 text-sm text-text-muted">
-                      {txn.propertyAddress || "No property address yet"}
                       {txn.contact.sourceName && (
-                        <>
-                          <span className="mx-2 text-text-subtle">·</span>
-                          {txn.contact.sourceName}
-                        </>
+                        <span className="text-xs text-text-muted">
+                          · {txn.contact.sourceName}
+                        </span>
                       )}
                     </div>
                   </Link>

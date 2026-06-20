@@ -91,7 +91,7 @@ export default async function ListingsPage() {
               <div className="min-w-0 flex-1">
                 <Link
                   href={`/transactions/${l.id}`}
-                  className="font-display text-base font-semibold hover:underline"
+                  className="font-display text-base font-bold hover:underline"
                 >
                   {l.propertyAddress ?? "(no address)"}
                 </Link>
