@@ -8,7 +8,7 @@
  * scan to create) so a wizard-created deal is identical to the old flow.
  */
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Upload,
@@ -139,6 +139,23 @@ export function NewTransactionWizard() {
   const [err, setErr] = useState<string | null>(null);
   const [extraction, setExtraction] = useState<Extraction | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+
+  // Optional templates to apply on create (ListedKit-style intake).
+  const [taskTemplates, setTaskTemplates] = useState<{ id: string; name: string; itemCount: number }[]>([]);
+  const [complianceTemplates, setComplianceTemplates] = useState<{ id: string; name: string; itemCount: number }[]>([]);
+  const [taskTemplateId, setTaskTemplateId] = useState("");
+  const [complianceTemplateId, setComplianceTemplateId] = useState("");
+
+  useEffect(() => {
+    fetch("/api/task-templates")
+      .then((r) => r.json())
+      .then((d) => setTaskTemplates(d.templates ?? []))
+      .catch(() => {});
+    fetch("/api/compliance-templates")
+      .then((r) => r.json())
+      .then((d) => setComplianceTemplates(d.templates ?? []))
+      .catch(() => {});
+  }, []);
 
   function addFiles(list: FileList | null) {
     if (!list) return;
@@ -274,6 +291,21 @@ export function NewTransactionWizard() {
         } catch {
           /* non-blocking */
         }
+      }
+      // Apply the chosen templates (best-effort; non-blocking).
+      if (data.transactionId && taskTemplateId) {
+        await fetch(`/api/transactions/${data.transactionId}/apply-task-template`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ templateId: taskTemplateId }),
+        }).catch(() => {});
+      }
+      if (data.transactionId && complianceTemplateId) {
+        await fetch(`/api/transactions/${data.transactionId}/apply-compliance-template`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ templateId: complianceTemplateId }),
+        }).catch(() => {});
       }
       startTransition(() => router.push(`/transactions/${data.transactionId}`));
     } catch (e) {
@@ -488,6 +520,45 @@ export function NewTransactionWizard() {
             <div className="rounded border border-border bg-surface-2 px-3 py-2 text-xs italic text-text-muted">
               Atlas note: {extraction.notes}
             </div>
+          )}
+
+          {(taskTemplates.length > 0 || complianceTemplates.length > 0) && (
+            <Section title="Apply templates (optional)">
+              {taskTemplates.length > 0 && (
+                <label className="block">
+                  <span className="reos-label">Task checklist</span>
+                  <select
+                    value={taskTemplateId}
+                    onChange={(e) => setTaskTemplateId(e.target.value)}
+                    className="mt-1 w-full rounded border border-border bg-surface-2 px-2 py-1.5 text-sm text-text focus:border-brand-500 focus:outline-none"
+                  >
+                    <option value="">None</option>
+                    {taskTemplates.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} ({t.itemCount})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {complianceTemplates.length > 0 && (
+                <label className="block">
+                  <span className="reos-label">Compliance checklist</span>
+                  <select
+                    value={complianceTemplateId}
+                    onChange={(e) => setComplianceTemplateId(e.target.value)}
+                    className="mt-1 w-full rounded border border-border bg-surface-2 px-2 py-1.5 text-sm text-text focus:border-brand-500 focus:outline-none"
+                  >
+                    <option value="">None</option>
+                    {complianceTemplates.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} ({t.itemCount})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </Section>
           )}
 
           <div className="flex items-center gap-2">

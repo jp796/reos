@@ -192,3 +192,42 @@ sweep w/ draft replies; calendar create-with-approval (finish the partials).
 **Phase 5 — Templates & compliance depth** — user-defined + AI-generated
 compliance/task templates; smart save-as-new; richer doc statuses; Summary
 Design PDF; state holidays.
+
+---
+
+## STATUS — end of 2026-06-19 session
+
+### ✅ Shipped this session (verified)
+- Admin role (grantable) + per-user Telegram linking (any user)
+- Atlas A.3: create a deal from a Telegram contract upload
+- Transactions list: "+ New Transaction" CTA + Tools menu (declutter)
+- Guided intake **wizard** (`/transactions/new`): multi-file upload, side
+  picker incl. **Investor + strategy**, live extract, editable review, create
+- **Tabbed deal workspace** (Timeline · Tasks · Details · Compliance · Files · Email)
+- Per-transaction **document library upload** + wizard bulk-attach
+- **In-app Atlas chat** (dockable, deal-scoped, confirm-before-write)
+- Atlas **check_inbox** tool (read Gmail for a deal) — in-app + Telegram
+- Atlas date fix (local-day, no UTC off-by-one)
+- **Task Templates** — user-defined + AI-generated + apply-to-deal
+- **Compliance Templates** — user-defined + AI-generated + per-deal apply (audit override)
+- **Wizard applies templates at intake** (task + compliance) ← just shipped
+- List rows lead with **address (bigger + bold)**, badges below (txn + listings)
+
+### ⏳ Remaining (prioritized)
+1. **Schedule-send email** — needs ScheduledEmail table + hourly-tick send
+   (no new cron; piggyback post-close tick). User-authored, send later.
+2. **Atlas write-tools for email + calendar** — "draft/send email", "add the
+   timeline to my calendar" via chat, held for confirm (ListedKit's Ava moves).
+3. **Inbox draft-replies via Atlas** — check_inbox is read-only today; add
+   "draft a reply / save the attachment" actions (confirm-before-send).
+4. **Richer document statuses** — explicit Pending / Uploaded / Has Issues /
+   Fully Executed per compliance doc (today: present/missing + eSign rollup).
+5. **Smart "save as new template"** — detect state/HOA delta after a deal and
+   offer to save a tailored template (ListedKit's "save a TX + HOA version").
+6. **Summary Design** — branded transaction-summary PDF settings (logo, colors,
+   font, sections).
+7. **Settings IA** — regroup into Personal / Admin (ListedKit layout).
+8. **State holidays** in business-day math (today: weekends only).
+9. **SMS interface to Atlas** (Twilio) — text Atlas across deals on the go.
+10. **True doc-viewer split** — open a document on the left while chatting with
+    Atlas on the right (today: Files tab + dockable chat = functional split).
