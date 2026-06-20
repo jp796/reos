@@ -234,10 +234,20 @@ export function requirementsFor(params: {
   });
 }
 
+/** Richer per-item lifecycle status (ListedKit parity), derived from the
+ *  matched documents' signature-scan state — no manual data entry:
+ *   pending        = nothing uploaded for this requirement
+ *   uploaded       = a doc is present, signature state unknown / N/A
+ *   has_issues     = a matched doc scanned partial / unsigned
+ *   fully_executed = a matched doc scanned fully signed */
+export type DocStatus = "pending" | "uploaded" | "has_issues" | "fully_executed";
+
 export interface ComplianceStatus {
   requirement: ComplianceRequirement;
   /** "present" = at least one doc matched, "missing" = none. */
   status: "present" | "missing";
+  /** Lifecycle status derived from matched docs' signature scan. */
+  docStatus: DocStatus;
   /** Which document(s) matched. Empty when status=missing. */
   matches: Array<{ id: string; fileName: string; source: string }>;
 }
@@ -245,7 +255,10 @@ export interface ComplianceStatus {
 /** Compute coverage for a set of requirements against a document set. */
 export function computeCompliance(
   requirements: ComplianceRequirement[],
-  documents: Pick<Document, "id" | "fileName" | "category" | "extractedText" | "source">[],
+  documents: Pick<
+    Document,
+    "id" | "fileName" | "category" | "extractedText" | "source" | "signatureScanStatus"
+  >[],
 ): ComplianceStatus[] {
   return requirements.map((r) => {
     const re = new RegExp(
@@ -258,9 +271,18 @@ export function computeCompliance(
       );
       return re.test(blob);
     });
+    // Derive lifecycle status from the matched docs' signature scans.
+    let docStatus: DocStatus = "pending";
+    if (matches.length > 0) {
+      const scans = matches.map((d) => d.signatureScanStatus);
+      if (scans.some((s) => s === "signed")) docStatus = "fully_executed";
+      else if (scans.some((s) => s === "partial" || s === "unsigned")) docStatus = "has_issues";
+      else docStatus = "uploaded";
+    }
     return {
       requirement: r,
       status: matches.length > 0 ? "present" : "missing",
+      docStatus,
       matches: matches.map((d) => ({
         id: d.id,
         fileName: d.fileName,
@@ -392,6 +414,7 @@ export async function auditTransactionCompliance(
       category: true,
       extractedText: true,
       source: true,
+      signatureScanStatus: true,
     },
   });
   // Per-deal applied compliance template wins (opt-in). Items are

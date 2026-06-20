@@ -22,6 +22,7 @@ interface Match {
   fileName: string;
   source: string;
 }
+type DocStatus = "pending" | "uploaded" | "has_issues" | "fully_executed";
 interface Item {
   requirement: {
     key: string;
@@ -31,8 +32,16 @@ interface Item {
     authority?: string;
   };
   status: "present" | "missing";
+  docStatus?: DocStatus;
   matches: Match[];
 }
+
+const DOC_STATUS_BADGE: Record<DocStatus, { label: string; cls: string }> = {
+  pending: { label: "Pending", cls: "bg-surface-2 text-text-muted ring-border" },
+  uploaded: { label: "Uploaded", cls: "bg-blue-50 text-blue-700 ring-blue-200" },
+  has_issues: { label: "Has issues", cls: "bg-amber-50 text-amber-700 ring-amber-200" },
+  fully_executed: { label: "Fully executed", cls: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
+};
 
 interface Audit {
   items: Item[];
@@ -253,6 +262,16 @@ function ComplianceRow({ item }: { item: Item }) {
           <span className="font-medium text-text">
             {item.requirement.label}
           </span>
+          {item.docStatus && (
+            <span
+              className={cn(
+                "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ring-1",
+                DOC_STATUS_BADGE[item.docStatus].cls,
+              )}
+            >
+              {DOC_STATUS_BADGE[item.docStatus].label}
+            </span>
+          )}
           {item.requirement.authority && (
             <span
               className="text-[10px] text-text-subtle"
