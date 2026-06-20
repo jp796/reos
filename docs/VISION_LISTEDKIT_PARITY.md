@@ -232,3 +232,19 @@ Design PDF; state holidays.
    is the mobile channel; no Twilio for now.
 10. **True doc-viewer split** — open a document on the left while chatting with
     Atlas on the right (today: Files tab + dockable chat = functional split).
+
+---
+
+## ✅ PARITY COMPLETE — 2026-06-20
+
+All roadmap items shipped (SMS deferred per JP — Telegram is the channel):
+- Atlas write-tools: sync_calendar, draft_reply, draft_email (+ check_inbox)
+- Richer doc statuses (Pending/Uploaded/Has Issues/Fully Executed)
+- Settings Personal/Admin regroup
+- US federal holidays in business-day math
+- Schedule-send email (atomic, hourly-tick send)
+- Smart save-as-template (tasks + compliance, relative-timing preserved)
+- Summary-Design (branded, print-to-PDF transaction summary)
+
+REOS now matches ListedKit's headline flow and exceeds it on the investor
+side (Asset spine, strategies, board, economics, Production P&L, Rezen push).
