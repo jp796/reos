@@ -53,6 +53,7 @@ import {
   riskHealth,
   riskHealthTone,
 } from "@/services/core/RiskScoringService";
+import { DealWorkspaceTabs } from "./DealWorkspaceTabs";
 
 export const dynamic = "force-dynamic";
 
@@ -287,6 +288,7 @@ export default async function TransactionDetailPage({
 
   const pendingMilestones = txn.milestones.filter((m) => !m.completedAt);
   const completedCount = txn.milestones.length - pendingMilestones.length;
+  const openTaskCount = txn.tasks.filter((t) => !t.completedAt).length;
 
   const risk = new RiskScoringService().compute({ transaction: txn });
   const health = riskHealth(risk.score);
@@ -329,6 +331,487 @@ export default async function TransactionDetailPage({
     });
     if (r.factors.length > 0) investorRisk = r;
   }
+
+  // ── Tab content (grouped from the former long scroll) ──────────────
+  const timelineTab = (
+    <div className="space-y-6">
+      <TransactionTimeline
+        transactionId={txn.id}
+        initialMilestones={txn.milestones.map((m) => ({
+          id: m.id,
+          type: m.type,
+          label: m.label,
+          dueAt: m.dueAt?.toISOString() ?? null,
+          completedAt: m.completedAt?.toISOString() ?? null,
+          status: m.status,
+          ownerRole: m.ownerRole,
+          source: m.source,
+        }))}
+        effectiveDate={txn.contractDate?.toISOString() ?? null}
+        closingDate={txn.closingDate?.toISOString() ?? null}
+      >
+        <InspectionsPanel
+          transactionId={txn.id}
+          initial={txn.inspections.map((i) => ({
+            id: i.id,
+            kind: i.kind,
+            label: i.label,
+            scheduledAt: i.scheduledAt?.toISOString() ?? null,
+            vendorName: i.vendorName,
+            vendorNote: i.vendorNote,
+            remindOnTelegram: i.remindOnTelegram,
+            calendarEventId: i.calendarEventId,
+            completedAt: i.completedAt?.toISOString() ?? null,
+          }))}
+          inspectionDeadline={txn.inspectionDate?.toISOString() ?? null}
+          inspectionObjectionDeadline={
+            txn.inspectionObjectionDate?.toISOString() ?? null
+          }
+        />
+      </TransactionTimeline>
+
+      {txn.asset && hasStageLifecycle(txn.asset.strategy as Strategy) && (
+        <StagePanel
+          assetId={txn.asset.id}
+          strategyLabel={strategyLabel(txn.asset.strategy)}
+          stages={getStrategyTemplate(txn.asset.strategy as Strategy).map(
+            (s) => ({ key: s.key, name: s.name }),
+          )}
+          currentStageKey={txn.asset.currentStageName}
+        />
+      )}
+
+      {txn.calendarEvents.length > 0 && (
+        <section>
+          <h2 className="mb-2 text-lg font-medium">
+            Calendar events ({txn.calendarEvents.length})
+          </h2>
+          <ul className="space-y-1 text-sm">
+            {txn.calendarEvents.map((e) => (
+              <li
+                key={e.id}
+                className="flex items-center justify-between rounded-md border border-border bg-surface px-3 py-2"
+              >
+                <span className="truncate">{e.title}</span>
+                <span className="ml-3 shrink-0 text-xs text-text-muted">
+                  {fmtDate(e.startAt)} · {e.calendarType}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
+  );
+
+  const tasksTab = (
+    <TaskPanel
+      transactionId={txn.id}
+      initial={txn.tasks.map((t) => ({
+        id: t.id,
+        title: t.title,
+        description: t.description,
+        dueAt: t.dueAt?.toISOString() ?? null,
+        completedAt: t.completedAt?.toISOString() ?? null,
+        assignedTo: t.assignedTo,
+        priority: t.priority,
+        milestoneId: t.milestoneId,
+      }))}
+    />
+  );
+
+  const detailsTab = (
+    <div className="space-y-6">
+      <section className="grid grid-cols-2 gap-x-6 gap-y-3 md:grid-cols-4">
+        <Fact label="Contact email" value={contact.primaryEmail ?? "—"} />
+        <Fact label="Contact phone" value={contact.primaryPhone ?? "—"} />
+        <Fact label="Source" value={contact.sourceName ?? "—"} />
+        <Fact label="Assigned agent" value={contact.assignedAgentName ?? "—"} />
+        <Fact label="Contract date" value={fmtDate(txn.contractDate)} />
+        <Fact label="Closing date" value={fmtDate(txn.closingDate)} />
+        <Fact label="Inspection" value={fmtDate(txn.inspectionDate)} />
+        <Fact
+          label="Inspection objection"
+          value={fmtDate(txn.inspectionObjectionDate)}
+        />
+        <Fact label="Title commitment" value={fmtDate(txn.titleDeadline)} />
+        <Fact label="Title objection" value={fmtDate(txn.titleObjectionDate)} />
+        <Fact label="Appraisal" value={fmtDate(txn.appraisalDate)} />
+        <Fact label="Lender" value={txn.lenderName ?? "—"} />
+        <Fact label="Title co." value={txn.titleCompanyName ?? "—"} />
+        <Fact label="Sale price" value={fmtMoney(txn.financials?.salePrice)} />
+        <Fact
+          label="Commission %"
+          value={
+            txn.financials?.commissionPercent != null
+              ? `${txn.financials.commissionPercent}%`
+              : "—"
+          }
+        />
+        <Fact
+          label="Gross commission"
+          value={fmtMoney(txn.financials?.grossCommission)}
+        />
+      </section>
+
+      <ParticipantsPanel
+        transactionId={txn.id}
+        primaryContact={{
+          id: contact.id,
+          fullName: contact.fullName,
+          primaryEmail: contact.primaryEmail,
+          primaryPhone: contact.primaryPhone,
+        }}
+        primarySide={txn.side}
+        initial={txn.participants.map((p) => ({
+          id: p.id,
+          role: p.role,
+          notes: p.notes,
+          createdAt: p.createdAt.toISOString(),
+          contact: p.contact,
+        }))}
+      />
+
+      <section>
+        <div className={`rounded-md border p-4 ${riskHealthTone(health)}`}>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="reos-label opacity-80">Risk · {health}</div>
+              <div className="mt-1 font-display text-display-md font-semibold">
+                {risk.score}
+                <span className="ml-1 font-sans text-sm font-normal opacity-60">
+                  / 100
+                </span>
+              </div>
+            </div>
+            <div className="text-right text-sm">
+              <div className="font-medium">{risk.recommendation}</div>
+            </div>
+          </div>
+          {risk.factors.length > 0 && (
+            <ul className="mt-3 space-y-1 text-sm">
+              {risk.factors.map((f, i) => (
+                <li key={i} className="flex items-start justify-between gap-3">
+                  <span>{f.description}</span>
+                  <span className="shrink-0 opacity-70 tabular-nums">
+                    +{f.impact}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
+
+      {investorRisk && (
+        <section className="rounded-md border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/40 dark:bg-amber-950/30">
+          <div className="flex items-center justify-between">
+            <div className="reos-label text-amber-800 dark:text-amber-200">
+              Investor risk
+            </div>
+            <div className="font-display text-display-md font-semibold text-amber-800 dark:text-amber-200">
+              {investorRisk.score}
+              <span className="ml-1 font-sans text-sm font-normal opacity-60">/ 100</span>
+            </div>
+          </div>
+          <ul className="mt-3 space-y-1 text-sm text-amber-900 dark:text-amber-100">
+            {investorRisk.factors.map((x, i) => (
+              <li key={i} className="flex items-start justify-between gap-3">
+                <span>{x.description}</span>
+                <span className="shrink-0 tabular-nums opacity-70">+{x.impact}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <FinancialsForm
+        transactionId={txn.id}
+        side={txn.side}
+        initial={
+          txn.financials
+            ? {
+                salePrice: txn.financials.salePrice,
+                commissionPercent: txn.financials.commissionPercent,
+                grossCommission: txn.financials.grossCommission,
+                referralFeeAmount: txn.financials.referralFeeAmount,
+                brokerageSplitAmount: txn.financials.brokerageSplitAmount,
+                marketingCostAllocated: txn.financials.marketingCostAllocated,
+                netCommission: txn.financials.netCommission,
+              }
+            : null
+        }
+      />
+
+      <ProductionToggle
+        transactionId={txn.id}
+        initial={txn.excludeFromProduction}
+        closingDateIso={txn.closingDate?.toISOString() ?? null}
+        status={txn.status}
+      />
+
+      <div className="flex items-center justify-end gap-2">
+        <CdaButton
+          transactionId={txn.id}
+          enabled={!!txn.financials?.grossCommission}
+        />
+      </div>
+
+      {txn.asset && txn.asset.representation === "principal" && (
+        <EconomicsPanel
+          assetId={txn.asset.id}
+          strategy={txn.asset.strategy as Strategy}
+          initial={
+            (txn.asset.economicsJson as Record<string, unknown> | null) ?? null
+          }
+        />
+      )}
+
+      {txn.asset && txn.asset.representation === "principal" && (
+        <DrawCapitalPanel assetId={txn.asset.id} />
+      )}
+
+      {tags.length > 0 && (
+        <section>
+          <h3 className="text-xs uppercase tracking-wide text-text-muted">
+            FUB tags
+          </h3>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {tags.map((t) => (
+              <span
+                key={t}
+                className="rounded bg-surface-2 px-2 py-0.5 text-xs text-text"
+              >
+                {t}
+              </span>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+
+  const complianceTab = (
+    <div className="space-y-6">
+      {complianceAuditEnabled && (
+        <div id="compliance-audit" className="scroll-mt-20">
+          <CompliancePanel transactionId={txn.id} />
+        </div>
+      )}
+      {isRezenShop && (
+        <RezenCompliancePrepPanel
+          transactionId={txn.id}
+          rezenTransactionId={txn.rezenTransactionId}
+          rezenConnected={!!account?.realApiTokensEncrypted}
+        />
+      )}
+      <WireVerificationPanel
+        transactionId={txn.id}
+        closingDate={txn.closingDate?.toISOString() ?? null}
+        titleCompanyName={txn.titleCompanyName}
+      />
+    </div>
+  );
+
+  const filesTab = (
+    <div className="space-y-6">
+      <DocumentLibraryPanel
+        transactionId={txn.id}
+        documents={txn.documents.map((d) => {
+          const reqs = txn.esignRequests.filter((r) => r.document?.id === d.id);
+          let esignStatus: "none" | "draft" | "sent" | "completed" | "voided" | "error" = "none";
+          let esignSummary: string | null = null;
+          if (reqs.length > 0) {
+            const newest = reqs[0];
+            esignStatus =
+              (newest.status as "none" | "draft" | "sent" | "completed" | "voided" | "error") ?? "none";
+            if (newest.status === "completed") {
+              esignSummary = "✓ Completed";
+            } else if (newest.status === "sent") {
+              esignSummary = `Sent · awaiting signatures`;
+            } else if (newest.status === "voided") {
+              esignSummary = "Voided";
+            } else if (newest.status === "error") {
+              esignSummary = "Send failed";
+            } else if (newest.status === "draft") {
+              esignSummary = "Draft saved";
+            }
+          }
+          return {
+            id: d.id,
+            fileName: d.fileName,
+            mimeType: d.mimeType,
+            category: d.category,
+            source: d.source,
+            uploadOrigin: d.uploadOrigin,
+            uploadedAt: d.uploadedAt.toISOString(),
+            suggestedRezenSlot: d.suggestedRezenSlot,
+            suggestedRezenConfidence: d.suggestedRezenConfidence,
+            classifiedAt: d.classifiedAt?.toISOString() ?? null,
+            hasRawBytes: d.rawBytes !== null && d.rawBytes !== undefined,
+            hasExtractedText:
+              d.extractedText !== null &&
+              d.extractedText !== undefined &&
+              d.extractedText.length > 0,
+            esignStatus,
+            esignSummary,
+          };
+        })}
+      />
+
+      <ContractUploadPanel
+        transactionId={txn.id}
+        side={txn.side}
+        hasSmartFolder={!!txn.smartFolderLabelId}
+        initialExtraction={
+          (txn.pendingContractJson as unknown as
+            | Record<string, unknown>
+            | null) ?? null
+        }
+      />
+
+      <ContractVersionHistory transactionId={txn.id} />
+
+      <EsignPanel
+        transactionId={txn.id}
+        documents={txn.documents.map((d) => ({
+          id: d.id,
+          fileName: d.fileName,
+          mimeType: d.mimeType,
+        }))}
+        signerOptions={signerOptions}
+        requests={txn.esignRequests.map((r) => ({
+          id: r.id,
+          title: r.title,
+          status: r.status,
+          signingLinksJson: r.signingLinksJson,
+          errorMessage: r.errorMessage,
+          createdAt: r.createdAt,
+          sentAt: r.sentAt,
+          recipients: r.recipients,
+        }))}
+      />
+    </div>
+  );
+
+  const emailTab = (
+    <div className="space-y-6">
+      <SendPanel
+        transactionId={txn.id}
+        primaryEmail={contact.primaryEmail}
+        parties={[
+          ...(txn.side === "buy" || txn.side === "both"
+            ? [
+                {
+                  role: "co_buyer",
+                  fullName: contact.fullName,
+                  email: contact.primaryEmail,
+                },
+              ]
+            : []),
+          ...(txn.side === "sell" || txn.side === "both"
+            ? [
+                {
+                  role: "co_seller",
+                  fullName: contact.fullName,
+                  email: contact.primaryEmail,
+                },
+              ]
+            : []),
+          ...txn.participants.map((p) => ({
+            role: p.role,
+            fullName: p.contact.fullName,
+            email: p.contact.primaryEmail,
+          })),
+        ]}
+      />
+
+      <ForwardingPanel
+        transactionId={txn.id}
+        initialEmail={txn.forwardingEmail}
+        initialProvider={txn.forwardingEmailProvider}
+        initialLastRunAt={txn.forwardingLastRunAt?.toISOString() ?? null}
+        smartFolderReady={!!txn.smartFolderFilterId}
+      />
+
+      <SmartFolderSection
+        transactionId={txn.id}
+        createdAt={txn.createdAt.toISOString()}
+        labelName={txn.propertyAddress ? `REOS/Transactions/${txn.propertyAddress.replace(/\//g, "—").trim().slice(0, 150)}` : null}
+        filterId={txn.smartFolderFilterId}
+        setupAt={txn.smartFolderSetupAt?.toISOString() ?? null}
+        backfillCount={txn.smartFolderBackfillCount}
+        eligible={
+          !gmailDeferred &&
+          txn.createdAt >= SMART_FOLDER_CUTOFF &&
+          !!txn.propertyAddress &&
+          !txn.smartFolderFilterId
+        }
+        eligibilityReason={
+          txn.createdAt < SMART_FOLDER_CUTOFF
+            ? "before_cutoff"
+            : !txn.propertyAddress
+              ? "no_property_address"
+              : null
+        }
+        gmailDeferred={gmailDeferred}
+        marketEntryStageName={marketEntryName}
+      />
+
+      <SharePanel
+        transactionId={txn.id}
+        initialToken={txn.shareToken}
+        initialExpiresAt={txn.shareExpiresAt?.toISOString() ?? null}
+      />
+
+      <SocialPostsPanel
+        transactionId={txn.id}
+        defaultEvent={
+          txn.status === "listing"
+            ? "new_listing"
+            : txn.status === "closed"
+              ? "sold"
+              : "under_contract"
+        }
+      />
+
+      {txn.communicationEvents.length > 0 && (
+        <section>
+          <h2 className="mb-2 text-lg font-medium">Recent communication</h2>
+          <ul className="space-y-2">
+            {txn.communicationEvents.map((c) => (
+              <li
+                key={c.id}
+                className="rounded-md border border-border bg-surface p-3 text-sm"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs uppercase tracking-wide text-text-muted">
+                        {c.type}
+                      </span>
+                      <span className="text-xs text-text-muted">· {c.source}</span>
+                    </div>
+                    <div className="mt-0.5 truncate font-medium">
+                      {c.subject ?? "(no subject)"}
+                    </div>
+                    {c.summary && (
+                      <div className="mt-0.5 line-clamp-2 text-xs text-text-muted">
+                        {c.summary}
+                      </div>
+                    )}
+                  </div>
+                  <div className="shrink-0 text-right text-xs text-text-muted">
+                    {fmtDate(c.happenedAt)}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
+  );
 
   return (
     <main className="mx-auto max-w-6xl">
@@ -453,66 +936,7 @@ export default async function TransactionDetailPage({
         </div>
       </header>
 
-      {/* Facts grid */}
-      <section className="mt-6 grid grid-cols-2 gap-x-6 gap-y-3 md:grid-cols-4">
-        <Fact label="Contact email" value={contact.primaryEmail ?? "—"} />
-        <Fact label="Contact phone" value={contact.primaryPhone ?? "—"} />
-        <Fact label="Source" value={contact.sourceName ?? "—"} />
-        <Fact label="Assigned agent" value={contact.assignedAgentName ?? "—"} />
-        <Fact label="Contract date" value={fmtDate(txn.contractDate)} />
-        <Fact label="Closing date" value={fmtDate(txn.closingDate)} />
-        <Fact label="Inspection" value={fmtDate(txn.inspectionDate)} />
-        <Fact
-          label="Inspection objection"
-          value={fmtDate(txn.inspectionObjectionDate)}
-        />
-        <Fact label="Title commitment" value={fmtDate(txn.titleDeadline)} />
-        <Fact
-          label="Title objection"
-          value={fmtDate(txn.titleObjectionDate)}
-        />
-        <Fact label="Appraisal" value={fmtDate(txn.appraisalDate)} />
-        <Fact label="Lender" value={txn.lenderName ?? "—"} />
-        <Fact label="Title co." value={txn.titleCompanyName ?? "—"} />
-        <Fact label="Sale price" value={fmtMoney(txn.financials?.salePrice)} />
-        <Fact
-          label="Commission %"
-          value={
-            txn.financials?.commissionPercent != null
-              ? `${txn.financials.commissionPercent}%`
-              : "—"
-          }
-        />
-        <Fact
-          label="Gross commission"
-          value={fmtMoney(txn.financials?.grossCommission)}
-        />
-      </section>
-
-      <ParticipantsPanel
-        transactionId={txn.id}
-        primaryContact={{
-          id: contact.id,
-          fullName: contact.fullName,
-          primaryEmail: contact.primaryEmail,
-          primaryPhone: contact.primaryPhone,
-        }}
-        primarySide={txn.side}
-        initial={txn.participants.map((p) => ({
-          id: p.id,
-          role: p.role,
-          notes: p.notes,
-          createdAt: p.createdAt.toISOString(),
-          contact: p.contact,
-        }))}
-      />
-
-      {/* Compliance alert — one-glance status surfaced above the AI
-          summary so TCs see "3 items missing" before they read prose.
-          Full per-row audit lives in CompliancePanel further down
-          (anchor: #compliance-audit). Gated by the same brokerage
-          opt-out flag so a brokerage running its own audit isn't
-          double-nagged. */}
+      {/* Persistent at-a-glance: compliance alert + AI brief + notes */}
       {complianceAuditEnabled && (
         <MissingItemsAlert
           missing={complianceAudit.missing}
@@ -536,469 +960,21 @@ export default async function TransactionDetailPage({
 
       <NotesPanel transactionId={txn.id} currentUserId={actor.userId} />
 
-      {/* Risk */}
-      <section className="mt-6">
-        <div
-          className={`rounded-md border p-4 ${riskHealthTone(health)}`}
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="reos-label opacity-80">
-                Risk · {health}
-              </div>
-              <div className="mt-1 font-display text-display-md font-semibold">
-                {risk.score}
-                <span className="ml-1 font-sans text-sm font-normal opacity-60">
-                  / 100
-                </span>
-              </div>
-            </div>
-            <div className="text-right text-sm">
-              <div className="font-medium">{risk.recommendation}</div>
-            </div>
-          </div>
-          {risk.factors.length > 0 && (
-            <ul className="mt-3 space-y-1 text-sm">
-              {risk.factors.map((f, i) => (
-                <li key={i} className="flex items-start justify-between gap-3">
-                  <span>{f.description}</span>
-                  <span className="shrink-0 opacity-70 tabular-nums">
-                    +{f.impact}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </section>
-
-      <SharePanel
-        transactionId={txn.id}
-        initialToken={txn.shareToken}
-        initialExpiresAt={txn.shareExpiresAt?.toISOString() ?? null}
-      />
-
-      <ForwardingPanel
-        transactionId={txn.id}
-        initialEmail={txn.forwardingEmail}
-        initialProvider={txn.forwardingEmailProvider}
-        initialLastRunAt={txn.forwardingLastRunAt?.toISOString() ?? null}
-        smartFolderReady={!!txn.smartFolderFilterId}
-      />
-
-      <ContractUploadPanel
-        transactionId={txn.id}
-        side={txn.side}
-        hasSmartFolder={!!txn.smartFolderLabelId}
-        initialExtraction={
-          (txn.pendingContractJson as unknown as
-            | Record<string, unknown>
-            | null) ?? null
-        }
-      />
-
-      {/* Contract version history — shows diffs between snapshots.
-          Hides itself when there's no history (zero prior versions). */}
-      <ContractVersionHistory transactionId={txn.id} />
-
-      <SmartFolderSection
-        transactionId={txn.id}
-        createdAt={txn.createdAt.toISOString()}
-        labelName={txn.propertyAddress ? `REOS/Transactions/${txn.propertyAddress.replace(/\//g, "—").trim().slice(0, 150)}` : null}
-        filterId={txn.smartFolderFilterId}
-        setupAt={txn.smartFolderSetupAt?.toISOString() ?? null}
-        backfillCount={txn.smartFolderBackfillCount}
-        eligible={
-          !gmailDeferred &&
-          txn.createdAt >= SMART_FOLDER_CUTOFF &&
-          !!txn.propertyAddress &&
-          !txn.smartFolderFilterId
-        }
-        eligibilityReason={
-          txn.createdAt < SMART_FOLDER_CUTOFF
-            ? "before_cutoff"
-            : !txn.propertyAddress
-              ? "no_property_address"
-              : null
-        }
-        gmailDeferred={gmailDeferred}
-        marketEntryStageName={marketEntryName}
-      />
-
-      <FinancialsForm
-        transactionId={txn.id}
-        side={txn.side}
-        initial={
-          txn.financials
-            ? {
-                salePrice: txn.financials.salePrice,
-                commissionPercent: txn.financials.commissionPercent,
-                grossCommission: txn.financials.grossCommission,
-                referralFeeAmount: txn.financials.referralFeeAmount,
-                brokerageSplitAmount: txn.financials.brokerageSplitAmount,
-                marketingCostAllocated: txn.financials.marketingCostAllocated,
-                netCommission: txn.financials.netCommission,
-              }
-            : null
-        }
-      />
-
-      <ProductionToggle
-        transactionId={txn.id}
-        initial={txn.excludeFromProduction}
-        closingDateIso={txn.closingDate?.toISOString() ?? null}
-        status={txn.status}
-      />
-
-      {/* CDA — generate + download the disbursement authorization PDF */}
-      <div className="mt-3 flex items-center justify-end gap-2">
-        <CdaButton
-          transactionId={txn.id}
-          enabled={!!txn.financials?.grossCommission}
-        />
-      </div>
-
-      {/* Tags */}
-      {tags.length > 0 && (
-        <section className="mt-6">
-          <h3 className="text-xs uppercase tracking-wide text-text-muted">
-            FUB tags
-          </h3>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {tags.map((t) => (
-              <span
-                key={t}
-                className="rounded bg-surface-2 px-2 py-0.5 text-xs text-text"
-              >
-                {t}
-              </span>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Timeline (visual milestones) — Inspections panel renders
-          INSIDE this section so scheduling appointments lives next
-          to the contract deadlines, not in a separate block below. */}
-      <TransactionTimeline
-        transactionId={txn.id}
-        initialMilestones={txn.milestones.map((m) => ({
-          id: m.id,
-          type: m.type,
-          label: m.label,
-          dueAt: m.dueAt?.toISOString() ?? null,
-          completedAt: m.completedAt?.toISOString() ?? null,
-          status: m.status,
-          ownerRole: m.ownerRole,
-          source: m.source,
-        }))}
-        effectiveDate={txn.contractDate?.toISOString() ?? null}
-        closingDate={txn.closingDate?.toISOString() ?? null}
-      >
-        <InspectionsPanel
-          transactionId={txn.id}
-          initial={txn.inspections.map((i) => ({
-            id: i.id,
-            kind: i.kind,
-            label: i.label,
-            scheduledAt: i.scheduledAt?.toISOString() ?? null,
-            vendorName: i.vendorName,
-            vendorNote: i.vendorNote,
-            remindOnTelegram: i.remindOnTelegram,
-            calendarEventId: i.calendarEventId,
-            completedAt: i.completedAt?.toISOString() ?? null,
-          }))}
-          inspectionDeadline={txn.inspectionDate?.toISOString() ?? null}
-          inspectionObjectionDeadline={
-            txn.inspectionObjectionDate?.toISOString() ?? null
-          }
-        />
-      </TransactionTimeline>
-
-      {/* Investor strategy lifecycle — only for deals whose Asset has a
-          stage template (wholesale, etc.). Stage tasks land in the Tasks
-          panel below; this drives the current stage + advance. */}
-      {txn.asset && hasStageLifecycle(txn.asset.strategy as Strategy) && (
-        <StagePanel
-          assetId={txn.asset.id}
-          strategyLabel={strategyLabel(txn.asset.strategy)}
-          stages={getStrategyTemplate(txn.asset.strategy as Strategy).map(
-            (s) => ({ key: s.key, name: s.name }),
-          )}
-          currentStageKey={txn.asset.currentStageName}
-        />
-      )}
-
-      {/* Investor risk signals (spec §10) — principal deals, shown only
-          when there's something to flag. */}
-      {investorRisk && (
-        <section className="mt-8 rounded-md border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/40 dark:bg-amber-950/30">
-          <div className="flex items-center justify-between">
-            <div className="reos-label text-amber-800 dark:text-amber-200">
-              Investor risk
-            </div>
-            <div className="font-display text-display-md font-semibold text-amber-800 dark:text-amber-200">
-              {investorRisk.score}
-              <span className="ml-1 font-sans text-sm font-normal opacity-60">/ 100</span>
-            </div>
-          </div>
-          <ul className="mt-3 space-y-1 text-sm text-amber-900 dark:text-amber-100">
-            {investorRisk.factors.map((x, i) => (
-              <li key={i} className="flex items-start justify-between gap-3">
-                <span>{x.description}</span>
-                <span className="shrink-0 tabular-nums opacity-70">+{x.impact}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {/* Investor deal economics — principal deals only (spec §9).
-          Inputs + live profit/ROI/cash-flow; feeds the Production P&L. */}
-      {txn.asset && txn.asset.representation === "principal" && (
-        <EconomicsPanel
-          assetId={txn.asset.id}
-          strategy={txn.asset.strategy as Strategy}
-          initial={
-            (txn.asset.economicsJson as Record<string, unknown> | null) ?? null
-          }
-        />
-      )}
-
-      {/* Investor draws + capital stack — principal deals only (spec §7). */}
-      {txn.asset && txn.asset.representation === "principal" && (
-        <DrawCapitalPanel assetId={txn.asset.id} />
-      )}
-
-      {/* Tasks — TC work queue, separate from milestones which track dates */}
-      <TaskPanel
-        transactionId={txn.id}
-        initial={txn.tasks.map((t) => ({
-          id: t.id,
-          title: t.title,
-          description: t.description,
-          dueAt: t.dueAt?.toISOString() ?? null,
-          completedAt: t.completedAt?.toISOString() ?? null,
-          assignedTo: t.assignedTo,
-          priority: t.priority,
-          milestoneId: t.milestoneId,
-        }))}
-      />
-
-      {/* Compliance file audit — required docs per side + state.
-          Hidden when the brokerage runs its own audit (Settings → Brokerage).
-          The #compliance-audit anchor is the scroll target from
-          MissingItemsAlert's "View full audit ↓" link. */}
-      {complianceAuditEnabled && (
-        <div id="compliance-audit" className="scroll-mt-20">
-          <CompliancePanel transactionId={txn.id} />
-        </div>
-      )}
-
-      {/* Rezen prep — slot-by-slot status + downloadable package
-          renamed for Rezen's file UI. Gated to Rezen shops only:
-          a Skyslope / Dotloop / Lone Wolf / in-house TC has no need
-          for the "01 - " filename prefixing or the Rezen-shaped ZIP
-          bundle. They still get the generic per-row CompliancePanel
-          above plus the MissingItemsAlert summary near the AI summary.
-          Track 2 (later) adds per-system adapters so we can bundle
-          for Skyslope/Dotloop/etc. directly. */}
-      {isRezenShop && (
-        <RezenCompliancePrepPanel
-          transactionId={txn.id}
-          rezenTransactionId={txn.rezenTransactionId}
-          rezenConnected={!!account?.realApiTokensEncrypted}
-        />
-      )}
-
-      {/* Social posts — generate ready-to-paste captions for the
-          three milestone events (listed/under-contract/sold). */}
-      <SocialPostsPanel
-        transactionId={txn.id}
-        defaultEvent={
-          txn.status === "listing"
-            ? "new_listing"
-            : txn.status === "closed"
-              ? "sold"
-              : "under_contract"
-        }
-      />
-
-      {/* Wire fraud verification log — compliance record of the voice
-          call confirming wire instructions before the client sends funds. */}
-      <WireVerificationPanel
-        transactionId={txn.id}
-        closingDate={txn.closingDate?.toISOString() ?? null}
-        titleCompanyName={txn.titleCompanyName}
-      />
-
-      {/* Send email from template — merges transaction data into saved
-          templates, sends via the acting user's Gmail. */}
-      <SendPanel
-        transactionId={txn.id}
-        primaryEmail={contact.primaryEmail}
-        parties={[
-          // Primary contact is addressable by its side
-          ...(txn.side === "buy" || txn.side === "both"
-            ? [
-                {
-                  role: "co_buyer",
-                  fullName: contact.fullName,
-                  email: contact.primaryEmail,
-                },
-              ]
-            : []),
-          ...(txn.side === "sell" || txn.side === "both"
-            ? [
-                {
-                  role: "co_seller",
-                  fullName: contact.fullName,
-                  email: contact.primaryEmail,
-                },
-              ]
-            : []),
-          ...txn.participants.map((p) => ({
-            role: p.role,
-            fullName: p.contact.fullName,
-            email: p.contact.primaryEmail,
-          })),
+      {/* Tabbed workspace */}
+      <DealWorkspaceTabs
+        tabs={[
+          { id: "timeline", label: "Timeline", content: timelineTab },
+          { id: "tasks", label: "Tasks", badge: openTaskCount, content: tasksTab },
+          { id: "details", label: "Details", content: detailsTab },
+          {
+            id: "compliance",
+            label: "Compliance",
+            badge: complianceAuditEnabled ? complianceAudit.missing : null,
+            content: complianceTab,
+          },
+          { id: "files", label: "Files", badge: txn.documents.length, content: filesTab },
+          { id: "email", label: "Email", content: emailTab },
         ]}
-      />
-
-      {/* Communication events */}
-      {txn.communicationEvents.length > 0 && (
-        <section className="mt-8">
-          <h2 className="mb-2 text-lg font-medium">Recent communication</h2>
-          <ul className="space-y-2">
-            {txn.communicationEvents.map((c) => (
-              <li
-                key={c.id}
-                className="rounded-md border border-border bg-surface p-3 text-sm"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs uppercase tracking-wide text-text-muted">
-                        {c.type}
-                      </span>
-                      <span className="text-xs text-text-muted">
-                        · {c.source}
-                      </span>
-                    </div>
-                    <div className="mt-0.5 truncate font-medium">
-                      {c.subject ?? "(no subject)"}
-                    </div>
-                    {c.summary && (
-                      <div className="mt-0.5 line-clamp-2 text-xs text-text-muted">
-                        {c.summary}
-                      </div>
-                    )}
-                  </div>
-                  <div className="shrink-0 text-right text-xs text-text-muted">
-                    {fmtDate(c.happenedAt)}
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {/* Calendar events */}
-      {txn.calendarEvents.length > 0 && (
-        <section className="mt-8">
-          <h2 className="mb-2 text-lg font-medium">
-            Calendar events ({txn.calendarEvents.length})
-          </h2>
-          <ul className="space-y-1 text-sm">
-            {txn.calendarEvents.map((e) => (
-              <li
-                key={e.id}
-                className="flex items-center justify-between rounded-md border border-border bg-surface px-3 py-2"
-              >
-                <span className="truncate">{e.title}</span>
-                <span className="ml-3 shrink-0 text-xs text-text-muted">
-                  {fmtDate(e.startAt)} · {e.calendarType}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {/* Document library — rich inventory, replaces the bare list.
-          Source provenance, AI Rezen-slot classification, eSign
-          rollup, and per-doc actions (download / classify / delete)
-          all live here. The signature send-flow remains in the
-          EsignPanel below; library shows the *status*, send happens
-          there. */}
-      <DocumentLibraryPanel
-        transactionId={txn.id}
-        documents={txn.documents.map((d) => {
-          // Roll up every eSign request that points at this doc into
-          // a single status + human-readable summary line.
-          const reqs = txn.esignRequests.filter(
-            (r) => r.document?.id === d.id,
-          );
-          let esignStatus: "none" | "draft" | "sent" | "completed" | "voided" | "error" = "none";
-          let esignSummary: string | null = null;
-          if (reqs.length > 0) {
-            // Prefer the newest request's status as the headline.
-            const newest = reqs[0];
-            esignStatus =
-              (newest.status as "none" | "draft" | "sent" | "completed" | "voided" | "error") ?? "none";
-            if (newest.status === "completed") {
-              esignSummary = "✓ Completed";
-            } else if (newest.status === "sent") {
-              esignSummary = `Sent · awaiting signatures`;
-            } else if (newest.status === "voided") {
-              esignSummary = "Voided";
-            } else if (newest.status === "error") {
-              esignSummary = "Send failed";
-            } else if (newest.status === "draft") {
-              esignSummary = "Draft saved";
-            }
-          }
-          return {
-            id: d.id,
-            fileName: d.fileName,
-            mimeType: d.mimeType,
-            category: d.category,
-            source: d.source,
-            uploadOrigin: d.uploadOrigin,
-            uploadedAt: d.uploadedAt.toISOString(),
-            suggestedRezenSlot: d.suggestedRezenSlot,
-            suggestedRezenConfidence: d.suggestedRezenConfidence,
-            classifiedAt: d.classifiedAt?.toISOString() ?? null,
-            hasRawBytes: d.rawBytes !== null && d.rawBytes !== undefined,
-            hasExtractedText:
-              d.extractedText !== null &&
-              d.extractedText !== undefined &&
-              d.extractedText.length > 0,
-            esignStatus,
-            esignSummary,
-          };
-        })}
-      />
-
-      <EsignPanel
-        transactionId={txn.id}
-        documents={txn.documents.map((d) => ({
-          id: d.id,
-          fileName: d.fileName,
-          mimeType: d.mimeType,
-        }))}
-        signerOptions={signerOptions}
-        requests={txn.esignRequests.map((r) => ({
-          id: r.id,
-          title: r.title,
-          status: r.status,
-          signingLinksJson: r.signingLinksJson,
-          errorMessage: r.errorMessage,
-          createdAt: r.createdAt,
-          sentAt: r.sentAt,
-          recipients: r.recipients,
-        }))}
       />
 
       {/* Footer */}
