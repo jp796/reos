@@ -98,6 +98,44 @@ export function TaskPanel({
   const [newTitle, setNewTitle] = useState("");
   const [newDate, setNewDate] = useState("");
   const [newAssignee, setNewAssignee] = useState("coordinator");
+  const [templates, setTemplates] = useState<
+    { id: string; name: string; itemCount: number }[]
+  >([]);
+  const [applyingTpl, setApplyingTpl] = useState(false);
+
+  async function loadTemplates() {
+    if (templates.length > 0) return;
+    try {
+      const res = await fetch("/api/task-templates");
+      const data = await res.json();
+      setTemplates(data.templates ?? []);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function applyTemplate(templateId: string) {
+    if (!templateId) return;
+    setApplyingTpl(true);
+    try {
+      const res = await fetch(`/api/transactions/${transactionId}/apply-task-template`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ templateId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "apply failed");
+      toast.success(
+        "Template applied",
+        `${data.created} task(s) added${data.skipped ? `, ${data.skipped} skipped` : ""}.`,
+      );
+      startTransition(() => router.refresh());
+    } catch (e) {
+      toast.error("Couldn't apply", e instanceof Error ? e.message : "unknown");
+    } finally {
+      setApplyingTpl(false);
+    }
+  }
 
   async function patchTask(tid: string, patch: Partial<Task>) {
     const prev = items.find((t) => t.id === tid);
@@ -234,6 +272,34 @@ export function TaskPanel({
               Seed checklist
             </button>
           )}
+          <select
+            defaultValue=""
+            disabled={applyingTpl}
+            onFocus={loadTemplates}
+            onMouseDown={loadTemplates}
+            onChange={(e) => {
+              const v = e.target.value;
+              e.target.value = "";
+              applyTemplate(v);
+            }}
+            title="Apply a saved task template"
+            className="rounded border border-border bg-surface px-2 py-1 text-xs font-medium text-text-muted hover:border-brand-500 hover:text-brand-700 disabled:opacity-50"
+          >
+            <option value="" disabled>
+              {applyingTpl ? "Applying…" : "Apply template…"}
+            </option>
+            {templates.length === 0 ? (
+              <option value="" disabled>
+                No templates — create in Settings
+              </option>
+            ) : (
+              templates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name} ({t.itemCount})
+                </option>
+              ))
+            )}
+          </select>
           <button
             type="button"
             onClick={() => setAdding((v) => !v)}

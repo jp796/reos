@@ -96,6 +96,7 @@ model Account {
   helpQuestions             HelpQuestion[]
   pushSubscriptions         PushSubscription[]
   memberships               AccountMembership[]
+  taskTemplates             TaskTemplate[]
 
   @@map("accounts")
 }
@@ -141,6 +142,29 @@ model VerificationToken {
 
   @@unique([identifier, token])
   @@map("verification_tokens")
+}
+
+/// User-defined (or AI-generated) reusable task checklist. Applied to a
+/// transaction to create its Tasks. itemsJson is an array of:
+///   { title, description?, assignedTo, priority,
+///     relatesToMilestone?, offsetFromMilestoneDays?, sideFilter? }
+/// — same shape as the built-in code templates (TaskTemplates.ts), so
+/// apply logic + relative-date derivation are identical.
+model TaskTemplate {
+  id              String   @id @default(cuid())
+  accountId       String   @map("account_id")
+  name            String
+  description     String?
+  itemsJson       Json     @map("items_json")
+  source          String   @default("manual") // manual | ai
+  createdByUserId String?  @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+  @@map("task_templates")
 }
 
 model User {

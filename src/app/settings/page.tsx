@@ -16,6 +16,7 @@ import {
   CreditCard,
   Bell,
   Shield,
+  ListChecks,
 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -38,6 +39,12 @@ const SECTIONS = [
     title: "Email templates",
     desc: "Canned messages with mail-merge variables",
     icon: Mail,
+  },
+  {
+    href: "/settings/task-templates",
+    title: "Task templates",
+    desc: "Reusable + AI-generated task checklists — apply to any deal",
+    icon: ListChecks,
   },
   {
     href: "/settings/vendors",
