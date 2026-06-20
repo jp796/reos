@@ -20,6 +20,7 @@
 import { z } from "zod";
 import type { PrismaClient } from "@prisma/client";
 import { isDealVisible } from "@/lib/deal-visibility";
+import { gmailForAccount } from "@/services/integrations/gmailForAccount";
 import { advanceStage, setStage } from "@/services/core/StageEngine";
 import { stageByKey, getStrategyTemplate } from "@/services/core/strategyTemplates";
 import type { Strategy } from "@/services/core/DealClassifierService";
@@ -214,6 +215,61 @@ export const ATLAS_TOOLS: Record<string, ToolDef> = {
         summary: `${d.address ?? d.id} · ${d.strategy ?? "retail"}${d.currentStageName ? ` · stage ${d.currentStageName}` : ""} · ${open} open task(s)`,
         data: { id: d.id, assetId: d.assetId, strategy: d.strategy, stage: d.currentStageName },
       };
+    },
+  },
+
+  check_inbox: {
+    tier: "read",
+    description:
+      "Check the connected Gmail inbox for recent (last 30 days) emails about a deal, by property address. Read-only — surfaces matching threads (subject, sender, date) so you can report what's new.",
+    schema: z.object({ deal: z.string().min(1) }),
+    run: async (db, actor, args) => {
+      const { deal } = args as { deal: string };
+      const r = await resolveDeal(db, actor, deal);
+      if ("error" in r) return r.error;
+      const d = r.deal;
+      if (!d.address) {
+        return { ok: true, summary: `No property address on ${deal} to search the inbox with.` };
+      }
+      const gmail = await gmailForAccount(db, actor.accountId);
+      if (!gmail) {
+        return {
+          ok: true,
+          summary:
+            "Gmail isn't connected for this workspace — connect it in Settings → Integrations and I can scan the inbox.",
+        };
+      }
+      const term = `"${d.address.replace(/["\\]/g, "")}"`;
+      const q = `newer_than:30d (${term})`;
+      let threads;
+      try {
+        ({ threads } = await gmail.searchThreadsPaged({ q, maxTotal: 8 }));
+      } catch {
+        return { ok: false, error: "Couldn't reach Gmail just now — try again shortly.", reason: "invalid" };
+      }
+      if (!threads || threads.length === 0) {
+        return {
+          ok: true,
+          summary: `No inbox emails in the last 30 days mentioning ${d.address}.`,
+          data: { threads: [] },
+        };
+      }
+      const items = threads.map((t) => {
+        const first = t.messages?.[0];
+        const hdr = (n: string) =>
+          first?.payload?.headers?.find((x) => x.name?.toLowerCase() === n)?.value ?? "";
+        return {
+          subject: (hdr("subject") || "(no subject)").slice(0, 160),
+          from: hdr("from").slice(0, 120),
+          date: hdr("date") || null,
+          snippet: t.snippet?.slice(0, 160) ?? null,
+          url: `https://mail.google.com/mail/u/0/#inbox/${t.id ?? ""}`,
+        };
+      });
+      const summary =
+        `Found ${items.length} recent email(s) for ${d.address}:\n` +
+        items.map((i, n) => `${n + 1}. "${i.subject}" — ${i.from}`).join("\n");
+      return { ok: true, summary, data: { threads: items } };
     },
   },
 
@@ -423,6 +479,11 @@ export function previewAction(name: string, args: Record<string, unknown>): stri
 // this is the model's guide, the zod schema is the gate.
 const PARAM_SCHEMAS: Record<string, Record<string, unknown>> = {
   find_deal: {
+    type: "object",
+    required: ["deal"],
+    properties: { deal: { type: "string", description: "property address or contact name" } },
+  },
+  check_inbox: {
     type: "object",
     required: ["deal"],
     properties: { deal: { type: "string", description: "property address or contact name" } },
