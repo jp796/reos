@@ -95,6 +95,40 @@ export function FinancialsForm({
   const [marketingCostAllocated, setMarketingCostAllocated] = useState(
     initial?.marketingCostAllocated?.toString() ?? "",
   );
+  const [pulling, setPulling] = useState(false);
+  const [realCandidates, setRealCandidates] = useState<
+    { id: string; oneLine: string; code: string | null; price: number | null }[] | null
+  >(null);
+
+  async function pullFromReal(realTransactionId?: string) {
+    setPulling(true);
+    setMsg(null);
+    setIsError(false);
+    try {
+      const res = await fetch(`/api/transactions/${transactionId}/pull-real-gci`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(realTransactionId ? { realTransactionId } : {}),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? "pull failed");
+      if (d.needsPick) {
+        setRealCandidates(d.candidates ?? []);
+        setMsg(d.message ?? "Pick the matching Real deal.");
+        return;
+      }
+      setRealCandidates(null);
+      setMsg(
+        `Pulled from Real — GCI ${fmtMoney(d.pulled?.grossCommission)}${d.pulled?.matchedAddress ? ` · ${d.pulled.matchedAddress}` : ""}`,
+      );
+      startTransition(() => router.refresh());
+    } catch (e) {
+      setIsError(true);
+      setMsg(e instanceof Error ? e.message : "pull failed");
+    } finally {
+      setPulling(false);
+    }
+  }
 
   // Derived — auto GCI from price × pct when GCI isn't manually overridden
   const priceNum = parseFloat(salePrice || "0");
@@ -184,14 +218,56 @@ export function FinancialsForm({
               </span>
             )}
           </div>
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            className="text-xs text-text-muted hover:text-text"
-          >
-            {initial ? "Edit" : "Add"}
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => pullFromReal()}
+              disabled={pulling}
+              className="text-xs font-medium text-brand-700 hover:text-brand-600 disabled:opacity-50"
+              title="Pull gross commission straight from Real (ReZEN)"
+            >
+              {pulling ? "Pulling…" : "Pull from Real"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="text-xs text-text-muted hover:text-text"
+            >
+              {initial ? "Edit" : "Add"}
+            </button>
+          </div>
         </div>
+        {msg && (
+          <div
+            className={`mb-2 rounded border px-3 py-2 text-xs ${
+              isError
+                ? "border-red-200 bg-red-50 text-red-700"
+                : "border-emerald-200 bg-emerald-50 text-emerald-700"
+            }`}
+          >
+            {msg}
+          </div>
+        )}
+        {realCandidates && (
+          <div className="mb-2 rounded-md border border-brand-200 bg-brand-50/50 p-3">
+            <div className="mb-1.5 text-xs font-medium text-text">Pick the Real deal to pull from:</div>
+            <ul className="space-y-1">
+              {realCandidates.map((c) => (
+                <li key={c.id}>
+                  <button
+                    type="button"
+                    onClick={() => pullFromReal(c.id)}
+                    disabled={pulling}
+                    className="flex w-full items-center justify-between gap-2 rounded border border-border bg-surface px-2.5 py-1.5 text-left text-xs hover:border-brand-500 disabled:opacity-50"
+                  >
+                    <span className="truncate text-text">{c.oneLine || c.code || c.id}</span>
+                    <span className="shrink-0 text-text-muted">{fmtMoney(c.price)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-x-6 gap-y-3 rounded-md border border-border bg-surface p-4 md:grid-cols-4">
           <Field label="Sale price" value={fmtMoney(initial?.salePrice)} />
           <Field
