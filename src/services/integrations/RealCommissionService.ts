@@ -22,7 +22,17 @@ const ARRAKIS = "https://arrakis.therealbrokerage.com";
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36";
 
-export class RealKeyError extends Error {}
+export class RealKeyError extends Error {
+  constructor(
+    message: string,
+    public status = 0,
+    /** true when the rejection looks like an edge/WAF/IP block (HTML
+     * 403 from nginx) rather than an app-level auth rejection (JSON). */
+    public edgeBlocked = false,
+  ) {
+    super(message);
+  }
+}
 
 function headers(apiKey: string): Record<string, string> {
   return { "X-API-KEY": apiKey, Accept: "application/json", "User-Agent": UA };
@@ -49,22 +59,37 @@ export interface RealGci {
 
 async function getJson(url: string, apiKey: string): Promise<unknown> {
   const res = await fetch(url, { headers: headers(apiKey) });
-  if (res.status === 401 || res.status === 403) {
-    throw new RealKeyError("Real rejected the API key — check it in Settings → Integrations.");
-  }
   const text = await res.text();
   let data: unknown = null;
   try {
     data = JSON.parse(text);
   } catch {
-    /* non-json */
+    /* non-json (e.g. an nginx HTML error page) */
   }
   if (!res.ok) {
+    // An HTML body (no JSON) on a 401/403 is the WAF/edge rejecting the
+    // request before it reaches Real's app — typically an IP/firewall
+    // block of our server, NOT a bad key. JSON 401/403 = key rejected.
+    const isHtml = data == null && /<html|403 Forbidden|cloudflare|forbidden/i.test(text);
+    if (isHtml) {
+      throw new RealKeyError(
+        `Real's firewall blocked the request from our server (HTTP ${res.status}) — this is an IP/edge block, not your key. Real needs to allowlist our server IP, or we route through a proxy.`,
+        res.status,
+        true,
+      );
+    }
+    if (res.status === 401 || res.status === 403) {
+      throw new RealKeyError(
+        `Real rejected the API key (HTTP ${res.status}). Generate a fresh key in Real and reconnect.`,
+        res.status,
+        false,
+      );
+    }
     const m =
       (data as { message?: string; detail?: string } | null)?.message ??
       (data as { detail?: string } | null)?.detail ??
       `Real ${res.status}`;
-    throw new RealKeyError(m);
+    throw new RealKeyError(m, res.status, false);
   }
   return data;
 }
