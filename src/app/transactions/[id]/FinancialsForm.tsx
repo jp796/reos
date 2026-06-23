@@ -96,30 +96,30 @@ export function FinancialsForm({
     initial?.marketingCostAllocated?.toString() ?? "",
   );
   const [pulling, setPulling] = useState(false);
-  const [realCandidates, setRealCandidates] = useState<
-    { id: string; oneLine: string; code: string | null; price: number | null }[] | null
+  const [docCandidates, setDocCandidates] = useState<
+    { id: string; fileName: string }[] | null
   >(null);
 
-  async function pullFromReal(realTransactionId?: string) {
+  async function pullFromSettlement(documentId?: string) {
     setPulling(true);
     setMsg(null);
     setIsError(false);
     try {
-      const res = await fetch(`/api/transactions/${transactionId}/pull-real-gci`, {
+      const res = await fetch(`/api/transactions/${transactionId}/pull-financials-from-ss`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(realTransactionId ? { realTransactionId } : {}),
+        body: JSON.stringify(documentId ? { documentId } : {}),
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error ?? "pull failed");
       if (d.needsPick) {
-        setRealCandidates(d.candidates ?? []);
-        setMsg(d.message ?? "Pick the matching Real deal.");
+        setDocCandidates(d.candidates ?? []);
+        setMsg(d.message ?? "Pick the settlement statement to read.");
         return;
       }
-      setRealCandidates(null);
+      setDocCandidates(null);
       setMsg(
-        `Pulled from Real — GCI ${fmtMoney(d.pulled?.grossCommission)}${d.pulled?.matchedAddress ? ` · ${d.pulled.matchedAddress}` : ""}`,
+        `Pulled from "${d.pulled?.source}" — GCI ${fmtMoney(d.pulled?.grossCommission)}, price ${fmtMoney(d.pulled?.salePrice)}${d.pulled?.commissionInferredHalf ? " (commission was halved as an estimate — verify)" : ""}`,
       );
       startTransition(() => router.refresh());
     } catch (e) {
@@ -221,12 +221,12 @@ export function FinancialsForm({
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => pullFromReal()}
+              onClick={() => pullFromSettlement()}
               disabled={pulling}
               className="text-xs font-medium text-brand-700 hover:text-brand-600 disabled:opacity-50"
-              title="Pull gross commission straight from Real (ReZEN)"
+              title="Read sale price + gross commission from the settlement statement in Files"
             >
-              {pulling ? "Pulling…" : "Pull from Real"}
+              {pulling ? "Reading…" : "Pull from settlement"}
             </button>
             <button
               type="button"
@@ -248,20 +248,19 @@ export function FinancialsForm({
             {msg}
           </div>
         )}
-        {realCandidates && (
+        {docCandidates && (
           <div className="mb-2 rounded-md border border-brand-200 bg-brand-50/50 p-3">
-            <div className="mb-1.5 text-xs font-medium text-text">Pick the Real deal to pull from:</div>
+            <div className="mb-1.5 text-xs font-medium text-text">Pick the settlement statement to read:</div>
             <ul className="space-y-1">
-              {realCandidates.map((c) => (
+              {docCandidates.map((c) => (
                 <li key={c.id}>
                   <button
                     type="button"
-                    onClick={() => pullFromReal(c.id)}
+                    onClick={() => pullFromSettlement(c.id)}
                     disabled={pulling}
-                    className="flex w-full items-center justify-between gap-2 rounded border border-border bg-surface px-2.5 py-1.5 text-left text-xs hover:border-brand-500 disabled:opacity-50"
+                    className="flex w-full items-center gap-2 rounded border border-border bg-surface px-2.5 py-1.5 text-left text-xs text-text hover:border-brand-500 disabled:opacity-50"
                   >
-                    <span className="truncate text-text">{c.oneLine || c.code || c.id}</span>
-                    <span className="shrink-0 text-text-muted">{fmtMoney(c.price)}</span>
+                    <span className="truncate">{c.fileName}</span>
                   </button>
                 </li>
               ))}

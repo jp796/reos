@@ -47,7 +47,6 @@ const ADMIN: Section[] = [
   { href: "/settings/team", title: "Team", desc: "Members, roles, and invited emails", icon: Users },
   { href: "/settings/brokerage", title: "Brokerage", desc: "Broker name, license, EIN — printed on every CDA", icon: Building2 },
   { href: "/settings/billing", title: "Billing", desc: "Subscription tier, payment method, invoices", icon: CreditCard },
-  { href: "/settings/real-commission", title: "Real commission", desc: "Connect your Real API key — pull GCI into deal financials", icon: CreditCard },
   { href: "/settings/account", title: "Account", desc: "Subscription overview · delete this workspace", icon: Shield },
   { href: "/settings/demo-data", title: "Demo data", desc: "Generate / wipe sample transactions — never affects analytics", icon: ScrollText },
 ];
