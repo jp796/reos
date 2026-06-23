@@ -109,8 +109,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
      *      Account with an active subscription (self-serve signup
      *      path — Stripe webhook materializes the User after payment;
      *      this signIn callback then lets them through on first OAuth)
-     *   3. Anyone with a pending AccountMembership invite (so a TC
-     *      invited to a brokerage can accept by signing in)
+     *   3. Anyone with a non-revoked AccountMembership — whether still
+     *      pending (a TC accepting an invite by signing in) OR already
+     *      accepted (an existing teammate signing in again). Honoring
+     *      ONLY pending invites here was a bug: once a member accepted,
+     *      that clause closed, and if neither their home account nor the
+     *      membership account was a paid "active" subscription they got
+     *      locked out on their next login. Accepted members must keep
+     *      access for the life of the (non-revoked) membership.
      *
      * Returning false prevents sign-in. Everything else is rejected.
      */
@@ -137,15 +143,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         console.warn("[auth.signIn] paid-account lookup failed:", err);
       }
 
-      // (3) Pending invite
+      // (3) Membership — pending OR accepted, as long as not revoked.
       try {
-        const invite = await prisma.accountMembership.findFirst({
-          where: { email, revokedAt: null, acceptedAt: null },
+        const membership = await prisma.accountMembership.findFirst({
+          where: { email, revokedAt: null },
           select: { id: true },
         });
-        if (invite) return true;
+        if (membership) return true;
       } catch (err) {
-        console.warn("[auth.signIn] invite lookup failed:", err);
+        console.warn("[auth.signIn] membership lookup failed:", err);
       }
 
       return false;
