@@ -180,8 +180,18 @@ const JSON_LD = {
 };
 
 export default async function Landing() {
-  const session = await auth();
-  const signedIn = !!session?.user;
+  // The marketing page must never 500. `auth()` uses the database
+  // session strategy, so a cold-DB blip (Neon waking up) could throw
+  // here and take down the whole public landing page. If we can't
+  // determine the session, treat the visitor as signed-out — the page
+  // renders fine and the "Sign in" CTA is always available.
+  let signedIn = false;
+  try {
+    const session = await auth();
+    signedIn = !!session?.user;
+  } catch {
+    signedIn = false;
+  }
 
   return (
     <div className="min-h-screen bg-bg text-text">
