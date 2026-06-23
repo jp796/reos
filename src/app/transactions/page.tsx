@@ -161,6 +161,7 @@ export default async function TransactionsPage({
         contact: true,
         milestones: { orderBy: { dueAt: "asc" } },
         assignedUser: { select: { name: true, email: true } },
+        asset: { select: { representation: true, strategy: true } },
         _count: {
           select: { milestones: true, tasks: true, documents: true },
         },
@@ -400,8 +401,8 @@ export default async function TransactionsPage({
           </p>
         </div>
       ) : (
-        <div className="mt-8 space-y-2">
-          {transactions.map((txn) => {
+        (() => {
+          const renderRow = (txn: (typeof transactions)[number]) => {
             const nextMs = txn.milestones.find(
               (m) =>
                 m.status === "pending" && m.dueAt != null && m.dueAt > new Date(),
@@ -505,8 +506,45 @@ export default async function TransactionsPage({
                 </div>
               </div>
             );
-          })}
-        </div>
+          };
+
+          // Investor-entitled accounts viewing "All" get the list split
+          // into Investment vs Retail sections (organizational clarity).
+          // A specific lens (Retail/Investment) or non-investor accounts
+          // render one flat list.
+          const grouped = showLens && lens === "all";
+          if (!grouped) {
+            return (
+              <div className="mt-8 space-y-2">{transactions.map(renderRow)}</div>
+            );
+          }
+          const investment = transactions.filter(
+            (t) => t.asset?.representation === "principal",
+          );
+          const retail = transactions.filter(
+            (t) => t.asset?.representation !== "principal",
+          );
+          return (
+            <div className="mt-8 space-y-6">
+              {investment.length > 0 && (
+                <section>
+                  <div className="reos-label mb-2">
+                    Investment deals · {investment.length}
+                  </div>
+                  <div className="space-y-2">{investment.map(renderRow)}</div>
+                </section>
+              )}
+              {retail.length > 0 && (
+                <section>
+                  <div className="reos-label mb-2">
+                    Retail deals · {retail.length}
+                  </div>
+                  <div className="space-y-2">{retail.map(renderRow)}</div>
+                </section>
+              )}
+            </div>
+          );
+        })()
       )}
     </main>
   );
