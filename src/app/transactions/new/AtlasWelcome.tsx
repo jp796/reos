@@ -63,20 +63,22 @@ export function AtlasWelcome() {
       `}</style>
 
       <div className="rounded-2xl border border-border bg-gradient-to-b from-brand-50/70 to-surface p-6 dark:from-brand-950/30">
-        {/* Animated Atlas avatar */}
-        <div className="relative mb-5 h-[88px] w-[88px]">
-          <span className="atlasw-ping absolute inset-0 rounded-full border-2 border-brand-400/50" />
-          <span className="atlasw-ping atlasw-ping2 absolute inset-0 rounded-full border-2 border-brand-400/40" />
-          <div className="atlasw-avatar absolute inset-1 flex flex-col items-center justify-center rounded-full bg-brand-600 shadow-lg">
-            <div className="atlasw-eyes flex gap-2.5">
-              <span className="block h-2.5 w-2.5 rounded-full bg-white" />
-              <span className="block h-2.5 w-2.5 rounded-full bg-white" />
-            </div>
-            <div className="mt-1.5 h-2.5 w-5 rounded-b-full border-b-[3px] border-white/95" />
-          </div>
-          <Sparkles className="atlasw-spark absolute -right-1 -top-1 h-4 w-4 text-amber-400" />
-          <Sparkles className="atlasw-spark atlasw-spark2 absolute -left-2 top-6 h-3 w-3 text-brand-400" />
-          <Sparkles className="atlasw-spark atlasw-spark3 absolute -bottom-1 right-3 h-3 w-3 text-amber-300" />
+        {/* Atlas — the brand character. Static WebP (~64KB, cached); the
+            only motion is the CSS float + twinkling sparkles, so there's
+            no runtime/render cost. */}
+        <div className="relative mb-4 h-[176px] w-[176px]">
+          <div className="absolute left-1/2 top-1/2 h-32 w-32 -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-400/25 blur-2xl" />
+          <img
+            src="/brand/atlas/atlas-hero.webp"
+            alt="Atlas, your AI transaction coordinator"
+            width={176}
+            height={176}
+            loading="eager"
+            className="atlasw-avatar relative h-full w-full object-contain"
+          />
+          <Sparkles className="atlasw-spark absolute right-3 top-2 h-4 w-4 text-amber-400" />
+          <Sparkles className="atlasw-spark atlasw-spark2 absolute left-2 top-12 h-3 w-3 text-brand-400" />
+          <Sparkles className="atlasw-spark atlasw-spark3 absolute bottom-5 right-6 h-3 w-3 text-amber-300" />
         </div>
 
         <h2 className="font-display text-2xl font-semibold leading-tight">
