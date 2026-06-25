@@ -23,6 +23,7 @@ import {
   Building2,
 } from "lucide-react";
 import { MoneyInput } from "@/app/components/MoneyInput";
+import { AtlasWelcome } from "./AtlasWelcome";
 import { toDateInputValue } from "@/lib/dates";
 
 type Side = "buyer" | "listing" | "both" | "investor";
@@ -318,18 +319,33 @@ export function NewTransactionWizard() {
 
   return (
     <div className="py-2">
-      <div className="reos-label">New deal</div>
-      <h1 className="mt-1 font-display text-display-lg font-semibold">
-        {step === "setup" ? "Upload a contract" : "Review & create"}
-      </h1>
-      <p className="mt-1 text-sm text-text-muted">
-        {step === "setup"
-          ? "Drop the purchase contract or listing agreement (plus related docs). Atlas reads the dates, parties, and deadlines and sets the deal up."
-          : "Atlas pulled these from the contract — empty means not found. Edit anything, then create."}
-      </p>
+      {step === "review" && (
+        <>
+          <div className="reos-label">New deal</div>
+          <h1 className="mt-1 font-display text-display-lg font-semibold">
+            Review &amp; create
+          </h1>
+          <p className="mt-1 text-sm text-text-muted">
+            Atlas pulled these from the contract — empty means not found. Edit
+            anything, then create.
+          </p>
+        </>
+      )}
 
       {step === "setup" && (
-        <div className="mt-6 space-y-6">
+        <div className="mt-2 grid gap-8 lg:grid-cols-2 lg:items-start">
+          <AtlasWelcome />
+          <div className="space-y-6">
+            <div>
+              <div className="reos-label">New deal</div>
+              <h1 className="mt-1 font-display text-2xl font-semibold">
+                Upload a contract
+              </h1>
+              <p className="mt-1 text-sm text-text-muted">
+                Drop the purchase contract or listing agreement (plus related
+                docs) — Atlas does the rest.
+              </p>
+            </div>
           {/* Side picker */}
           <div>
             <div className="mb-2 text-sm font-medium">Which side do you represent?</div>
@@ -494,6 +510,7 @@ export function NewTransactionWizard() {
           {!side && (
             <p className="-mt-3 text-xs text-text-subtle">Pick a side to continue.</p>
           )}
+          </div>
         </div>
       )}
 

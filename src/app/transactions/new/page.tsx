@@ -18,7 +18,7 @@ export default async function NewTransactionPage() {
   const actor = await requireSession();
   if (actor instanceof Response) redirect("/login");
   return (
-    <main className="mx-auto max-w-3xl">
+    <main className="mx-auto max-w-5xl">
       <NewTransactionWizard />
     </main>
   );
