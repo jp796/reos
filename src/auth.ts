@@ -185,6 +185,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
      * becomes coordinator.
      */
     async createUser({ user }) {
+      if (!user.id) return;
       const email = user.email?.toLowerCase() ?? "";
       const allow = allowedEmails();
 
@@ -203,6 +204,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       let accountId: string;
       let role: string;
+      // True when we create a brand-new tenant for this user below — they
+      // own a fresh account they did NOT author, so they must accept the
+      // ToU on first sign-in (unlike JP's authored/seeded accounts).
+      let mintedOwnAccount = false;
+
       if (explicitAccountId) {
         // Tenant owner = first user signing in for that account.
         const existingOwner = await prisma.user.findFirst({
@@ -211,27 +217,61 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         });
         accountId = explicitAccountId;
         role = existingOwner ? "coordinator" : "owner";
+      } else if (allow.includes(email)) {
+        // Legacy team allowlist → join the primary shared REOS account.
+        // Pin this deterministically: an explicit env override, else the
+        // OLDEST account (the seeded owner-account). This previously used
+        // findFirst() with NO ordering — once more than one tenant
+        // existed (beta testers, other brokerages) that could silently
+        // drop a teammate into an ARBITRARY tenant. Pinning guarantees
+        // allowlisted teammates always land on the same primary account.
+        const primaryId = process.env.AUTH_PRIMARY_ACCOUNT_ID;
+        const primary = primaryId
+          ? await prisma.account.findUnique({
+              where: { id: primaryId },
+              select: { id: true },
+            })
+          : await prisma.account.findFirst({
+              orderBy: { createdAt: "asc" },
+              select: { id: true },
+            });
+        if (!primary) return;
+        accountId = primary.id;
+        role = allow.indexOf(email) === 0 ? "owner" : "coordinator";
       } else {
-        const fallback = await prisma.account.findFirst({
+        // Brand-new tenant: a self-serve / beta user, or a membership-
+        // invited TC whose home account doesn't exist yet. Mint THEIR
+        // OWN account and make them its owner — NEVER drop a new user
+        // into someone else's tenant. Any cross-tenant access they were
+        // invited to is granted separately by the membership auto-accept
+        // below, so an invitee gets a clean personal home AND access to
+        // the brokerage that invited them.
+        const created = await prisma.account.create({
+          data: {
+            ownerUserId: user.id,
+            businessName: user.name?.trim() || email,
+            settingsJson: {}, // empty → onboarding runs on first login
+          },
           select: { id: true },
         });
-        if (!fallback) return;
-        accountId = fallback.id;
-        role = allow.indexOf(email) === 0 ? "owner" : "coordinator";
+        accountId = created.id;
+        role = "owner";
+        mintedOwnAccount = true;
       }
 
-      // Owner skips ToU (they authored it); coordinators click
-      // through on first sign-in.
-      const termsAcceptedAt = role === "owner" ? new Date() : null;
+      // Authored/seeded owners (JP's explicit + allowlist tenants) skip
+      // ToU; freshly-minted owners and coordinators click through.
+      const termsAcceptedAt =
+        role === "owner" && !mintedOwnAccount ? new Date() : null;
 
       await prisma.user.update({
         where: { id: user.id },
         data: { accountId, role, termsAcceptedAt },
       });
 
-      // For new tenant owners, set them as the account's owner_user_id
-      // (the schema column is required; the placeholder gets replaced
-      // here on first owner sign-in).
+      // For owners landing on an EXPLICITLY-routed (pre-seeded) account,
+      // replace the placeholder owner_user_id with the real user. Minted
+      // accounts already set ownerUserId at create time.
       if (role === "owner" && explicitAccountId) {
         await prisma.account.update({
           where: { id: accountId },
