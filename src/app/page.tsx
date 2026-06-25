@@ -234,6 +234,22 @@ export default async function Landing() {
             >
               FAQ
             </a>
+            {/* Sign in is ALWAYS present — even when a session exists —
+                so a visitor can always reach the login screen (e.g. to
+                sign in as a different account, or when their dashboard
+                session is for the "wrong" Google account). When signed
+                in it's the secondary action next to "Open dashboard";
+                when signed out it's the primary CTA. */}
+            <Link
+              href="/login"
+              className={
+                signedIn
+                  ? "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium text-text-muted hover:text-text"
+                  : "inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-3 py-1.5 font-medium text-white hover:bg-brand-500"
+              }
+            >
+              Sign in
+            </Link>
             {signedIn ? (
               <Link
                 href="/today"
@@ -242,14 +258,7 @@ export default async function Landing() {
                 Open dashboard
                 <ArrowRight className="h-3.5 w-3.5" strokeWidth={2} />
               </Link>
-            ) : (
-              <Link
-                href="/login"
-                className="inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-3 py-1.5 font-medium text-white hover:bg-brand-500"
-              >
-                Sign in
-              </Link>
-            )}
+            ) : null}
           </nav>
         </div>
       </header>
