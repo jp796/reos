@@ -24,6 +24,8 @@ import {
   Settings as SettingsIcon,
   Menu,
   X,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import { cn } from "@/lib/cn";
@@ -78,6 +80,26 @@ export function AppShell({
   const pathname = usePathname();
   const { mode, setMode, clearOverride, override } = useTheme();
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Desktop sidebar collapse (icon-only). Persisted so it survives
+  // navigation + reloads.
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    if (typeof localStorage === "undefined") return;
+    setCollapsed(localStorage.getItem("reos_nav_collapsed") === "1");
+  }, []);
+
+  function toggleCollapsed() {
+    setCollapsed((c) => {
+      const next = !c;
+      try {
+        localStorage.setItem("reos_nav_collapsed", next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
 
   // Close the mobile drawer whenever the route changes
   useEffect(() => {
@@ -128,12 +150,19 @@ export function AppShell({
   return (
     <div className="min-h-screen bg-bg text-text">
       <div className="mx-auto flex max-w-[1400px]">
-        {/* Desktop sidebar — hidden on mobile */}
-        <aside className="sticky top-0 hidden h-screen w-[232px] shrink-0 flex-col border-r border-border bg-surface px-3 py-5 md:flex">
+        {/* Desktop sidebar — hidden on mobile; collapses to icons */}
+        <aside
+          className={cn(
+            "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-border bg-surface py-5 transition-[width] duration-200 md:flex",
+            collapsed ? "w-[68px] px-2" : "w-[232px] px-3",
+          )}
+        >
           <SidebarContents
             pathname={pathname}
             user={user}
             signOutAction={signOutAction}
+            collapsed={collapsed}
+            onToggle={toggleCollapsed}
           />
         </aside>
 
@@ -160,6 +189,7 @@ export function AppShell({
                 pathname={pathname}
                 user={user}
                 signOutAction={signOutAction}
+                collapsed={false}
               />
             </aside>
           </>
@@ -209,24 +239,55 @@ function SidebarContents({
   pathname,
   user,
   signOutAction,
+  collapsed,
+  onToggle,
 }: {
   pathname: string;
   user: ShellUser | null;
   signOutAction: () => Promise<void>;
+  collapsed: boolean;
+  onToggle?: () => void;
 }) {
   return (
     <>
-      <Link
-        href="/"
-        className="mb-8 flex items-center gap-2 px-2 font-display text-2xl font-bold tracking-tight"
-        aria-label="REOS home"
+      <div
+        className={cn(
+          "mb-6 flex items-center",
+          collapsed ? "flex-col gap-2" : "justify-between",
+        )}
       >
-        <Logo size={32} />
-        <span>
-          <span>RE</span>
-          <span className="text-gradient-brand">OS</span>
-        </span>
-      </Link>
+        <Link
+          href="/"
+          aria-label="REOS home"
+          className={cn(
+            "flex items-center font-display text-2xl font-bold tracking-tight",
+            collapsed ? "justify-center" : "gap-2 px-2",
+          )}
+        >
+          <Logo size={collapsed ? 28 : 32} />
+          {!collapsed && (
+            <span>
+              <span>RE</span>
+              <span className="text-gradient-brand">OS</span>
+            </span>
+          )}
+        </Link>
+        {onToggle && (
+          <button
+            type="button"
+            onClick={onToggle}
+            title={collapsed ? "Expand menu" : "Collapse menu"}
+            aria-label={collapsed ? "Expand menu" : "Collapse menu"}
+            className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted hover:bg-surface-2 hover:text-text"
+          >
+            {collapsed ? (
+              <PanelLeftOpen className="h-4 w-4" strokeWidth={1.8} />
+            ) : (
+              <PanelLeftClose className="h-4 w-4" strokeWidth={1.8} />
+            )}
+          </button>
+        )}
+      </div>
       <nav className="flex flex-col gap-0.5">
         {NAV.filter(
           (item) => !("investorOnly" in item && item.investorOnly) || user?.investor,
@@ -239,21 +300,52 @@ function SidebarContents({
             <Link
               key={item.href}
               href={item.href}
+              title={collapsed ? item.label : undefined}
               className={cn(
-                "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
+                "flex items-center rounded-md py-2 text-sm transition-colors",
+                collapsed ? "justify-center px-2" : "gap-2.5 px-2.5",
                 active
                   ? "bg-brand-50 font-medium text-brand-700"
                   : "text-text-muted hover:bg-surface-2 hover:text-text",
               )}
             >
               <Icon className="h-4 w-4 shrink-0" strokeWidth={1.8} />
-              {item.label}
+              {!collapsed && item.label}
             </Link>
           );
         })}
       </nav>
-      <div className="mt-auto rounded-md bg-surface-2 p-2.5 text-xs text-text-muted">
-        <AccountSwitcher />
+
+      {collapsed ? (
+        <div className="mt-auto flex flex-col items-center gap-1.5">
+          {user?.image ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={user.image}
+              alt=""
+              className="h-7 w-7 rounded-full border border-border"
+            />
+          ) : (
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-500 text-[11px] font-semibold text-white">
+              {(user?.name ?? user?.email ?? "?").slice(0, 1).toUpperCase()}
+            </div>
+          )}
+          {user && (
+            <form action={signOutAction}>
+              <button
+                type="submit"
+                title="Sign out"
+                aria-label="Sign out"
+                className="flex h-7 w-7 items-center justify-center rounded border border-border bg-surface text-text-muted hover:text-text"
+              >
+                <LogOut className="h-3 w-3" strokeWidth={2} />
+              </button>
+            </form>
+          )}
+        </div>
+      ) : (
+        <div className="mt-auto rounded-md bg-surface-2 p-2.5 text-xs text-text-muted">
+          <AccountSwitcher />
         {user ? (
           <>
             <div className="flex items-center gap-2">
@@ -296,7 +388,8 @@ function SidebarContents({
             <div>Real Broker LLC · Cheyenne, WY</div>
           </>
         )}
-      </div>
+        </div>
+      )}
     </>
   );
 }
