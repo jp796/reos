@@ -34,6 +34,10 @@ import { FIXTURE_COMPLIANCE } from "./complianceModel";
 import { TasksStep } from "./TasksStep";
 import { FIXTURE_TASKS } from "./taskModel";
 import { useRouter } from "next/navigation";
+import {
+  computeRelativeDeadlines,
+  type ContractExtraction,
+} from "@/services/ai/ContractExtractionService";
 
 const STEP_LABELS = ["Upload", "Details", "Timeline", "Compliance", "Tasks"];
 
@@ -54,6 +58,7 @@ export function GuidedIntakeWizard() {
     null,
   );
   const [reviewModel, setReviewModel] = useState<ReviewModel | null>(null);
+  const [extraction, setExtraction] = useState<ContractExtraction | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [extractErr, setExtractErr] = useState<string | null>(null);
   const [createErr, setCreateErr] = useState<string | null>(null);
@@ -92,7 +97,11 @@ export function GuidedIntakeWizard() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Couldn't read the contract");
-      setReviewModel(extractionToReviewModel(data.extraction));
+      // Fill absolute deadline dates from relative offsets so the create
+      // step can seed the full milestone timeline.
+      const ex = computeRelativeDeadlines(data.extraction as ContractExtraction);
+      setExtraction(ex);
+      setReviewModel(extractionToReviewModel(ex));
       setPdfUrl(URL.createObjectURL(primary));
       setStep(2);
     } catch (e) {
@@ -129,13 +138,38 @@ export function GuidedIntakeWizard() {
     setCreateErr(null);
     setWorking({ label: "Setting up your deal", target: 5 });
     try {
+      const ex = extraction;
       const body: Record<string, unknown> = {
         address,
-        buyerName: entityName(model, "parties", "buyer"),
-        sellerName: entityName(model, "parties", "seller"),
-        effectiveDate: model.effectiveDate || null,
-        purchasePrice: parseMoney(fieldVal(model, "financing", "price")),
-        earnestMoneyAmount: parseMoney(fieldVal(model, "financing", "emd")),
+        buyerName:
+          entityName(model, "parties", "buyer") ?? ex?.buyers?.value?.[0] ?? null,
+        sellerName:
+          entityName(model, "parties", "seller") ?? ex?.sellers?.value?.[0] ?? null,
+        effectiveDate: model.effectiveDate || ex?.effectiveDate?.value || null,
+        closingDate: ex?.closingDate?.value ?? null,
+        possessionDate: ex?.possessionDate?.value ?? null,
+        inspectionDeadline: ex?.inspectionDeadline?.value ?? null,
+        inspectionObjectionDeadline: ex?.inspectionObjectionDeadline?.value ?? null,
+        titleCommitmentDeadline: ex?.titleCommitmentDeadline?.value ?? null,
+        titleObjectionDeadline: ex?.titleObjectionDeadline?.value ?? null,
+        financingDeadline: ex?.financingDeadline?.value ?? null,
+        walkthroughDate: ex?.walkthroughDate?.value ?? null,
+        earnestMoneyDueDate: ex?.earnestMoneyDueDate?.value ?? null,
+        purchasePrice:
+          parseMoney(fieldVal(model, "financing", "price")) ??
+          ex?.purchasePrice?.value ??
+          null,
+        earnestMoneyAmount:
+          parseMoney(fieldVal(model, "financing", "emd")) ??
+          ex?.earnestMoneyAmount?.value ??
+          null,
+        sellerSideCommissionPct: ex?.sellerSideCommissionPct?.value ?? null,
+        sellerSideCommissionAmount: ex?.sellerSideCommissionAmount?.value ?? null,
+        buyerSideCommissionPct: ex?.buyerSideCommissionPct?.value ?? null,
+        buyerSideCommissionAmount: ex?.buyerSideCommissionAmount?.value ?? null,
+        titleCompany: ex?.titleCompanyName?.value ?? null,
+        lenderName: ex?.lenderName?.value ?? null,
+        contractStage: ex?.contractStage?.value ?? null,
       };
       if (side === "investor") body.resaleIntent = true;
       const res = await fetch("/api/automation/create-from-scan", {
