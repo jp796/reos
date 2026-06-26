@@ -20,6 +20,8 @@ import { useState } from "react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { StepProgress } from "@/app/components/StepProgress";
 import { AtlasWorking } from "@/app/components/AtlasWorking";
+import { ReviewDetailsStep } from "./ReviewDetailsStep";
+import { FIXTURE_1650 } from "./reviewModel";
 
 const STEP_LABELS = ["Upload", "Details", "Timeline", "Compliance", "Tasks"];
 
@@ -70,7 +72,7 @@ export function GuidedIntakeWizard() {
 
       <div className="mt-8 min-h-[320px]">
         {step === 1 && <StepPlaceholder title="Upload a contract" hint="Drop the purchase contract (+ related docs). Atlas reads it." />}
-        {step === 2 && <StepPlaceholder title="Review transaction details" hint="Split-screen: extracted fields (left) + the contract PDF (right). Every field editable." />}
+        {step === 2 && <ReviewDetailsStep initial={FIXTURE_1650} />}
         {step === 3 && <StepPlaceholder title="Review your timeline" hint="Computed deadlines — edit, flag key milestones, add your own." />}
         {step === 4 && <StepPlaceholder title="Confirm your compliance checklist" hint="AI-suggested documents — edit, remove, add, apply templates." />}
         {step === 5 && <StepPlaceholder title="Review tasks" hint="Context-aware tasks with auto-draft emails — edit before finishing." />}
