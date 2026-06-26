@@ -17,7 +17,10 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { env } from "@/lib/env";
-import { ContractExtractionService } from "@/services/ai/ContractExtractionService";
+import {
+  ContractExtractionService,
+  computeRelativeDeadlines,
+} from "@/services/ai/ContractExtractionService";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -59,6 +62,10 @@ export async function POST(req: NextRequest) {
       { status: 502 },
     );
   }
+
+  // Fill absolute deadline dates from relative offsets (server-side) so
+  // the guided wizard can seed the full milestone timeline on create.
+  extraction = computeRelativeDeadlines(extraction);
 
   return NextResponse.json({ ok: true, extraction });
 }

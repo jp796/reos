@@ -34,10 +34,7 @@ import { FIXTURE_COMPLIANCE } from "./complianceModel";
 import { TasksStep } from "./TasksStep";
 import { FIXTURE_TASKS } from "./taskModel";
 import { useRouter } from "next/navigation";
-import {
-  computeRelativeDeadlines,
-  type ContractExtraction,
-} from "@/services/ai/ContractExtractionService";
+import type { ContractExtraction } from "@/services/ai/ContractExtractionService";
 
 const STEP_LABELS = ["Upload", "Details", "Timeline", "Compliance", "Tasks"];
 
@@ -97,9 +94,9 @@ export function GuidedIntakeWizard() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Couldn't read the contract");
-      // Fill absolute deadline dates from relative offsets so the create
-      // step can seed the full milestone timeline.
-      const ex = computeRelativeDeadlines(data.extraction as ContractExtraction);
+      // The endpoint already filled absolute deadline dates from the
+      // relative offsets (computeRelativeDeadlines runs server-side).
+      const ex = data.extraction as ContractExtraction;
       setExtraction(ex);
       setReviewModel(extractionToReviewModel(ex));
       setPdfUrl(URL.createObjectURL(primary));
