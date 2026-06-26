@@ -281,14 +281,19 @@ STRUCTURED PARTIES (partyDetails)
 - Keep names identical to how they appear in buyers/sellers. Pull email/phone from signature blocks, contact lines, or notice sections when shown; null when not present. Never invent contact info.
 
 AGENTS (agents)
-- agents is an ARRAY of every agent / licensee named anywhere in the contract (signature blocks, broker info sections, notice/contact pages):
+- agents is an ARRAY of every agent / licensee named anywhere in the contract (signature blocks, broker info sections, "Prepared by ___" lines, notice/contact pages):
   { "name": "...", "role": "...", "email": "...|null", "phone": "...|null", "brokerage": "...|null", "license": "...|null" }
-- role examples: "buyer agent", "listing agent", "transaction coordinator". Pull license numbers and brokerage names when stated; null otherwise.
+- DETERMINE role by WHICH PARTY the agent represents — do NOT guess or default:
+  * An agent in the buyer's-broker block, the buyer's signature / notice block, or a "Prepared by [Name] | [Brokerage]" line on a BUYER'S OFFER represents the buyer → role = "buyer agent".
+  * An agent in the listing / seller's-broker block or the seller's signature / notice block → role = "listing agent".
+  * Closing / escrow / coordinator contacts → "transaction coordinator" or "closing agent".
+- A purchase OFFER frequently names ONLY the buyer's agent + brokerage; the listing / seller side is often blank at offer stage. If the seller's agent or listing brokerage is NOT in the document, do NOT invent one — and NEVER relabel the buyer's agent as the listing agent to fill the gap.
+- Pull license numbers and brokerage names when stated; null otherwise.
 
 BROKERAGES (brokerages)
 - brokerages is an ARRAY of every brokerage / firm named:
   { "name": "...", "side": "...", "license": "...|null", "address": "...|null" }
-- side examples: "buyer", "listing". Pull firm license # and office address when stated; null otherwise.
+- side = which party the firm represents: the brokerage on the buyer's "Prepared by" / buyer-broker line = "buyer"; the listing brokerage = "listing". Do not guess — if only one brokerage is named (typical on a buyer's offer), label it by the side it actually represents and omit the other rather than fabricating a listing brokerage.
 
 CONTINGENCIES / TERMS (contingencies) — MOST IMPORTANT NEW SECTION
 - contingencies is an ARRAY. Capture EVERY contingency and material term present in the contract — do NOT collapse to yes/no. Each entry:

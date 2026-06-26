@@ -14,7 +14,7 @@ export default async function GuidedIntakePage() {
   const actor = await requireSession();
   if (actor instanceof Response) redirect("/login");
   return (
-    <main className="mx-auto max-w-5xl">
+    <main className="mx-auto max-w-7xl">
       <GuidedIntakeWizard />
     </main>
   );

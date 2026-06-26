@@ -122,7 +122,13 @@ export function ReviewDetailsStep({
                   ))}
                 </div>
               ) : (
-                <div className="space-y-2.5">
+                <div
+                  className={
+                    section.id === "terms"
+                      ? "space-y-2.5"
+                      : "grid gap-2.5 sm:grid-cols-2"
+                  }
+                >
                   {section.entities.map((e) => (
                     <div
                       key={e.id}
@@ -133,7 +139,7 @@ export function ReviewDetailsStep({
                           {e.name}
                         </span>
                         {e.badge ? (
-                          <span className="rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700 ring-1 ring-brand-100 dark:bg-brand-950/40 dark:text-brand-200 dark:ring-brand-900/40">
+                          <span className="rounded-full bg-brand-600 px-2 py-0.5 text-[11px] font-medium text-white">
                             {e.badge}
                           </span>
                         ) : null}
