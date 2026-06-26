@@ -73,13 +73,22 @@ Step 5 — Review Tasks                 (context-aware tasks w/ auto-email, edit
 | # | Phase | Status |
 |---|-------|--------|
 | 1 | Deep extraction schema + AI-working loader | ✅ shipped (reos-00219) |
-| 1v | Verify extraction on a real contract (1650 North Ridge Dr) | ⏳ needs PDF |
-| 2 | Split-screen review UI (fields \| PDF, per-field edit/find, missing-items) | next |
-| 3 | Atlas-asks: inline ✓/✗, confirm-anchor-date step | next |
-| 4 | Review Timeline step (flags, add, relative display) | next |
-| 5 | Compliance checklist step (AI docs, templates, right-rail timeline) | next |
-| 6 | Tasks step + rich Edit Task modal (auto-email, relative sched, compliance link) | next |
-| 7 | Create mapping (rich intake → Transaction/Asset + tasks + compliance) | next |
+| 1b | Step 1 upload + live extraction wiring + real PDF pane | ✅ shipped (reos-00224) |
+| 1v | Verify extraction ACCURACY on a real contract (1650) | ⏳ needs a PDF run |
+| 2 | Split-screen review UI (fields \| PDF, inline ✓/✗, missing-items) | ✅ shipped, edits lifted to create |
+| 3 | Atlas-asks: inline ✓/✗ ✅ · confirm-anchor-date step ⏳ | partial |
+| 4 | Review Timeline step (flags, add, relative display) | ✅ shipped |
+| 5 | Compliance checklist step (AI docs, search, add, edit) | ✅ shipped |
+| 6 | Tasks step + Edit Task modal (auto-email, relative sched, compliance link) | ✅ shipped |
+| 7 | Create handoff (intake → real Transaction via create-from-scan → deal file) | ✅ shipped (v1) |
+
+### Known v1 boundaries (follow-ons, not blockers)
+- **Steps 3/4/5 start from fixtures**; their edits don't yet persist onto the
+  created deal (the deal gets its own timeline/tasks from create-from-scan).
+  Step 2 edits DO flow into the create payload. Wiring 3/4/5 → persisted
+  deal data is the next pass.
+- **Extraction accuracy unverified** until a real contract runs through.
+- **find-in-document** + **confirm-anchor-date** interstitial still to come.
 
 ## Mascot system (decided)
 
