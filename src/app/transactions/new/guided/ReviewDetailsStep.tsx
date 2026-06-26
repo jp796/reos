@@ -14,7 +14,7 @@
  * than shipping a dead button.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pencil, Check, X, Plus, FileText, AlertCircle } from "lucide-react";
 import {
   type ReviewModel,
@@ -25,12 +25,20 @@ import {
 export function ReviewDetailsStep({
   initial,
   pdfUrl,
+  onChange,
 }: {
   initial: ReviewModel;
   pdfUrl?: string;
+  /** Mirror edits up so the wizard can build the create payload from the
+   *  user's corrected values, not just the raw extraction. */
+  onChange?: (m: ReviewModel) => void;
 }) {
   const [model, setModel] = useState<ReviewModel>(initial);
   const missing = useMemo(() => countMissing(model), [model]);
+
+  useEffect(() => {
+    onChange?.(model);
+  }, [model, onChange]);
 
   function saveField(
     sectionId: string,
