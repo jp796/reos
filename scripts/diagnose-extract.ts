@@ -21,7 +21,7 @@ const buffer = Buffer.from(doc.rawBytes);
 console.log(`PDF: ${doc.fileName} (${buffer.length} bytes)\n`);
 
 const svc = new ContractExtractionService(process.env.OPENAI_API_KEY!);
-const ex = (await svc.extract(buffer)) as Record<
+const ex = (await svc.extract(buffer)) as unknown as Record<
   string,
   { value: unknown; confidence?: number } | unknown
 >;
