@@ -299,6 +299,7 @@ CONTINGENCIES / TERMS (contingencies) — MOST IMPORTANT NEW SECTION
 - contingencies is an ARRAY. Capture EVERY contingency and material term present in the contract — do NOT collapse to yes/no. Each entry:
   { "name": "...", "status": "applies"|"waived"|"n/a", "description": "<full descriptive text, verbatim-ish, 1-3 sentences>", "deadline": "YYYY-MM-DD or null" }
 - Capture at minimum, when present: financing, appraisal, investigation/inspection, roof inspection, property viewing, title/preliminary-report review, property disclosure, insurance, HOA, sale-of-other-property — AND any other contingency or term the contract contains.
+- BE EXHAUSTIVE. A typical residential purchase contract contains 6-10 contingencies / material terms. Walk the contract SECTION BY SECTION and emit one entry for EVERY numbered or lettered provision that creates a buyer or seller right, deadline, condition, or obligation (inspection, title, financing, appraisal, insurance, disclosures, HOA, survey, possession, default/remedies, etc.). If your contingencies list has fewer than 5 entries, you are under-reading — re-scan the document and add the ones you missed.
 - status: "applies" when the contingency is in effect, "waived" when the buyer/seller has waived it, "n/a" when the form lists it but marks it not applicable.
 - description: the FULL descriptive text of the contingency from the contract, verbatim-ish (1-3 sentences). Do NOT shorten to a label.
 - deadline: ISO YYYY-MM-DD only when a specific date is stated for that contingency; otherwise null (a relative offset goes in the description, not here).
@@ -470,7 +471,7 @@ export class ContractExtractionService {
         model: VISION_MODEL,
         temperature: 0,
         response_format: { type: "json_object" },
-        max_tokens: 2000,
+        max_tokens: 8000,
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           {
@@ -536,7 +537,7 @@ ${SCHEMA_HINT}`,
         model: VISION_MODEL,
         temperature: 0,
         response_format: { type: "json_object" },
-        max_tokens: 2000,
+        max_tokens: 8000,
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           {
@@ -591,7 +592,7 @@ ${SCHEMA_HINT}`;
         model: MODEL,
         temperature: 0,
         response_format: { type: "json_object" },
-        max_tokens: 2000,
+        max_tokens: 8000,
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: userMsg },
