@@ -41,6 +41,57 @@ export interface ContractExtractionField<T = string> {
   snippet: string | null;
 }
 
+/**
+ * A structured party (buyer or seller) with per-person contact info
+ * when the contract states it. The richer view alongside the legacy
+ * `buyers` / `sellers` string[] fields, which stay for backward compat.
+ */
+export interface ContractParty {
+  name: string;
+  role: "buyer" | "seller";
+  email: string | null;
+  phone: string | null;
+}
+
+/**
+ * A real-estate agent / licensee named in the contract. `role`
+ * describes which side or function (e.g. "buyer agent",
+ * "listing agent", "transaction coordinator").
+ */
+export interface ContractAgent {
+  name: string;
+  role: string;
+  email: string | null;
+  phone: string | null;
+  brokerage: string | null;
+  license: string | null;
+}
+
+/**
+ * A brokerage / firm named in the contract. `side` is which side it
+ * represents (e.g. "buyer", "listing").
+ */
+export interface ContractBrokerage {
+  name: string;
+  side: string;
+  license: string | null;
+  address: string | null;
+}
+
+/**
+ * A contingency or contractual term (financing, appraisal, inspection,
+ * title review, disclosures, insurance, HOA, sale-of-other-property,
+ * etc.). `description` carries the FULL descriptive text verbatim-ish;
+ * `status` is "applies" | "waived" | "n/a" (free-form, model-supplied);
+ * `deadline` is an ISO YYYY-MM-DD date when one is stated, else null.
+ */
+export interface ContractContingency {
+  name: string;
+  status: string;
+  description: string;
+  deadline: string | null;
+}
+
 export interface ContractExtraction {
   effectiveDate: ContractExtractionField;
   purchasePrice: ContractExtractionField<number>;
@@ -61,6 +112,55 @@ export interface ContractExtraction {
   propertyAddress: ContractExtractionField;
   buyers: ContractExtractionField<string[]>;
   sellers: ContractExtractionField<string[]>;
+
+  // ── Property details (ListedKit-grade enrichment) ──
+  /** City portion of the subject property address. */
+  city: ContractExtractionField;
+  /** State portion of the subject property address (e.g. "WY", "MO"). */
+  state: ContractExtractionField;
+  /** ZIP / postal code of the subject property. */
+  zip: ContractExtractionField;
+  /** County the subject property sits in. */
+  county: ContractExtractionField;
+  /** Legal description of the property, captured verbatim. */
+  legalDescription: ContractExtractionField;
+  /** Whether the property is subject to an HOA. */
+  hoa: ContractExtractionField<boolean>;
+  /** Whether the property is currently tenant-occupied. */
+  tenantOccupied: ContractExtractionField<boolean>;
+
+  // ── Financing summary (ListedKit-grade enrichment) ──
+  /** Financing type, e.g. "Conventional" | "FHA" | "VA" | "USDA" |
+   *  "Cash" | "Seller Financing" | "Other". */
+  financingType: ContractExtractionField;
+  /** Loan amount in raw dollars (e.g. 360000). */
+  loanAmount: ContractExtractionField<number>;
+  /** Balance due at closing in raw dollars. */
+  balanceDueAtClosing: ContractExtractionField<number>;
+  /** Loan amortization term in years (e.g. 30). */
+  loanAmortizationYears: ContractExtractionField<number>;
+  /** Interest rate as a decimal (e.g. 0.06 for 6%). */
+  interestRate: ContractExtractionField<number>;
+  /** Monthly payment in raw dollars. */
+  monthlyPayment: ContractExtractionField<number>;
+
+  // ── Structured parties / agents / brokerages (ListedKit-grade) ──
+  /** Richer per-party view capturing email/phone when present. The
+   *  legacy `buyers` / `sellers` string[] fields remain authoritative
+   *  for name-only consumers; this adds contact detail without
+   *  replacing them. */
+  partyDetails: ContractExtractionField<ContractParty[]>;
+  /** Every agent / licensee named in the contract, with role + contact
+   *  + brokerage + license when stated. */
+  agents: ContractExtractionField<ContractAgent[]>;
+  /** Every brokerage / firm named, with side + license + address. */
+  brokerages: ContractExtractionField<ContractBrokerage[]>;
+
+  // ── Contingencies / terms (ListedKit-grade — most important) ──
+  /** Every contingency / term present in the contract, each with its
+   *  full descriptive text, status, and deadline when stated. */
+  contingencies: ContractExtractionField<ContractContingency[]>;
+
   titleCompanyName: ContractExtractionField;
   lenderName: ContractExtractionField;
   /** Compensation (when stated in the contract — Wyoming + some state forms do this) */
@@ -161,6 +261,43 @@ Both pct AND amount may appear; extract whichever is provided.
 
 On a Rider doc, timeline fields (closingDate, inspectionDeadline, etc.) will mostly be null — that's expected.
 
+PROPERTY DETAILS
+- city / state / zip / county: pull from the property/legal-description block. state as the 2-letter code when written that way. county only when the contract states it (often in the legal description or title section).
+- legalDescription: capture the FULL legal description verbatim (lot/block/subdivision/plat or metes-and-bounds). Do not summarize.
+- hoa (boolean): true if the contract indicates the property is in a homeowners association (HOA dues, HOA addendum, HOA disclosure, association name). false if it explicitly says no HOA. null when unstated.
+- tenantOccupied (boolean): true if the property is described as leased / tenant-occupied / subject to existing tenancy. false if owner-occupied or vacant is stated. null when unstated.
+
+FINANCING SUMMARY
+- financingType: one of "Conventional", "FHA", "VA", "USDA", "Cash", "Seller Financing", or "Other". If the contract says "all cash" / "no financing contingency", use "Cash".
+- loanAmount: the principal loan amount in raw dollars (e.g. 360000).
+- balanceDueAtClosing: cash/balance the buyer brings at closing, raw dollars, when stated.
+- loanAmortizationYears: amortization term in years (e.g. 30, 15).
+- interestRate: as a DECIMAL (0.06 for 6%, 0.065 for 6.5%). Use a stated rate or a stated maximum/not-to-exceed rate; null if only "prevailing market rate".
+- monthlyPayment: stated monthly payment (principal+interest, or PITI if that's what's given), raw dollars.
+
+STRUCTURED PARTIES (partyDetails)
+- partyDetails is an ARRAY. One object per buyer AND one per seller, capturing per-person contact info when present:
+  { "name": "...", "role": "buyer"|"seller", "email": "...|null", "phone": "...|null" }
+- Keep names identical to how they appear in buyers/sellers. Pull email/phone from signature blocks, contact lines, or notice sections when shown; null when not present. Never invent contact info.
+
+AGENTS (agents)
+- agents is an ARRAY of every agent / licensee named anywhere in the contract (signature blocks, broker info sections, notice/contact pages):
+  { "name": "...", "role": "...", "email": "...|null", "phone": "...|null", "brokerage": "...|null", "license": "...|null" }
+- role examples: "buyer agent", "listing agent", "transaction coordinator". Pull license numbers and brokerage names when stated; null otherwise.
+
+BROKERAGES (brokerages)
+- brokerages is an ARRAY of every brokerage / firm named:
+  { "name": "...", "side": "...", "license": "...|null", "address": "...|null" }
+- side examples: "buyer", "listing". Pull firm license # and office address when stated; null otherwise.
+
+CONTINGENCIES / TERMS (contingencies) — MOST IMPORTANT NEW SECTION
+- contingencies is an ARRAY. Capture EVERY contingency and material term present in the contract — do NOT collapse to yes/no. Each entry:
+  { "name": "...", "status": "applies"|"waived"|"n/a", "description": "<full descriptive text, verbatim-ish, 1-3 sentences>", "deadline": "YYYY-MM-DD or null" }
+- Capture at minimum, when present: financing, appraisal, investigation/inspection, roof inspection, property viewing, title/preliminary-report review, property disclosure, insurance, HOA, sale-of-other-property — AND any other contingency or term the contract contains.
+- status: "applies" when the contingency is in effect, "waived" when the buyer/seller has waived it, "n/a" when the form lists it but marks it not applicable.
+- description: the FULL descriptive text of the contingency from the contract, verbatim-ish (1-3 sentences). Do NOT shorten to a label.
+- deadline: ISO YYYY-MM-DD only when a specific date is stated for that contingency; otherwise null (a relative offset goes in the description, not here).
+
 RELATIVE DEADLINES — CRITICAL
 Many contracts DO NOT state absolute deadline dates. They state OFFSETS from the Effective Date, e.g.:
   "within 5 business days of the Effective Date" (earnest money)
@@ -205,6 +342,23 @@ const SCHEMA_HINT = `{
   "propertyAddress":       { "value": "street, city state zip", "confidence": 0-1, "snippet": "..." },
   "buyers":                { "value": ["Name1","Name2"], "confidence": 0-1, "snippet": "..." },
   "sellers":               { "value": ["Name1","Name2"], "confidence": 0-1, "snippet": "..." },
+  "city":                  { "value": "city or null", "confidence": 0-1, "snippet": "..." },
+  "state":                 { "value": "ST or null", "confidence": 0-1, "snippet": "..." },
+  "zip":                   { "value": "zip or null", "confidence": 0-1, "snippet": "..." },
+  "county":                { "value": "county or null", "confidence": 0-1, "snippet": "..." },
+  "legalDescription":      { "value": "full legal description verbatim or null", "confidence": 0-1, "snippet": "..." },
+  "hoa":                   { "value": true or false or null, "confidence": 0-1, "snippet": "..." },
+  "tenantOccupied":        { "value": true or false or null, "confidence": 0-1, "snippet": "..." },
+  "financingType":         { "value": "Conventional|FHA|VA|USDA|Cash|Seller Financing|Other or null", "confidence": 0-1, "snippet": "..." },
+  "loanAmount":            { "value": 0 or null, "confidence": 0-1, "snippet": "..." },
+  "balanceDueAtClosing":   { "value": 0 or null, "confidence": 0-1, "snippet": "..." },
+  "loanAmortizationYears": { "value": 0 or null, "confidence": 0-1, "snippet": "..." },
+  "interestRate":          { "value": 0 or null, "confidence": 0-1, "snippet": "..." },
+  "monthlyPayment":        { "value": 0 or null, "confidence": 0-1, "snippet": "..." },
+  "partyDetails":          { "value": [{ "name": "...", "role": "buyer|seller", "email": "...|null", "phone": "...|null" }], "confidence": 0-1, "snippet": "..." },
+  "agents":                { "value": [{ "name": "...", "role": "buyer agent|listing agent|transaction coordinator", "email": "...|null", "phone": "...|null", "brokerage": "...|null", "license": "...|null" }], "confidence": 0-1, "snippet": "..." },
+  "brokerages":            { "value": [{ "name": "...", "side": "buyer|listing", "license": "...|null", "address": "...|null" }], "confidence": 0-1, "snippet": "..." },
+  "contingencies":         { "value": [{ "name": "...", "status": "applies|waived|n/a", "description": "full descriptive text", "deadline": "YYYY-MM-DD or null" }], "confidence": 0-1, "snippet": "..." },
   "titleCompanyName":      { "value": "Co name", "confidence": 0-1, "snippet": "..." },
   "lenderName":            { "value": "Lender name", "confidence": 0-1, "snippet": "..." },
   "sellerSideCommissionPct":    { "value": 0 or null, "confidence": 0-1, "snippet": "..." },
@@ -576,6 +730,96 @@ function asField<T = string>(v: unknown): ContractExtractionField<T> {
   return { value, confidence, snippet };
 }
 
+/**
+ * Array-safe variant of asField. Returns a ContractExtractionField
+ * whose value is the parsed-and-validated array, or null when the
+ * model returned no usable array. Each element is run through
+ * `mapItem`, which returns a typed object or null (null elements are
+ * dropped). An empty result array collapses to value=null so callers
+ * can treat "no items" identically to "field absent", consistent with
+ * the scalar `asField` null pattern.
+ */
+function asArrayField<T>(
+  v: unknown,
+  mapItem: (raw: Record<string, unknown>) => T | null,
+): ContractExtractionField<T[]> {
+  if (!v || typeof v !== "object") {
+    return { value: null, confidence: 0, snippet: null };
+  }
+  const o = v as Record<string, unknown>;
+  const confidence =
+    typeof o.confidence === "number"
+      ? Math.max(0, Math.min(1, o.confidence))
+      : 0;
+  const snippet =
+    typeof o.snippet === "string" && o.snippet.trim()
+      ? o.snippet.trim().slice(0, 240)
+      : null;
+
+  const rawValue = o.value;
+  if (!Array.isArray(rawValue)) {
+    return { value: null, confidence, snippet };
+  }
+  const items: T[] = [];
+  for (const el of rawValue) {
+    if (!el || typeof el !== "object") continue;
+    const mapped = mapItem(el as Record<string, unknown>);
+    if (mapped !== null) items.push(mapped);
+  }
+  return { value: items.length > 0 ? items : null, confidence, snippet };
+}
+
+/** Coerce an unknown to a trimmed non-empty string, else null. */
+function asStr(v: unknown): string | null {
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
+function mapParty(o: Record<string, unknown>): ContractParty | null {
+  const name = asStr(o.name);
+  if (!name) return null; // a party with no name is unusable
+  const role = o.role === "seller" ? "seller" : "buyer";
+  return { name, role, email: asStr(o.email), phone: asStr(o.phone) };
+}
+
+function mapAgent(o: Record<string, unknown>): ContractAgent | null {
+  const name = asStr(o.name);
+  if (!name) return null;
+  return {
+    name,
+    role: asStr(o.role) ?? "",
+    email: asStr(o.email),
+    phone: asStr(o.phone),
+    brokerage: asStr(o.brokerage),
+    license: asStr(o.license),
+  };
+}
+
+function mapBrokerage(o: Record<string, unknown>): ContractBrokerage | null {
+  const name = asStr(o.name);
+  if (!name) return null;
+  return {
+    name,
+    side: asStr(o.side) ?? "",
+    license: asStr(o.license),
+    address: asStr(o.address),
+  };
+}
+
+function mapContingency(
+  o: Record<string, unknown>,
+): ContractContingency | null {
+  const name = asStr(o.name);
+  const description = asStr(o.description);
+  // A contingency entry is only meaningful with a name or a description.
+  if (!name && !description) return null;
+  return {
+    name: name ?? "",
+    status: asStr(o.status) ?? "",
+    description: description ?? "",
+    deadline: asStr(o.deadline),
+  };
+}
+
 function normalize(parsed: unknown): ContractExtraction {
   const o = (parsed && typeof parsed === "object" ? parsed : {}) as Record<
     string,
@@ -597,6 +841,26 @@ function normalize(parsed: unknown): ContractExtraction {
     propertyAddress: asField(o.propertyAddress),
     buyers: asField<string[]>(o.buyers),
     sellers: asField<string[]>(o.sellers),
+    city: asField(o.city),
+    state: asField(o.state),
+    zip: asField(o.zip),
+    county: asField(o.county),
+    legalDescription: asField(o.legalDescription),
+    hoa: asField<boolean>(o.hoa),
+    tenantOccupied: asField<boolean>(o.tenantOccupied),
+    financingType: asField(o.financingType),
+    loanAmount: asField<number>(o.loanAmount),
+    balanceDueAtClosing: asField<number>(o.balanceDueAtClosing),
+    loanAmortizationYears: asField<number>(o.loanAmortizationYears),
+    interestRate: asField<number>(o.interestRate),
+    monthlyPayment: asField<number>(o.monthlyPayment),
+    partyDetails: asArrayField<ContractParty>(o.partyDetails, mapParty),
+    agents: asArrayField<ContractAgent>(o.agents, mapAgent),
+    brokerages: asArrayField<ContractBrokerage>(o.brokerages, mapBrokerage),
+    contingencies: asArrayField<ContractContingency>(
+      o.contingencies,
+      mapContingency,
+    ),
     titleCompanyName: asField(o.titleCompanyName),
     lenderName: asField(o.lenderName),
     sellerSideCommissionPct: asField<number>(o.sellerSideCommissionPct),
