@@ -21,6 +21,7 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 import { StepProgress } from "@/app/components/StepProgress";
 import { AtlasWorking } from "@/app/components/AtlasWorking";
 import { ReviewDetailsStep } from "./ReviewDetailsStep";
+import { UploadStep, type Side } from "./UploadStep";
 import { FIXTURE_1650 } from "./reviewModel";
 
 const STEP_LABELS = ["Upload", "Details", "Timeline", "Compliance", "Tasks"];
@@ -35,6 +36,8 @@ const ENTER_LABEL: Record<number, string> = {
 
 export function GuidedIntakeWizard() {
   const [step, setStep] = useState(1);
+  const [files, setFiles] = useState<File[]>([]);
+  const [side, setSide] = useState<Side | null>(null);
   // When set, an AtlasWorking interstitial is showing before `target`.
   const [working, setWorking] = useState<{ label: string; target: number } | null>(
     null,
@@ -71,7 +74,14 @@ export function GuidedIntakeWizard() {
       <StepProgress current={step} total={5} labels={STEP_LABELS} />
 
       <div className="mt-8 min-h-[320px]">
-        {step === 1 && <StepPlaceholder title="Upload a contract" hint="Drop the purchase contract (+ related docs). Atlas reads it." />}
+        {step === 1 && (
+          <UploadStep
+            files={files}
+            setFiles={setFiles}
+            side={side}
+            setSide={setSide}
+          />
+        )}
         {step === 2 && <ReviewDetailsStep initial={FIXTURE_1650} />}
         {step === 3 && <StepPlaceholder title="Review your timeline" hint="Computed deadlines — edit, flag key milestones, add your own." />}
         {step === 4 && <StepPlaceholder title="Confirm your compliance checklist" hint="AI-suggested documents — edit, remove, add, apply templates." />}
@@ -90,7 +100,8 @@ export function GuidedIntakeWizard() {
         <button
           type="button"
           onClick={() => (step < 5 ? advanceTo(step + 1) : undefined)}
-          className="inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-500"
+          disabled={step === 1 && (!side || files.length === 0)}
+          className="inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-500 disabled:opacity-50"
         >
           {step < 5 ? "Continue" : "Create & open deal"}
           <ArrowRight className="h-4 w-4" />
