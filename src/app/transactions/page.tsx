@@ -528,17 +528,23 @@ export default async function TransactionsPage({
             <div className="mt-8 space-y-6">
               {investment.length > 0 && (
                 <section>
-                  <div className="reos-label mb-2">
-                    Investment deals · {investment.length}
-                  </div>
+                  <h2 className="mb-3 font-display text-2xl font-bold text-brand-600">
+                    Investment Deals{" "}
+                    <span className="font-semibold text-brand-400">
+                      · {investment.length}
+                    </span>
+                  </h2>
                   <div className="space-y-2">{investment.map(renderRow)}</div>
                 </section>
               )}
               {retail.length > 0 && (
                 <section>
-                  <div className="reos-label mb-2">
-                    Retail deals · {retail.length}
-                  </div>
+                  <h2 className="mb-3 font-display text-2xl font-bold text-brand-600">
+                    Retail Deals{" "}
+                    <span className="font-semibold text-brand-400">
+                      · {retail.length}
+                    </span>
+                  </h2>
                   <div className="space-y-2">{retail.map(renderRow)}</div>
                 </section>
               )}
