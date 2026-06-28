@@ -121,41 +121,56 @@ function UploadDocsControl({
     if (!files || files.length === 0) return;
     setBusy(true);
     try {
-      const fd = new FormData();
-      Array.from(files).forEach((f) => fd.append("file", f));
-      const res = await fetch(`/api/transactions/${transactionId}/documents`, {
-        method: "POST",
-        body: fd,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "upload failed");
-
-      // One dropzone does both: when a SINGLE PDF is dropped, also read it
-      // as a contract so the extraction review appears below. Best-effort —
-      // a non-contract PDF just stays in the library.
       const only = files.length === 1 ? files[0] : null;
       const isPdf =
         !!only && (only.type.includes("pdf") || /\.pdf$/i.test(only.name));
-      let extracted = false;
+
       if (only && isPdf) {
-        try {
-          const er = await fetch(
-            `/api/transactions/${transactionId}/contract/extract`,
-            { method: "POST", body: (() => { const e = new FormData(); e.append("file", only); return e; })() },
+        // A single PDF: the contract endpoint BOTH stores it as a document
+        // AND extracts it — so call ONLY that. (Calling /documents too
+        // would save the file twice.) If it isn't a readable contract the
+        // endpoint errors; fall back to a plain library store so the file
+        // is never lost.
+        const efd = new FormData();
+        efd.append("file", only);
+        const er = await fetch(
+          `/api/transactions/${transactionId}/contract/extract`,
+          { method: "POST", body: efd },
+        );
+        if (er.ok) {
+          toast.success(
+            "Saved + read the contract",
+            "Review the extracted fields below, then Apply.",
           );
-          extracted = er.ok;
-        } catch {
-          /* non-blocking — the file is already saved to the library */
+        } else {
+          const fd = new FormData();
+          fd.append("file", only);
+          const res = await fetch(
+            `/api/transactions/${transactionId}/documents`,
+            { method: "POST", body: fd },
+          );
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error ?? "upload failed");
+          toast.success(
+            "Added 1 file",
+            "Couldn't read it as a contract — it's in the library.",
+          );
         }
+      } else {
+        // Non-PDF, or multiple files: store in the document library.
+        const fd = new FormData();
+        Array.from(files).forEach((f) => fd.append("file", f));
+        const res = await fetch(`/api/transactions/${transactionId}/documents`, {
+          method: "POST",
+          body: fd,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "upload failed");
+        toast.success(
+          `Added ${data.count} file${data.count === 1 ? "" : "s"}`,
+          "They're in the library now.",
+        );
       }
-      toast.success(
-        extracted
-          ? "Saved + read the contract"
-          : `Added ${data.count} file${data.count === 1 ? "" : "s"}`,
-        extracted
-          ? "Review the extracted fields below, then Apply."
-          : "They're in the library now.",
-      );
       startTransition(() => router.refresh());
     } catch (e) {
       toast.error("Upload failed", e instanceof Error ? e.message : "unknown");
