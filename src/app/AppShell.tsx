@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import {
   Home as HomeIcon,
   CalendarDays,
+  LayoutDashboard,
   Newspaper,
   Radar,
   Signpost,
@@ -36,6 +37,7 @@ import { AccountSwitcher } from "./components/AccountSwitcher";
 const NAV = [
   { href: "/", label: "Home", icon: HomeIcon },
   { href: "/today", label: "Today", icon: CalendarDays },
+  { href: "/insights", label: "Insights", icon: LayoutDashboard },
   { href: "/digest", label: "Digest", icon: Newspaper },
   { href: "/scan", label: "Scan", icon: Radar },
   { href: "/voice", label: "Voice intake", icon: Mic },

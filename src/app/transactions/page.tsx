@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LayoutGrid } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { TransactionsToolbar } from "./TransactionsToolbar";
 import { GmailSearchPanel } from "./GmailSearchPanel";
@@ -222,7 +223,15 @@ export default async function TransactionsPage({
             from title-company emails during a Gmail scan
           </p>
         </div>
-        <TransactionsToolbar />
+        <div className="flex shrink-0 items-center gap-2">
+          <Link
+            href="/transactions/board"
+            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-2 text-sm font-medium text-text-muted hover:border-brand-500 hover:text-text"
+          >
+            <LayoutGrid className="h-4 w-4" /> Board
+          </Link>
+          <TransactionsToolbar />
+        </div>
       </header>
 
       {/* Lens — Retail / Investment / All (investor entitlement only).
