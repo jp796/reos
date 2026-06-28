@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { DropZone } from "@/app/components/DropZone";
 import { useToast } from "@/app/ToastProvider";
 
 interface Field<T = unknown> {
@@ -89,14 +88,12 @@ export function ContractUploadPanel({
   const [edits, setEdits] = useState<Record<string, string>>(() =>
     initialExtraction ? editsFromExtraction(initialExtraction) : {},
   );
-  const [uploading, setUploading] = useState(false);
   const [applying, setApplying] = useState(false);
   const [rescanning, setRescanning] = useState<"buy" | "sell" | "both" | null>(
     null,
   );
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
 
   /**
    * Rescan the transaction's Gmail SmartFolder for the newest
@@ -155,35 +152,6 @@ export function ContractUploadPanel({
       toast.error("Rescan failed", m);
     } finally {
       setRescanning(null);
-    }
-  }
-
-  async function uploadFile(f: File) {
-    setPendingFile(f);
-    setUploading(true);
-    setErr(null);
-    setMsg(null);
-    try {
-      const fd = new FormData();
-      fd.append("file", f);
-      const res = await fetch(
-        `/api/transactions/${transactionId}/contract/extract`,
-        { method: "POST", body: fd },
-      );
-      const data = await res.json();
-      if (!res.ok) {
-        setErr(data.error ?? res.statusText);
-        return;
-      }
-      setExtraction(data.extraction);
-      setEdits(editsFromExtraction(data.extraction));
-      setMsg(
-        `Extracted via ${data.extraction._path ?? "?"}. Review below, then Apply.`,
-      );
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "upload failed");
-    } finally {
-      setUploading(false);
     }
   }
 
@@ -271,7 +239,7 @@ export function ContractUploadPanel({
           <button
             type="button"
             onClick={() => rescan("buy")}
-            disabled={rescanning !== null || uploading || applying}
+            disabled={rescanning !== null || applying}
             className="rounded border border-border bg-surface px-2.5 py-1 text-xs font-medium text-text-muted transition-colors hover:border-brand-500 hover:text-brand-700 disabled:opacity-50"
             title="Find the newest PDF where a buyer party is on the thread"
           >
@@ -280,7 +248,7 @@ export function ContractUploadPanel({
           <button
             type="button"
             onClick={() => rescan("sell")}
-            disabled={rescanning !== null || uploading || applying}
+            disabled={rescanning !== null || applying}
             className="rounded border border-border bg-surface px-2.5 py-1 text-xs font-medium text-text-muted transition-colors hover:border-brand-500 hover:text-brand-700 disabled:opacity-50"
             title="Find the newest PDF where a seller party is on the thread"
           >
@@ -290,7 +258,7 @@ export function ContractUploadPanel({
             <button
               type="button"
               onClick={() => rescan("both")}
-              disabled={rescanning !== null || uploading || applying}
+              disabled={rescanning !== null || applying}
               className="rounded border border-border bg-surface px-2.5 py-1 text-xs font-medium text-text-muted transition-colors hover:border-brand-500 hover:text-brand-700 disabled:opacity-50"
               title="Either side — dual agency"
             >
@@ -301,19 +269,12 @@ export function ContractUploadPanel({
       </div>
 
       {!extraction && (
-        <div className="space-y-2">
-          <DropZone
-            onFile={uploadFile}
-            disabled={uploading}
-            selectedName={pendingFile?.name ?? null}
-            kind="contract PDF"
-            explainer="REOS reads this contract or rider with AI and merges the new fields into THIS transaction's pending extraction. Use for the original contract, addendums, or compensation riders. Newest dates win. Drop a real signed PDF — random files trigger an extraction error."
-          />
-          {uploading && (
-            <div className="text-center text-xs text-text-muted">
-              Extracting with AI · ~15-40 seconds · cost ~$0.02/doc
-            </div>
-          )}
+        <div className="rounded border border-dashed border-border bg-surface-2 px-3 py-3 text-xs text-text-muted">
+          Drop the purchase contract (or a rider) into the{" "}
+          <b>file library above</b> — REOS reads it with AI and the extracted
+          fields appear here to review &amp; apply. Or use the{" "}
+          <b>Rescan · Buyer/Seller</b> buttons to pull the newest contract from
+          Gmail.
         </div>
       )}
 

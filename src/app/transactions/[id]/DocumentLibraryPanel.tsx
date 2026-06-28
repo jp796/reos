@@ -127,9 +127,32 @@ function UploadDocsControl({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "upload failed");
+
+      // One dropzone does both: when a SINGLE PDF is dropped, also read it
+      // as a contract so the extraction review appears below. Best-effort —
+      // a non-contract PDF just stays in the library.
+      const only = files.length === 1 ? files[0] : null;
+      const isPdf =
+        !!only && (only.type.includes("pdf") || /\.pdf$/i.test(only.name));
+      let extracted = false;
+      if (only && isPdf) {
+        try {
+          const er = await fetch(
+            `/api/transactions/${transactionId}/contract/extract`,
+            { method: "POST", body: (() => { const e = new FormData(); e.append("file", only); return e; })() },
+          );
+          extracted = er.ok;
+        } catch {
+          /* non-blocking — the file is already saved to the library */
+        }
+      }
       toast.success(
-        `Added ${data.count} file${data.count === 1 ? "" : "s"}`,
-        "They're in the library now.",
+        extracted
+          ? "Saved + read the contract"
+          : `Added ${data.count} file${data.count === 1 ? "" : "s"}`,
+        extracted
+          ? "Review the extracted fields below, then Apply."
+          : "They're in the library now.",
       );
       startTransition(() => router.refresh());
     } catch (e) {
