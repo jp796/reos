@@ -22,7 +22,7 @@
  * concerns crossing the client boundary.
  */
 
-import { useState, useTransition } from "react";
+import { type DragEvent, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Download,
@@ -113,6 +113,8 @@ function UploadDocsControl({
   const router = useRouter();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
   const [, startTransition] = useTransition();
 
   async function upload(files: FileList | null) {
@@ -162,26 +164,83 @@ function UploadDocsControl({
     }
   }
 
+  const drag = {
+    onDragOver: (e: DragEvent<HTMLElement>) => {
+      e.preventDefault();
+      if (!dragging) setDragging(true);
+    },
+    onDragLeave: (e: DragEvent<HTMLElement>) => {
+      e.preventDefault();
+      setDragging(false);
+    },
+    onDrop: (e: DragEvent<HTMLElement>) => {
+      e.preventDefault();
+      setDragging(false);
+      upload(e.dataTransfer.files);
+    },
+  };
+
+  const fileInput = (
+    <input
+      ref={inputRef}
+      type="file"
+      multiple
+      className="hidden"
+      disabled={busy}
+      onChange={(e) => {
+        upload(e.target.files);
+        e.target.value = "";
+      }}
+    />
+  );
+
+  if (variant === "primary") {
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => inputRef.current?.click()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            inputRef.current?.click();
+          }
+        }}
+        {...drag}
+        className={`flex w-full cursor-pointer flex-col items-center gap-1.5 rounded-lg border border-dashed px-4 py-8 text-center transition-colors ${
+          dragging
+            ? "border-brand-500 bg-brand-50 dark:bg-brand-950/30"
+            : "border-border bg-surface-2/40 hover:border-brand-400"
+        }`}
+      >
+        <UploadIcon className="h-5 w-5 text-text-muted" />
+        <span className="text-sm font-medium text-text">
+          {busy
+            ? "Uploading…"
+            : dragging
+              ? "Drop to add"
+              : "Drag & drop files here, or click to browse"}
+        </span>
+        <span className="text-xs text-text-muted">
+          Any file lands in the library — a PDF contract is auto-read too
+        </span>
+        {fileInput}
+      </div>
+    );
+  }
+
   return (
     <label
-      className={
-        variant === "primary"
-          ? "inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-500"
-          : "inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text-muted hover:border-border-strong hover:text-text"
-      }
+      {...drag}
+      className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
+        dragging
+          ? "border-brand-500 bg-brand-50 text-brand-700"
+          : "border-border bg-surface text-text-muted hover:border-border-strong hover:text-text"
+      }`}
     >
       <UploadIcon className="h-3.5 w-3.5" />
       {busy ? "Uploading…" : "Upload files"}
-      <input
-        type="file"
-        multiple
-        className="hidden"
-        disabled={busy}
-        onChange={(e) => {
-          upload(e.target.files);
-          e.target.value = "";
-        }}
-      />
+      {fileInput}
     </label>
   );
 }
@@ -189,16 +248,12 @@ function UploadDocsControl({
 export function DocumentLibraryPanel({ transactionId, documents }: Props) {
   if (documents.length === 0) {
     return (
-      <section className="mt-8 rounded-lg border border-dashed border-border bg-surface-2/40 p-8 text-center">
-        <FileText className="mx-auto mb-2 h-6 w-6 text-text-muted" strokeWidth={1.5} />
-        <h2 className="text-sm font-medium text-text">No documents yet</h2>
-        <p className="mt-1 text-xs text-text-muted">
-          Upload any file for this deal, drop a contract above, or run a Gmail scan.
-          Documents that land here are auto-classified for Rezen and selectable in E-sign.
+      <section className="mt-8">
+        <UploadDocsControl transactionId={transactionId} variant="primary" />
+        <p className="mt-2 text-center text-xs text-text-muted">
+          No documents yet — drop any file above (or a contract to auto-extract).
+          Files are auto-classified for Rezen and selectable in E-sign.
         </p>
-        <div className="mt-4 flex justify-center">
-          <UploadDocsControl transactionId={transactionId} variant="primary" />
-        </div>
       </section>
     );
   }
