@@ -20,6 +20,7 @@
 import { z } from "zod";
 import type { PrismaClient } from "@prisma/client";
 import { isDealVisible } from "@/lib/deal-visibility";
+import { rescanDeal } from "@/services/core/RescanDealService";
 import { gmailForAccount } from "@/services/integrations/gmailForAccount";
 import { syncDealCalendar } from "@/services/core/syncDealCalendar";
 import {
@@ -250,6 +251,28 @@ export const ATLAS_TOOLS: Record<string, ToolDef> = {
           missing,
         },
       };
+    },
+  },
+
+  rescan_deal: {
+    // Sensitive: re-extracts the contract and writes dates/milestones/tasks.
+    tier: "sensitive",
+    description:
+      "Re-read the contract attached to a deal and rebuild its timeline (fill MISSING dates + add milestones) and generate the task list. Use whenever asked to rescan, re-check the contract, update or rebuild the timeline, or fill missing data on a deal. Only fills missing fields (never overwrites existing edits) and only generates tasks when the deal has none. If no contract is attached it says so and asks for an upload — do NOT claim a rescan happened in that case.",
+    schema: z.object({ deal: z.string().min(1) }),
+    run: async (db, actor, args) => {
+      const { deal } = args as { deal: string };
+      const r = await resolveDeal(db, actor, deal);
+      if ("error" in r) return r.error;
+      const res = await rescanDeal(db, actor.accountId, r.deal.id);
+      await audit(db, actor, {
+        transactionId: r.deal.id,
+        entityType: "transaction",
+        entityId: r.deal.id,
+        action: "rescan_deal",
+        decision: "applied",
+      });
+      return { ok: true, summary: res.summary, data: { ...res, transactionId: r.deal.id } };
     },
   },
 
@@ -635,6 +658,8 @@ export function previewAction(name: string, args: Record<string, unknown>): stri
       return `Draft an email to ${args.to} about "${String(args.about).slice(0, 50)}" on ${deal} (saved as a Gmail draft)`;
     case "create_deal":
       return `Create deal at ${args.address}${args.purchasePrice ? ` ($${Number(args.purchasePrice).toLocaleString()})` : ""}`;
+    case "rescan_deal":
+      return `Rescan the contract on ${deal} and rebuild its timeline + tasks`;
     default:
       return `${name} ${JSON.stringify(args)}`;
   }
@@ -650,6 +675,11 @@ const PARAM_SCHEMAS: Record<string, Record<string, unknown>> = {
     properties: { deal: { type: "string", description: "property address or contact name" } },
   },
   check_inbox: {
+    type: "object",
+    required: ["deal"],
+    properties: { deal: { type: "string", description: "property address or contact name" } },
+  },
+  rescan_deal: {
     type: "object",
     required: ["deal"],
     properties: { deal: { type: "string", description: "property address or contact name" } },
