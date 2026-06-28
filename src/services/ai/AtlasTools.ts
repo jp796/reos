@@ -208,18 +208,47 @@ async function resolveDeal(
 export const ATLAS_TOOLS: Record<string, ToolDef> = {
   find_deal: {
     tier: "read",
-    description: "Find a deal by address or contact name and return a short status summary.",
+    description:
+      "Find a deal by address or contact name and return a status summary INCLUDING a completeness check — whether a contract document is attached, whether the contract/effective date is set, how many milestones/tasks exist, and an explicit list of what's missing. Use this before claiming a deal is complete; never say 'no missing data' without checking these signals.",
     schema: z.object({ deal: z.string().min(1) }),
     run: async (db, actor, args) => {
       const { deal } = args as { deal: string };
       const r = await resolveDeal(db, actor, deal);
       if ("error" in r) return r.error;
       const d = r.deal;
-      const open = await db.task.count({ where: { transactionId: d.id, completedAt: null } });
+      const [open, totalTasks, milestones, docs, txn] = await Promise.all([
+        db.task.count({ where: { transactionId: d.id, completedAt: null } }),
+        db.task.count({ where: { transactionId: d.id } }),
+        db.milestone.count({ where: { transactionId: d.id } }),
+        db.document.count({ where: { transactionId: d.id } }),
+        db.transaction.findUnique({
+          where: { id: d.id },
+          select: { contractDate: true, closingDate: true, status: true },
+        }),
+      ]);
+      const missing: string[] = [];
+      if (docs === 0) missing.push("no contract document attached (nothing to rescan)");
+      if (!txn?.contractDate) missing.push("no contract/effective date");
+      if (milestones <= 1) missing.push(`timeline not built (only ${milestones} milestone)`);
+      if (totalTasks === 0) missing.push("no tasks generated");
+      const verdict =
+        missing.length > 0
+          ? `INCOMPLETE — ${missing.join("; ")}.`
+          : "Looks complete.";
       return {
         ok: true,
-        summary: `${d.address ?? d.id} · ${d.strategy ?? "retail"}${d.currentStageName ? ` · stage ${d.currentStageName}` : ""} · ${open} open task(s)`,
-        data: { id: d.id, assetId: d.assetId, strategy: d.strategy, stage: d.currentStageName },
+        summary: `${d.address ?? d.id} · ${d.strategy ?? "retail"} · ${txn?.status ?? "active"}${d.currentStageName ? ` · stage ${d.currentStageName}` : ""} · ${open}/${totalTasks} open tasks · ${milestones} milestone(s) · ${docs} contract doc(s). ${verdict}`,
+        data: {
+          id: d.id,
+          assetId: d.assetId,
+          strategy: d.strategy,
+          stage: d.currentStageName,
+          hasContract: docs > 0,
+          milestones,
+          tasks: totalTasks,
+          contractDate: txn?.contractDate ?? null,
+          missing,
+        },
       };
     },
   },
