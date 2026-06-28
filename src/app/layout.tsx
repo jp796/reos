@@ -9,6 +9,7 @@ import { TermsAcceptModal } from "./TermsAcceptModal";
 import { PendingDeletionBanner } from "./PendingDeletionBanner";
 import { auth, signOut } from "@/auth";
 import { prisma } from "@/lib/db";
+import { requireSession } from "@/lib/require-session";
 import { env } from "@/lib/env";
 import { PwaRegister } from "./PwaRegister";
 
@@ -95,21 +96,26 @@ export default async function RootLayout({
   // If the acting tenant is scheduled for deletion, surface the
   // countdown on every page so the owner can't lose track and miss
   // the restore window.
+  // Resolve deletion + investor entitlement from the ACTIVE account (the
+  // workspace the user is currently in via the switcher), NOT their home
+  // account. A cross-account member (e.g. a TC working under a client's
+  // brokerage) must get that brokerage's entitlements while switched in —
+  // looking at their home account hid the investor surfaces for them.
   let deletionScheduledAt: string | null = null;
   let investorEntitled = false;
   if (session?.user?.email) {
-    const acctRow = await prisma.user.findUnique({
-      where: { email: session.user.email.toLowerCase() },
-      select: {
-        account: {
-          select: { deletionRequestedAt: true, entitlementsJson: true },
-        },
-      },
-    });
-    deletionScheduledAt = acctRow?.account?.deletionRequestedAt?.toISOString() ?? null;
-    investorEntitled = normalizeEntitlements(
-      acctRow?.account?.entitlementsJson ?? null,
-    ).includes("investor");
+    const actor = await requireSession();
+    const activeAccountId = actor instanceof Response ? null : actor.accountId;
+    if (activeAccountId) {
+      const acct = await prisma.account.findUnique({
+        where: { id: activeAccountId },
+        select: { deletionRequestedAt: true, entitlementsJson: true },
+      });
+      deletionScheduledAt = acct?.deletionRequestedAt?.toISOString() ?? null;
+      investorEntitled = normalizeEntitlements(
+        acct?.entitlementsJson ?? null,
+      ).includes("investor");
+    }
   }
 
   async function doSignOut() {
