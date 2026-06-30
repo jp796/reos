@@ -14,7 +14,7 @@
  * tasks from this merged state) consumes the report.
  */
 
-import type { PrismaClient } from "@prisma/client";
+import { type PrismaClient, Prisma } from "@prisma/client";
 import {
   ContractExtractionService,
   computeRelativeDeadlines,
@@ -35,6 +35,10 @@ export interface DocAnalysis {
     detail?: string;
   }>;
   summary: string;
+  /// Stage-2 baseline (deep contract extraction + relative deadlines),
+  /// cached onto the purchase_contract doc so re-synthesis skips the
+  /// heavy ContractExtractionService call. Absent on non-contract docs.
+  baseline?: Record<string, { value: unknown } | undefined> | null;
 }
 
 export interface SynthesizedContingency {
@@ -54,6 +58,8 @@ export interface SynthesisResult {
   mergedDates: Record<string, string | null>;
   contingencies: SynthesizedContingency[];
   changesApplied: string[];
+  milestonesCompleted: number;
+  tasksCompleted: number;
   summary: string;
 }
 
@@ -107,6 +113,7 @@ async function analyzeDoc(
         model: "gpt-4o",
         response_format: { type: "json_object" },
         max_tokens: 1500,
+        temperature: 0,
         messages: [
           {
             role: "user",
@@ -153,6 +160,7 @@ export async function synthesizeDeal(
   db: PrismaClient,
   accountId: string,
   transactionId: string,
+  force = false,
 ): Promise<SynthesisResult | null> {
   const txn = await db.transaction.findFirst({
     where: { id: transactionId, accountId },
@@ -165,14 +173,26 @@ export async function synthesizeDeal(
 
   const docRows = await db.document.findMany({
     where: { transactionId },
-    select: { id: true, fileName: true },
+    select: { id: true, fileName: true, analysisJson: true },
     orderBy: { createdAt: "asc" },
   });
 
-  // ── Stage 1: classify + extract every doc (capped concurrency) ──
+  // ── Stage 1: classify + extract every doc. A PDF never changes once
+  // uploaded, so a stored analysis is always valid — reuse it (unless
+  // force=true) to make re-synthesis cheap, fast, and identical run to
+  // run. Only un-analyzed (e.g. newly uploaded) docs hit the model. ──
   const analyses: DocAnalysis[] = [];
-  for (let i = 0; i < docRows.length; i += CONCURRENCY) {
-    const batch = docRows.slice(i, i + CONCURRENCY);
+  const pending: typeof docRows = [];
+  for (const d of docRows) {
+    if (!force && d.analysisJson) {
+      const a = d.analysisJson as unknown as DocAnalysis;
+      analyses.push({ ...a, docId: d.id, fileName: d.fileName });
+    } else {
+      pending.push(d);
+    }
+  }
+  for (let i = 0; i < pending.length; i += CONCURRENCY) {
+    const batch = pending.slice(i, i + CONCURRENCY);
     const out = await Promise.all(
       batch.map(async (d) => {
         const full = await db.document.findUnique({
@@ -180,38 +200,51 @@ export async function synthesizeDeal(
           select: { rawBytes: true },
         });
         if (!full?.rawBytes) return null;
-        return analyzeDoc(d.id, d.fileName, Buffer.from(full.rawBytes));
+        const a = await analyzeDoc(d.id, d.fileName, Buffer.from(full.rawBytes));
+        // Cache the analysis + classified category on the doc.
+        await db.document
+          .update({
+            where: { id: d.id },
+            data: {
+              analysisJson: a as unknown as Prisma.InputJsonValue,
+              category: TYPE_TO_CATEGORY[a.docType] ?? "other",
+              classifiedAt: new Date(),
+            },
+          })
+          .catch(() => {});
+        return a;
       }),
     );
     for (const a of out) if (a) analyses.push(a);
   }
 
-  // Update each doc's category from its classification.
-  for (const a of analyses) {
-    await db.document
-      .update({
-        where: { id: a.docId },
-        data: {
-          category: TYPE_TO_CATEGORY[a.docType] ?? "other",
-          classifiedAt: new Date(),
-        },
-      })
-      .catch(() => {});
-  }
-
   // ── Stage 2: baseline from the purchase contract ──
+  // The contract is immutable, so its deep extraction is cached on the
+  // doc's analysisJson.baseline — reuse it unless force=true.
   const contractDoc = analyses.find((a) => a.docType === "purchase_contract");
   let baseline: Record<string, { value: unknown } | undefined> | null = null;
-  if (contractDoc && env.OPENAI_API_KEY) {
-    const full = await db.document.findUnique({
-      where: { id: contractDoc.docId },
-      select: { rawBytes: true },
-    });
-    if (full?.rawBytes) {
-      const svc = new ContractExtractionService(env.OPENAI_API_KEY);
-      baseline = computeRelativeDeadlines(
-        await svc.extract(Buffer.from(full.rawBytes)),
-      ) as unknown as Record<string, { value: unknown } | undefined>;
+  if (contractDoc) {
+    if (!force && contractDoc.baseline) {
+      baseline = contractDoc.baseline;
+    } else if (env.OPENAI_API_KEY) {
+      const full = await db.document.findUnique({
+        where: { id: contractDoc.docId },
+        select: { rawBytes: true },
+      });
+      if (full?.rawBytes) {
+        const svc = new ContractExtractionService(env.OPENAI_API_KEY);
+        baseline = computeRelativeDeadlines(
+          await svc.extract(Buffer.from(full.rawBytes)),
+        ) as unknown as Record<string, { value: unknown } | undefined>;
+        // Persist the baseline back onto the contract doc for next time.
+        contractDoc.baseline = baseline;
+        await db.document
+          .update({
+            where: { id: contractDoc.docId },
+            data: { analysisJson: contractDoc as unknown as Prisma.InputJsonValue },
+          })
+          .catch(() => {});
+      }
     }
   }
   const bv = (k: string) => (baseline?.[k]?.value ?? null) as string | null;
@@ -308,11 +341,54 @@ export async function synthesizeDeal(
     await db.transaction.update({ where: { id: transactionId }, data: dateUpdate });
   }
 
+  // ── Stage 4: make the timeline dynamic ──
+  // A resolved/removed/satisfied/waived contingency means its work is
+  // done, so complete the matching milestones + close the matching tasks
+  // (e.g. inspection removed ⇒ the Inspection milestones + tasks are done).
+  const DONE = new Set(["resolved", "removed", "satisfied", "waived"]);
+  const openMs = await db.milestone.findMany({
+    where: { transactionId, completedAt: null },
+    select: { id: true, label: true },
+  });
+  const openTasks = await db.task.findMany({
+    where: { transactionId, completedAt: null },
+    select: { id: true, title: true },
+  });
+  const doneMs = new Set<string>();
+  const doneTk = new Set<string>();
+  for (const c of contingencies) {
+    if (!DONE.has(c.status.toLowerCase())) continue;
+    const kw = c.name.toLowerCase().split(/[\s/]+/)[0]; // "inspection", "title"…
+    if (kw.length < 4) continue;
+    const when = c.date ? new Date(`${c.date}T12:00:00Z`) : new Date();
+    for (const m of openMs) {
+      if (!doneMs.has(m.id) && m.label.toLowerCase().includes(kw)) {
+        await db.milestone
+          .update({ where: { id: m.id }, data: { completedAt: when, status: "completed" } })
+          .catch(() => {});
+        doneMs.add(m.id);
+        changesApplied.push(`milestone "${m.label}" → done (${c.name} ${c.status})`);
+      }
+    }
+    for (const t of openTasks) {
+      if (!doneTk.has(t.id) && t.title.toLowerCase().includes(kw)) {
+        await db.task
+          .update({ where: { id: t.id }, data: { completedAt: when } })
+          .catch(() => {});
+        doneTk.add(t.id);
+        changesApplied.push(`task "${t.title}" → done (${c.name} ${c.status})`);
+      }
+    }
+  }
+  const milestonesCompleted = doneMs.size;
+  const tasksCompleted = doneTk.size;
+
   const resolvedConts = contingencies.filter((c) => c.status !== "applies");
   const summary =
     `Read ${analyses.length}/${docRows.length} docs. ` +
     `${contingencies.length} contingencies (${resolvedConts.length} updated by notices/addenda). ` +
-    `${changesApplied.length} change(s) merged into the deal.`;
+    `${changesApplied.length} change(s) merged. ` +
+    `Marked ${milestonesCompleted} milestone(s) + ${tasksCompleted} task(s) done from resolved contingencies.`;
 
   return {
     transactionId,
@@ -323,6 +399,8 @@ export async function synthesizeDeal(
     mergedDates,
     contingencies,
     changesApplied,
+    milestonesCompleted,
+    tasksCompleted,
     summary,
   };
 }

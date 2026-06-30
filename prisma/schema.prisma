@@ -723,6 +723,10 @@ model Document {
   rawBytes       Bytes?   @map("raw_bytes")
   source         String   @default("upload") // upload, gmail_attachment, fub_attachment
   extractedText  String?  @map("extracted_text")
+  /// Cached DocumentSynthesisService analysis (docType, contingency
+  /// updates, field changes). Lets a re-synthesis reuse the AI read
+  /// instead of re-analyzing the (immutable) PDF every time.
+  analysisJson   Json?    @map("analysis_json")
   uploadOrigin   String?  @map("upload_origin")
   /// AI-classified Rezen slot key (e.g. "earnest_money_receipt").
   /// Populated by DocumentClassifierService; null = unclassified.

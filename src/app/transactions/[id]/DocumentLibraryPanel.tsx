@@ -117,9 +117,41 @@ function UploadDocsControl({
   const inputRef = useRef<HTMLInputElement>(null);
   const [, startTransition] = useTransition();
 
+  // After files land, reconcile the WHOLE document set so a new
+  // notice/addendum's effect (amended dates, resolved contingencies,
+  // completed tasks) shows up immediately. Cached per-doc reads mean
+  // this only analyzes the new file(s), so it's fast. Non-blocking —
+  // the upload already succeeded.
+  async function syncFromDocuments() {
+    try {
+      const sr = await fetch(`/api/transactions/${transactionId}/synthesize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!sr.ok) return;
+      const data = await sr.json();
+      const changes = Array.isArray(data.changesApplied)
+        ? data.changesApplied.length
+        : 0;
+      if (changes > 0) {
+        toast.success(
+          `Updated the deal from ${data.docCount ?? "the"} documents`,
+          data.summary ?? `${changes} change(s) applied.`,
+        );
+      }
+    } catch {
+      /* non-blocking */
+    }
+  }
+
   async function upload(files: FileList | null) {
     if (!files || files.length === 0) return;
     setBusy(true);
+    // A fresh single-PDF contract goes through the review/apply flow, so
+    // we don't auto-synthesize over it. Everything else (added notices,
+    // addenda, multi-file drops) gets reconciled automatically.
+    let reviewFlow = false;
     try {
       const only = files.length === 1 ? files[0] : null;
       const isPdf =
@@ -138,6 +170,7 @@ function UploadDocsControl({
           { method: "POST", body: efd },
         );
         if (er.ok) {
+          reviewFlow = true;
           toast.success(
             "Saved + read the contract",
             "Review the extracted fields below, then Apply.",
@@ -171,6 +204,7 @@ function UploadDocsControl({
           "They're in the library now.",
         );
       }
+      if (!reviewFlow) await syncFromDocuments();
       startTransition(() => router.refresh());
     } catch (e) {
       toast.error("Upload failed", e instanceof Error ? e.message : "unknown");

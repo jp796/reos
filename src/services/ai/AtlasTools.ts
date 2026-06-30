@@ -21,6 +21,7 @@ import { z } from "zod";
 import type { PrismaClient } from "@prisma/client";
 import { isDealVisible } from "@/lib/deal-visibility";
 import { rescanDeal } from "@/services/core/RescanDealService";
+import { synthesizeDeal } from "@/services/core/DocumentSynthesisService";
 import { gmailForAccount } from "@/services/integrations/gmailForAccount";
 import { syncDealCalendar } from "@/services/core/syncDealCalendar";
 import {
@@ -270,6 +271,31 @@ export const ATLAS_TOOLS: Record<string, ToolDef> = {
         entityType: "transaction",
         entityId: r.deal.id,
         action: "rescan_deal",
+        decision: "applied",
+      });
+      return { ok: true, summary: res.summary, data: { ...res, transactionId: r.deal.id } };
+    },
+  },
+
+  synthesize_deal: {
+    // Sensitive: reads EVERY document on the deal (not just the contract),
+    // merges amendments/notices, and rebuilds the current timeline + status.
+    tier: "sensitive",
+    description:
+      "Read ALL documents on a deal together — contract plus every addendum, amendment, inspection notice, and disclosure — and rebuild the deal's CURRENT state: merged timeline dates, contingency statuses (e.g. inspection removed/resolved), and auto-completing the milestones/tasks those resolved contingencies cover. Use whenever asked what changed, what's current, to reconcile multiple documents, or after several files were uploaded. Unlike rescan (contract-only), this synthesizes the whole document set. Reuses cached per-document reads, so it's fast and consistent. Pass force only when explicitly asked to re-read everything from scratch.",
+    schema: z.object({ deal: z.string().min(1), force: z.boolean().optional() }),
+    run: async (db, actor, args) => {
+      const { deal, force } = args as { deal: string; force?: boolean };
+      const r = await resolveDeal(db, actor, deal);
+      if ("error" in r) return r.error;
+      const res = await synthesizeDeal(db, actor.accountId, r.deal.id, force ?? false);
+      if (!res)
+        return { ok: false, error: `Couldn't synthesize ${deal} — deal not found.`, reason: "not_found" };
+      await audit(db, actor, {
+        transactionId: r.deal.id,
+        entityType: "transaction",
+        entityId: r.deal.id,
+        action: "synthesize_deal",
         decision: "applied",
       });
       return { ok: true, summary: res.summary, data: { ...res, transactionId: r.deal.id } };
@@ -660,6 +686,8 @@ export function previewAction(name: string, args: Record<string, unknown>): stri
       return `Create deal at ${args.address}${args.purchasePrice ? ` ($${Number(args.purchasePrice).toLocaleString()})` : ""}`;
     case "rescan_deal":
       return `Rescan the contract on ${deal} and rebuild its timeline + tasks`;
+    case "synthesize_deal":
+      return `Read all documents on ${deal} and rebuild its current timeline + contingency status`;
     default:
       return `${name} ${JSON.stringify(args)}`;
   }
@@ -683,6 +711,17 @@ const PARAM_SCHEMAS: Record<string, Record<string, unknown>> = {
     type: "object",
     required: ["deal"],
     properties: { deal: { type: "string", description: "property address or contact name" } },
+  },
+  synthesize_deal: {
+    type: "object",
+    required: ["deal"],
+    properties: {
+      deal: { type: "string", description: "property address or contact name" },
+      force: {
+        type: "boolean",
+        description: "re-read every document from scratch (ignore cache); only when explicitly asked",
+      },
+    },
   },
   sync_calendar: {
     type: "object",
