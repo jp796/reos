@@ -39,7 +39,11 @@ function statusTone(status: string): string {
 
 function fmtIso(iso: string | null): string {
   if (!iso) return "—";
-  const d = new Date(iso);
+  // Date-only strings ("YYYY-MM-DD") parse as UTC midnight, which renders
+  // as the PREVIOUS day in western US zones. Anchor at local noon so the
+  // calendar day is stable regardless of timezone.
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(iso);
+  const d = new Date(dateOnly ? `${iso}T12:00:00` : iso);
   if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
