@@ -393,6 +393,11 @@ model Transaction {
   pendingContractJson    Json?     @map("pending_contract_json")
   contractExtractedAt    DateTime? @map("contract_extracted_at")
   contractAppliedAt      DateTime? @map("contract_applied_at")
+  /// Snapshot of the last DocumentSynthesisService run — merged
+  /// timeline dates, contingency statuses, and what changed — so the
+  /// deal's "current state" panel renders without re-running synthesis.
+  synthesisJson          Json?     @map("synthesis_json")
+  synthesizedAt          DateTime? @map("synthesized_at")
   // Contract lifecycle: offer -> counter -> executed. Calendar sync
   // gated until stage="executed" since pre-executed dates may shift.
   contractStage          String?   @map("contract_stage") // offer | counter | executed | unknown

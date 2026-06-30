@@ -16,6 +16,8 @@ import { DeleteTransactionButton } from "./DeleteTransactionButton";
 import { InspectionsPanel } from "./InspectionsPanel";
 import { NotesPanel } from "./NotesPanel";
 import { DocumentLibraryPanel } from "./DocumentLibraryPanel";
+import { DealSynthesisPanel } from "./DealSynthesisPanel";
+import type { SynthesisSnapshot } from "@/services/core/DocumentSynthesisService";
 import { EditablePrimaryContact } from "./EditablePrimaryContact";
 import { TaskPanel } from "./TaskPanel";
 import { CompliancePanel } from "./CompliancePanel";
@@ -336,6 +338,11 @@ export default async function TransactionDetailPage({
   // ── Tab content (grouped from the former long scroll) ──────────────
   const timelineTab = (
     <div className="space-y-6">
+      <DealSynthesisPanel
+        transactionId={txn.id}
+        snapshot={(txn.synthesisJson as unknown as SynthesisSnapshot) ?? null}
+        synthesizedAt={txn.synthesizedAt?.toISOString() ?? null}
+      />
       <TransactionTimeline
         transactionId={txn.id}
         initialMilestones={txn.milestones.map((m) => ({

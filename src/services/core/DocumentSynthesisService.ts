@@ -63,6 +63,25 @@ export interface SynthesisResult {
   summary: string;
 }
 
+/// The trimmed snapshot persisted to transaction.synthesisJson and
+/// rendered by the deal's current-state panel (no heavy per-doc fields).
+export interface SynthesisSnapshot {
+  summary: string;
+  docCount: number;
+  analyzedCount: number;
+  mergedDates: Record<string, string | null>;
+  contingencies: SynthesizedContingency[];
+  changesApplied: string[];
+  milestonesCompleted: number;
+  tasksCompleted: number;
+  documents: Array<{
+    fileName: string;
+    docType: string;
+    amendsContract: boolean;
+    effectiveDate: string | null;
+  }>;
+}
+
 const ANALYZE_PROMPT = `You are a real-estate transaction analyst. Classify this document and extract anything that DEFINES or CHANGES the transaction state. Return ONLY JSON:
 {
   "docType": "purchase_contract|addendum|amendment|inspection_objection_notice|inspection_resolution_notice|title_objection_notice|disclosure|loan_estimate|agency_agreement|post_occupancy_agreement|bill_of_sale|wire_fraud_notice|commission_disclosure|other",
@@ -390,7 +409,7 @@ export async function synthesizeDeal(
     `${changesApplied.length} change(s) merged. ` +
     `Marked ${milestonesCompleted} milestone(s) + ${tasksCompleted} task(s) done from resolved contingencies.`;
 
-  return {
+  const result: SynthesisResult = {
     transactionId,
     address: txn.propertyAddress ?? "the deal",
     docCount: docRows.length,
@@ -403,4 +422,35 @@ export async function synthesizeDeal(
     tasksCompleted,
     summary,
   };
+
+  // ── Persist a trimmed snapshot so the deal's current-state panel
+  // renders without re-running synthesis. Drop the heavy per-doc
+  // fields; keep a compact document list for transparency. ──
+  const snapshot = {
+    summary,
+    docCount: result.docCount,
+    analyzedCount: result.analyzedCount,
+    mergedDates,
+    contingencies,
+    changesApplied,
+    milestonesCompleted,
+    tasksCompleted,
+    documents: analyses.map((a) => ({
+      fileName: a.fileName,
+      docType: a.docType,
+      amendsContract: a.amendsContract,
+      effectiveDate: a.effectiveDate,
+    })),
+  };
+  await db.transaction
+    .update({
+      where: { id: transactionId },
+      data: {
+        synthesisJson: snapshot as unknown as Prisma.InputJsonValue,
+        synthesizedAt: new Date(),
+      },
+    })
+    .catch(() => {});
+
+  return result;
 }
