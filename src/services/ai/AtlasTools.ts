@@ -22,6 +22,7 @@ import type { PrismaClient } from "@prisma/client";
 import { isDealVisible } from "@/lib/deal-visibility";
 import { rescanDeal } from "@/services/core/RescanDealService";
 import { synthesizeDeal } from "@/services/core/DocumentSynthesisService";
+import { generateDealTasks } from "@/services/core/GenerateDealTasksService";
 import { gmailForAccount } from "@/services/integrations/gmailForAccount";
 import { syncDealCalendar } from "@/services/core/syncDealCalendar";
 import {
@@ -296,6 +297,30 @@ export const ATLAS_TOOLS: Record<string, ToolDef> = {
         entityType: "transaction",
         entityId: r.deal.id,
         action: "synthesize_deal",
+        decision: "applied",
+      });
+      return { ok: true, summary: res.summary, data: { ...res, transactionId: r.deal.id } };
+    },
+  },
+
+  generate_tasks: {
+    // Sensitive: writes new Task rows onto the deal.
+    tier: "sensitive",
+    description:
+      "Generate an AI task list tailored to a deal from its actual terms — the real deadline dates, every contingency, the side represented, and cash-vs-financed — and add the new tasks to the deal (deduped against existing ones, so it's safe to re-run). Use when asked to build/generate/create a task list or checklist for a deal, or 'what do I need to do on this deal'. Smarter than a fixed template: it skips lender tasks on cash deals, anchors each task to the contract's dates, and adds a task for any unusual provision.",
+    schema: z.object({ deal: z.string().min(1) }),
+    run: async (db, actor, args) => {
+      const { deal } = args as { deal: string };
+      const r = await resolveDeal(db, actor, deal);
+      if ("error" in r) return r.error;
+      const res = await generateDealTasks(db, actor.accountId, r.deal.id);
+      if (!res)
+        return { ok: false, error: `Couldn't generate tasks for ${deal} — deal not found.`, reason: "not_found" };
+      await audit(db, actor, {
+        transactionId: r.deal.id,
+        entityType: "transaction",
+        entityId: r.deal.id,
+        action: "generate_tasks",
         decision: "applied",
       });
       return { ok: true, summary: res.summary, data: { ...res, transactionId: r.deal.id } };
@@ -688,6 +713,8 @@ export function previewAction(name: string, args: Record<string, unknown>): stri
       return `Rescan the contract on ${deal} and rebuild its timeline + tasks`;
     case "synthesize_deal":
       return `Read all documents on ${deal} and rebuild its current timeline + contingency status`;
+    case "generate_tasks":
+      return `Generate an AI task list for ${deal} from its contract terms`;
     default:
       return `${name} ${JSON.stringify(args)}`;
   }
@@ -722,6 +749,11 @@ const PARAM_SCHEMAS: Record<string, Record<string, unknown>> = {
         description: "re-read every document from scratch (ignore cache); only when explicitly asked",
       },
     },
+  },
+  generate_tasks: {
+    type: "object",
+    required: ["deal"],
+    properties: { deal: { type: "string", description: "property address or contact name" } },
   },
   sync_calendar: {
     type: "object",

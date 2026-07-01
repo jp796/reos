@@ -56,6 +56,8 @@ interface Extraction {
   sellerSideCommissionAmount?: Field<number>;
   buyerSideCommissionPct?: Field<number>;
   buyerSideCommissionAmount?: Field<number>;
+  financingType?: Field<string>;
+  contingencies?: Field<Array<{ name: string; status?: string; description?: string }>>;
   contractStage?: Field<string>;
   notes?: string | null;
   _path?: string;
@@ -148,7 +150,7 @@ export function NewTransactionWizard() {
   // Optional templates to apply on create (ListedKit-style intake).
   const [taskTemplates, setTaskTemplates] = useState<{ id: string; name: string; itemCount: number }[]>([]);
   const [complianceTemplates, setComplianceTemplates] = useState<{ id: string; name: string; itemCount: number }[]>([]);
-  const [taskTemplateId, setTaskTemplateId] = useState("");
+  const [taskTemplateId, setTaskTemplateId] = useState("ai");
   const [complianceTemplateId, setComplianceTemplateId] = useState("");
 
   useEffect(() => {
@@ -293,8 +295,19 @@ export function NewTransactionWizard() {
           /* non-blocking */
         }
       }
-      // Apply the chosen templates (best-effort; non-blocking).
-      if (data.transactionId && taskTemplateId) {
+      // Task list: AI-generated from THIS contract, or a fixed template.
+      if (data.transactionId && taskTemplateId === "ai") {
+        const conts =
+          (extraction?.contingencies?.value as
+            | Array<{ name: string; status?: string; description?: string }>
+            | undefined) ?? [];
+        const financingType = (extraction?.financingType?.value as string | undefined) ?? undefined;
+        await fetch(`/api/transactions/${data.transactionId}/generate-tasks`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ contingencies: conts, financingType }),
+        }).catch(() => {});
+      } else if (data.transactionId && taskTemplateId) {
         await fetch(`/api/transactions/${data.transactionId}/apply-task-template`, {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -608,23 +621,28 @@ export function NewTransactionWizard() {
 
           {(taskTemplates.length > 0 || complianceTemplates.length > 0) && (
             <Section title="Apply templates (optional)">
-              {taskTemplates.length > 0 && (
-                <label className="block">
-                  <span className="reos-label">Task checklist</span>
-                  <select
-                    value={taskTemplateId}
-                    onChange={(e) => setTaskTemplateId(e.target.value)}
-                    className="mt-1 w-full rounded border border-border bg-surface-2 px-2 py-1.5 text-sm text-text focus:border-brand-500 focus:outline-none"
-                  >
-                    <option value="">None</option>
-                    {taskTemplates.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name} ({t.itemCount})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
+              <label className="block">
+                <span className="reos-label">Task checklist</span>
+                <select
+                  value={taskTemplateId}
+                  onChange={(e) => setTaskTemplateId(e.target.value)}
+                  className="mt-1 w-full rounded border border-border bg-surface-2 px-2 py-1.5 text-sm text-text focus:border-brand-500 focus:outline-none"
+                >
+                  <option value="ai">✨ AI-generated from this contract</option>
+                  <option value="">None</option>
+                  {taskTemplates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} ({t.itemCount})
+                    </option>
+                  ))}
+                </select>
+                {taskTemplateId === "ai" && (
+                  <span className="mt-1 block text-xs text-text-muted">
+                    Atlas writes a task list tailored to this deal&apos;s dates,
+                    contingencies, and side — anchored to the real deadlines.
+                  </span>
+                )}
+              </label>
               {complianceTemplates.length > 0 && (
                 <label className="block">
                   <span className="reos-label">Compliance checklist</span>
