@@ -719,6 +719,84 @@ function mergeByConfidence(
   return out;
 }
 
+/**
+ * Merge several contract extractions into one, NEWEST-effective-date
+ * wins per field. This is the offer + counter-offer (+ addenda) case:
+ * the base offer supplies every deadline, and a later document overrides
+ * only the fields it actually restates (price, closing, EM). A counter
+ * offer read alone is mostly null by design — it points back to the base
+ * for the timeline — so merging is the only way to get a full picture.
+ *
+ * Each input should already have computeRelativeDeadlines applied. The
+ * caller re-runs computeRelativeDeadlines + deriveWalkthrough on the
+ * merged result so a changed effective/closing date recomputes cleanly.
+ */
+export function mergeExtractionsByRecency(
+  list: ContractExtraction[],
+): ContractExtraction {
+  const docs = list.filter(Boolean);
+  if (docs.length === 0) {
+    throw new Error("mergeExtractionsByRecency: no extractions to merge");
+  }
+  if (docs.length === 1) return docs[0];
+
+  // oldest → newest by effectiveDate (missing date sorts oldest, so a
+  // dated document always wins over an undated one).
+  const ordered = [...docs].sort((a, b) => {
+    const da = (a.effectiveDate?.value as string) ?? "";
+    const db = (b.effectiveDate?.value as string) ?? "";
+    return da.localeCompare(db);
+  });
+
+  const keys = Object.keys(ordered[0]) as Array<keyof ContractExtraction>;
+  const out = { ...ordered[0] } as ContractExtraction;
+  for (let i = 1; i < ordered.length; i++) {
+    const doc = ordered[i];
+    for (const k of keys) {
+      if (k === "notes") {
+        const nxt = (doc as unknown as { notes: string | null }).notes;
+        if (nxt) (out as unknown as { notes: string | null }).notes = nxt;
+        continue;
+      }
+      const nf = doc[k] as ContractExtractionField<unknown> | undefined;
+      // A newer document's field wins only when it actually carries a
+      // value — otherwise the base offer's value is preserved.
+      if (nf && nf.value !== null && nf.value !== "") {
+        (out as unknown as Record<string, unknown>)[k] = nf;
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * When the contract doesn't state a final-walkthrough date, derive it
+ * as 24 hours before closing — the standard convention. Only fills when
+ * the walkthrough is empty and closing is known; marked low-confidence
+ * with a "derived" snippet so the UI can show it's inferred, not read.
+ */
+export function deriveWalkthrough(
+  ex: ContractExtraction,
+): ContractExtraction {
+  const wt = ex.walkthroughDate?.value;
+  const closing = ex.closingDate?.value as string | null;
+  if ((wt === null || wt === undefined || wt === "") && closing) {
+    const d = new Date(`${closing}T00:00:00`);
+    if (!Number.isNaN(d.getTime())) {
+      d.setDate(d.getDate() - 1);
+      return {
+        ...ex,
+        walkthroughDate: {
+          value: d.toISOString().slice(0, 10),
+          confidence: 0.5,
+          snippet: "derived: 24h before closing",
+        },
+      };
+    }
+  }
+  return ex;
+}
+
 function asField<T = string>(v: unknown): ContractExtractionField<T> {
   if (!v || typeof v !== "object") {
     return { value: null, confidence: 0, snippet: null };

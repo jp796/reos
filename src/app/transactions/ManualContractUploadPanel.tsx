@@ -116,16 +116,25 @@ export function ManualContractUploadPanel() {
 
   const [extraction, setExtraction] = useState<Extraction | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [docLog, setDocLog] = useState<
+    Array<{ fileName: string; path: string; ok: boolean; error?: string }>
+  >([]);
+  const [missingCritical, setMissingCritical] = useState<string[]>([]);
+  const [pendingNames, setPendingNames] = useState<string[]>([]);
 
-  async function uploadFile(f: File) {
-    setPendingFile(f);
+  async function uploadFiles(files: File[]) {
+    if (files.length === 0) return;
+    setPendingFile(files[0]);
+    setPendingNames(files.map((f) => f.name));
     setUploading(true);
     setErr(null);
+    setDocLog([]);
+    setMissingCritical([]);
     try {
       const fd = new FormData();
-      fd.append("file", f);
+      for (const f of files) fd.append("file", f);
       const res = await fetch(
-        "/api/automation/upload-contract-to-create",
+        "/api/automation/upload-contracts-to-create",
         { method: "POST", body: fd },
       );
       const data = await res.json();
@@ -133,6 +142,8 @@ export function ManualContractUploadPanel() {
         setErr(data.error ?? res.statusText);
         return;
       }
+      setDocLog(data.documents ?? []);
+      setMissingCritical(data.missingCritical ?? []);
       const ex: Extraction = data.extraction ?? {};
       setExtraction(ex);
       setForm({
@@ -227,6 +238,9 @@ export function ManualContractUploadPanel() {
   function cancel() {
     setExtraction(null);
     setPendingFile(null);
+    setPendingNames([]);
+    setDocLog([]);
+    setMissingCritical([]);
     setForm(EMPTY_FORM);
     setErr(null);
   }
@@ -239,23 +253,26 @@ export function ManualContractUploadPanel() {
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3">
         <h2 className="text-sm font-medium">Upload contract to create</h2>
         <span className="text-xs text-text-muted">
-          Drop a PDF — AI fills the form, you confirm, it lands as a new
-          transaction
+          Drop the offer + counter offer (+ addenda) — AI reads them all,
+          merges the terms, fills the form, you confirm
         </span>
       </div>
 
       {!extraction ? (
         <div className="space-y-2">
           <DropZone
-            onFile={uploadFile}
+            multiple
+            onFiles={uploadFiles}
             disabled={uploading}
-            selectedName={pendingFile?.name ?? null}
-            kind="contract PDF"
-            explainer="REOS reads the contract with AI, extracts every deadline (effective, inspection, EM, financing, walkthrough, closing), parties, price + commissions, then drafts a new transaction with a full timeline. Drop a SIGNED purchase contract — not a flyer or random PDF. ~15-40s, ~$0.02 of OpenAI."
+            selectedName={
+              pendingNames.length > 0 ? pendingNames.join(", ") : null
+            }
+            kind="contract PDF(s)"
+            explainer="Drop the SIGNED offer AND the counter offer together (plus any addenda). REOS reads every document, merges them (newest terms win), and extracts every deadline (effective, EM, inspection, inspection-objection, title, financing, walkthrough, closing), price + both-side commissions, and parties. ~15-40s/doc, ~$0.02 each."
           />
           {uploading && (
             <div className="text-center text-xs text-text-muted">
-              Extracting with AI · ~15-40 seconds · cost ~$0.02
+              Reading {pendingNames.length > 1 ? `${pendingNames.length} documents` : "the contract"} with AI · ~15-40s each
             </div>
           )}
         </div>
@@ -285,6 +302,39 @@ export function ManualContractUploadPanel() {
               Fields below are editable — empty = not extracted.
             </span>
           </div>
+
+          {/* Per-document read log — shows what was actually merged. */}
+          {docLog.length > 0 && (
+            <div className="rounded border border-border bg-surface-2/50 px-3 py-2 text-xs">
+              <div className="mb-1 font-medium text-text-muted">
+                Merged {docLog.filter((d) => d.ok).length} of {docLog.length} document
+                {docLog.length === 1 ? "" : "s"}
+              </div>
+              <ul className="space-y-0.5">
+                {docLog.map((d, i) => (
+                  <li key={i} className="flex items-center gap-2 text-text-muted">
+                    <span className={d.ok ? "text-emerald-500" : "text-red-500"}>
+                      {d.ok ? "✓" : "✕"}
+                    </span>
+                    <span className="truncate">{d.fileName}</span>
+                    <span className="opacity-60">
+                      {d.ok ? `read via ${d.path}` : `failed: ${d.error ?? "error"}`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Never present a blank timeline as success. */}
+          {missingCritical.length > 0 && (
+            <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+              <b>Heads up —</b> these critical fields didn&apos;t come through:{" "}
+              {missingCritical.join(", ")}. Add the missing document (often the
+              base offer if you only dropped the counter), or fill them by hand
+              below before creating the deal.
+            </div>
+          )}
 
           <div className="space-y-3">
             <Section title="Property + parties">

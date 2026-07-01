@@ -7,7 +7,15 @@ import { Hint } from "./Hint";
 
 interface Props {
   /** Called when the user drops or picks a valid file. */
-  onFile: (file: File) => void;
+  onFile?: (file: File) => void;
+  /**
+   * Multi-file mode. When set, the zone accepts several files at once
+   * and calls onFiles with every valid one. Takes precedence over
+   * onFile. Used for offer + counter-offer contract uploads.
+   */
+  onFiles?: (files: File[]) => void;
+  /** Enables selecting/dropping multiple files (pairs with onFiles). */
+  multiple?: boolean;
   /** MIME type constraint — default "application/pdf" */
   accept?: string;
   /** Friendly extension label for the prompt — default "PDF" */
@@ -36,6 +44,8 @@ interface Props {
  */
 export function DropZone({
   onFile,
+  onFiles,
+  multiple,
   accept = "application/pdf,.pdf",
   kind = "PDF",
   maxMb = 20,
@@ -76,19 +86,25 @@ export function DropZone({
     return null;
   }
 
-  function accept1(f: File) {
-    const bad = validate(f);
-    if (bad) {
-      setErr(bad);
-      return;
+  function acceptMany(files: File[]) {
+    const valid: File[] = [];
+    for (const f of files) {
+      const bad = validate(f);
+      if (bad) {
+        setErr(bad);
+        return;
+      }
+      valid.push(f);
     }
+    if (valid.length === 0) return;
     setErr(null);
-    onFile(f);
+    if (onFiles) onFiles(valid);
+    else if (onFile) onFile(valid[0]);
   }
 
   function onInputChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    if (f) accept1(f);
+    const files = Array.from(e.target.files ?? []);
+    if (files.length) acceptMany(files);
   }
 
   function onDrop(e: React.DragEvent<HTMLDivElement>) {
@@ -96,8 +112,8 @@ export function DropZone({
     e.stopPropagation();
     setHover(false);
     if (disabled) return;
-    const f = e.dataTransfer.files?.[0];
-    if (f) accept1(f);
+    const files = Array.from(e.dataTransfer.files ?? []);
+    if (files.length) acceptMany(files);
   }
 
   function onDragOver(e: React.DragEvent<HTMLDivElement>) {
@@ -149,6 +165,7 @@ export function DropZone({
           ref={inputRef}
           type="file"
           accept={accept}
+          multiple={multiple}
           onChange={onInputChange}
           disabled={disabled}
           className="sr-only"
