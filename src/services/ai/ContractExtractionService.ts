@@ -25,6 +25,21 @@
  */
 
 import { DocumentExtractionService } from "./DocumentExtractionService";
+import { IncrementalObjectParser } from "./streamingJson";
+
+/** An event emitted by extractStream() as the contract is read live. */
+export type ExtractStreamEvent =
+  | { type: "status"; message: string }
+  | {
+      type: "field";
+      key: string;
+      value: unknown;
+      confidence: number | null;
+      snippet: string | null;
+      source: "text" | "vision" | "computed";
+    }
+  | { type: "done"; extraction: ContractExtraction & { _path: string } }
+  | { type: "error"; message: string };
 import { renderPdfForVision } from "./PdfRender";
 import { addBusinessDays, addCalendarDays } from "@/lib/business-days";
 
@@ -454,6 +469,202 @@ export class ContractExtractionService {
       console.warn(`vision fallback failed: ${msg}`);
       return { ...computeRelativeDeadlines(textExtraction), _path: "text" };
     }
+  }
+
+  /**
+   * Streaming extraction — same pipeline as extract(), but emits live
+   * events (status + each field the instant it's read) so the UI can
+   * show the document being read in real time. The vision pass is
+   * streamed token-by-token; fields surface as the model produces them.
+   */
+  async extractStream(
+    buffer: Buffer,
+    emit: (ev: ExtractStreamEvent) => void,
+  ): Promise<ContractExtraction & { _path: string }> {
+    const emitField = (
+      key: string,
+      field: unknown,
+      source: "text" | "vision" | "computed",
+    ) => {
+      const f = (field ?? {}) as { value?: unknown; confidence?: unknown; snippet?: unknown };
+      if (f.value === null || f.value === undefined || f.value === "") return;
+      emit({
+        type: "field",
+        key,
+        value: f.value,
+        confidence: typeof f.confidence === "number" ? f.confidence : null,
+        snippet: typeof f.snippet === "string" ? f.snippet : null,
+        source,
+      });
+    };
+    const emitAll = (ex: ContractExtraction, source: "text" | "vision" | "computed") => {
+      for (const [k, v] of Object.entries(ex)) {
+        if (k === "notes") continue;
+        emitField(k, v, source);
+      }
+    };
+
+    emit({ type: "status", message: "Opening the document…" });
+    const text = await new DocumentExtractionService().extractText(buffer);
+
+    let textExtraction: ContractExtraction | null = null;
+    if (text) {
+      emit({
+        type: "status",
+        message: `Reading the text layer (${(text.length / 1024).toFixed(0)} KB)…`,
+      });
+      textExtraction = await this.extractFromText(text);
+      emitAll(textExtraction, "text");
+    } else {
+      emit({ type: "status", message: "No text layer — this is a scanned/flattened contract." });
+    }
+
+    const thin = text ? looksThin(text) : true;
+    const canComputeFromOffsets =
+      !!textExtraction &&
+      hasRelativeOffsets(textExtraction) &&
+      textExtraction.effectiveDate?.value != null;
+    const criticalMissing =
+      !textExtraction ||
+      (criticalTimelineMissing(textExtraction) && !canComputeFromOffsets);
+
+    let merged: ContractExtraction = textExtraction ?? normalize({});
+    let path = "text";
+
+    if (!text || thin || criticalMissing) {
+      emit({
+        type: "status",
+        message: "The filled-in dates are flattened into the page — reading the pages visually…",
+      });
+      try {
+        const vision = await this.extractWithVisionStream(
+          buffer,
+          (key, val) => emitField(key, val, "vision"),
+          (message) => emit({ type: "status", message }),
+        );
+        merged = textExtraction ? mergeByConfidence(textExtraction, vision) : vision;
+        path = textExtraction ? "merged" : "vision";
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        emit({ type: "status", message: `Visual read unavailable (${msg.slice(0, 80)}) — using the text pass.` });
+      }
+    }
+
+    emit({ type: "status", message: "Computing the deadline timeline…" });
+    const computed = computeRelativeDeadlines(merged);
+    // Emit anything computeRelativeDeadlines newly filled (derived dates).
+    for (const [k, v] of Object.entries(computed)) {
+      if (k === "notes") continue;
+      const before = (merged as unknown as Record<string, { value?: unknown }>)[k];
+      const after = v as { value?: unknown };
+      if ((before?.value == null || before?.value === "") && after?.value != null && after.value !== "") {
+        emitField(k, v, "computed");
+      }
+    }
+
+    const result = { ...computed, _path: path };
+    emit({ type: "done", extraction: result });
+    return result;
+  }
+
+  /**
+   * Streamed vision pass. Same request as extractWithVision but with
+   * stream:true — feeds token deltas to an IncrementalObjectParser so
+   * onField fires the instant each field completes. onStatus reports
+   * render/read progress.
+   */
+  async extractWithVisionStream(
+    buffer: Buffer,
+    onField: (key: string, value: unknown) => void,
+    onStatus: (message: string) => void,
+  ): Promise<ContractExtraction> {
+    onStatus("Rendering the pages…");
+    const pngBuffers = await renderPdfForVision(buffer, MAX_VISION_PAGES);
+    if (pngBuffers.length === 0) throw new Error("pdf->png yielded 0 pages");
+    onStatus(`Reading ${pngBuffers.length} page${pngBuffers.length === 1 ? "" : "s"}…`);
+
+    const imageContent = pngBuffers.map((b) => ({
+      type: "image_url" as const,
+      image_url: {
+        url: `data:image/png;base64,${b.toString("base64")}`,
+        detail: "high" as const,
+      },
+    }));
+
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.openaiApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: VISION_MODEL,
+        temperature: 0,
+        response_format: { type: "json_object" },
+        max_tokens: 8000,
+        stream: true,
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `This is a signed contract PDF rendered as ${pngBuffers.length} images (pages 1..${pngBuffers.length}). Extract the fields per the schema below. Filled form values may appear as handwritten-style overlays over the underlying template. Read the OVERLAID values (what's filled in), not the template labels.
+
+Return JSON matching this schema:
+${SCHEMA_HINT}`,
+              },
+              ...imageContent,
+            ],
+          },
+        ],
+      }),
+    });
+
+    if (!res.ok || !res.body) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`OpenAI vision ${res.status}: ${body.slice(0, 200)}`);
+    }
+
+    const parser = new IncrementalObjectParser(onField);
+    let full = "";
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let sseBuf = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      sseBuf += decoder.decode(value, { stream: true });
+      const lines = sseBuf.split("\n");
+      sseBuf = lines.pop() ?? "";
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t.startsWith("data:")) continue;
+        const payload = t.slice(5).trim();
+        if (payload === "[DONE]") continue;
+        try {
+          const j = JSON.parse(payload) as {
+            choices?: Array<{ delta?: { content?: string } }>;
+          };
+          const delta = j.choices?.[0]?.delta?.content;
+          if (delta) {
+            full += delta;
+            parser.push(delta);
+          }
+        } catch {
+          /* skip malformed SSE chunk */
+        }
+      }
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(full);
+    } catch {
+      throw new Error("vision stream returned non-JSON");
+    }
+    return normalize(parsed);
   }
 
   /**

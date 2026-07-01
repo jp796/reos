@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { DropZone } from "@/app/components/DropZone";
+import { LiveExtractionView } from "./LiveExtractionView";
 import { MoneyInput } from "@/app/components/MoneyInput";
 import { toDateInputValue } from "@/lib/dates";
 
@@ -108,82 +109,63 @@ function firstOf(a: string[] | null | undefined): string {
  */
 export function ManualContractUploadPanel() {
   const router = useRouter();
-  const [uploading, setUploading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [, startTransition] = useTransition();
 
   const [extraction, setExtraction] = useState<Extraction | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
-  const [docLog, setDocLog] = useState<
-    Array<{ fileName: string; path: string; ok: boolean; error?: string }>
-  >([]);
   const [missingCritical, setMissingCritical] = useState<string[]>([]);
   const [pendingNames, setPendingNames] = useState<string[]>([]);
+  const [liveFiles, setLiveFiles] = useState<File[] | null>(null);
 
-  async function uploadFiles(files: File[]) {
+  // Populate the review form from an extraction (streamed or posted).
+  function applyExtraction(ex: Extraction) {
+    setExtraction(ex);
+    setForm({
+      address: (ex.propertyAddress?.value as string) ?? "",
+      buyerName: firstOf(ex.buyers?.value as string[] | null),
+      sellerName: firstOf(ex.sellers?.value as string[] | null),
+      effectiveDate: iso(ex.effectiveDate?.value as string),
+      closingDate: iso(ex.closingDate?.value as string),
+      possessionDate: iso(ex.possessionDate?.value as string),
+      inspectionDeadline: iso(ex.inspectionDeadline?.value as string),
+      inspectionObjectionDeadline: iso(
+        ex.inspectionObjectionDeadline?.value as string,
+      ),
+      titleCommitmentDeadline: iso(ex.titleCommitmentDeadline?.value as string),
+      titleObjectionDeadline: iso(ex.titleObjectionDeadline?.value as string),
+      financingDeadline: iso(ex.financingDeadline?.value as string),
+      walkthroughDate: iso(ex.walkthroughDate?.value as string),
+      earnestMoneyDueDate: iso(ex.earnestMoneyDueDate?.value as string),
+      earnestMoneyAmount: num(ex.earnestMoneyAmount?.value as number),
+      purchasePrice: num(ex.purchasePrice?.value as number),
+      sellerSideCommissionPct: num(ex.sellerSideCommissionPct?.value as number),
+      sellerSideCommissionAmount: num(
+        ex.sellerSideCommissionAmount?.value as number,
+      ),
+      buyerSideCommissionPct: num(ex.buyerSideCommissionPct?.value as number),
+      buyerSideCommissionAmount: num(
+        ex.buyerSideCommissionAmount?.value as number,
+      ),
+      titleCompany: (ex.titleCompanyName?.value as string) ?? "",
+      lenderName: (ex.lenderName?.value as string) ?? "",
+    });
+  }
+
+  // Drop → start the live streaming read (split-screen view).
+  function startLiveRead(files: File[]) {
     if (files.length === 0) return;
-    setPendingFile(files[0]);
-    setPendingNames(files.map((f) => f.name));
-    setUploading(true);
     setErr(null);
-    setDocLog([]);
     setMissingCritical([]);
-    try {
-      const fd = new FormData();
-      for (const f of files) fd.append("file", f);
-      const res = await fetch(
-        "/api/automation/upload-contracts-to-create",
-        { method: "POST", body: fd },
-      );
-      const data = await res.json();
-      if (!res.ok) {
-        setErr(data.error ?? res.statusText);
-        return;
-      }
-      setDocLog(data.documents ?? []);
-      setMissingCritical(data.missingCritical ?? []);
-      const ex: Extraction = data.extraction ?? {};
-      setExtraction(ex);
-      setForm({
-        address: (ex.propertyAddress?.value as string) ?? "",
-        buyerName: firstOf(ex.buyers?.value as string[] | null),
-        sellerName: firstOf(ex.sellers?.value as string[] | null),
-        effectiveDate: iso(ex.effectiveDate?.value as string),
-        closingDate: iso(ex.closingDate?.value as string),
-        possessionDate: iso(ex.possessionDate?.value as string),
-        inspectionDeadline: iso(ex.inspectionDeadline?.value as string),
-        inspectionObjectionDeadline: iso(
-          ex.inspectionObjectionDeadline?.value as string,
-        ),
-        titleCommitmentDeadline: iso(ex.titleCommitmentDeadline?.value as string),
-        titleObjectionDeadline: iso(ex.titleObjectionDeadline?.value as string),
-        financingDeadline: iso(ex.financingDeadline?.value as string),
-        walkthroughDate: iso(ex.walkthroughDate?.value as string),
-        earnestMoneyDueDate: iso(ex.earnestMoneyDueDate?.value as string),
-        earnestMoneyAmount: num(ex.earnestMoneyAmount?.value as number),
-        purchasePrice: num(ex.purchasePrice?.value as number),
-        sellerSideCommissionPct: num(
-          ex.sellerSideCommissionPct?.value as number,
-        ),
-        sellerSideCommissionAmount: num(
-          ex.sellerSideCommissionAmount?.value as number,
-        ),
-        buyerSideCommissionPct: num(
-          ex.buyerSideCommissionPct?.value as number,
-        ),
-        buyerSideCommissionAmount: num(
-          ex.buyerSideCommissionAmount?.value as number,
-        ),
-        titleCompany: (ex.titleCompanyName?.value as string) ?? "",
-        lenderName: (ex.lenderName?.value as string) ?? "",
-      });
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "upload failed");
-    } finally {
-      setUploading(false);
-    }
+    setPendingNames(files.map((f) => f.name));
+    setLiveFiles(files);
+  }
+
+  function onLiveComplete(rawEx: Record<string, unknown>, missing: string[]) {
+    setMissingCritical(missing);
+    applyExtraction(rawEx as Extraction);
+    setLiveFiles(null);
   }
 
   async function create() {
@@ -237,9 +219,8 @@ export function ManualContractUploadPanel() {
 
   function cancel() {
     setExtraction(null);
-    setPendingFile(null);
+    setLiveFiles(null);
     setPendingNames([]);
-    setDocLog([]);
     setMissingCritical([]);
     setForm(EMPTY_FORM);
     setErr(null);
@@ -258,23 +239,26 @@ export function ManualContractUploadPanel() {
         </span>
       </div>
 
-      {!extraction ? (
+      {liveFiles ? (
+        <LiveExtractionView
+          files={liveFiles}
+          onComplete={onLiveComplete}
+          onError={(m) => {
+            setErr(m);
+            setLiveFiles(null);
+          }}
+        />
+      ) : !extraction ? (
         <div className="space-y-2">
           <DropZone
             multiple
-            onFiles={uploadFiles}
-            disabled={uploading}
+            onFiles={startLiveRead}
             selectedName={
               pendingNames.length > 0 ? pendingNames.join(", ") : null
             }
             kind="contract PDF(s)"
-            explainer="Drop the SIGNED offer AND the counter offer together (plus any addenda). REOS reads every document, merges them (newest terms win), and extracts every deadline (effective, EM, inspection, inspection-objection, title, financing, walkthrough, closing), price + both-side commissions, and parties. ~15-40s/doc, ~$0.02 each."
+            explainer="Drop the SIGNED offer AND the counter offer together (plus any addenda). REOS reads every document live, merges them (newest terms win), and extracts every deadline (effective, EM, inspection, inspection-objection, title, financing, walkthrough, closing), price + both-side commissions, and parties. ~15-40s/doc, ~$0.02 each."
           />
-          {uploading && (
-            <div className="text-center text-xs text-text-muted">
-              Reading {pendingNames.length > 1 ? `${pendingNames.length} documents` : "the contract"} with AI · ~15-40s each
-            </div>
-          )}
         </div>
       ) : (
         <div className="space-y-4">
@@ -302,29 +286,6 @@ export function ManualContractUploadPanel() {
               Fields below are editable — empty = not extracted.
             </span>
           </div>
-
-          {/* Per-document read log — shows what was actually merged. */}
-          {docLog.length > 0 && (
-            <div className="rounded border border-border bg-surface-2/50 px-3 py-2 text-xs">
-              <div className="mb-1 font-medium text-text-muted">
-                Merged {docLog.filter((d) => d.ok).length} of {docLog.length} document
-                {docLog.length === 1 ? "" : "s"}
-              </div>
-              <ul className="space-y-0.5">
-                {docLog.map((d, i) => (
-                  <li key={i} className="flex items-center gap-2 text-text-muted">
-                    <span className={d.ok ? "text-emerald-500" : "text-red-500"}>
-                      {d.ok ? "✓" : "✕"}
-                    </span>
-                    <span className="truncate">{d.fileName}</span>
-                    <span className="opacity-60">
-                      {d.ok ? `read via ${d.path}` : `failed: ${d.error ?? "error"}`}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
 
           {/* Never present a blank timeline as success. */}
           {missingCritical.length > 0 && (
