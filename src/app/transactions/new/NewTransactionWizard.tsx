@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { MoneyInput } from "@/app/components/MoneyInput";
 import { AtlasWelcome } from "./AtlasWelcome";
+import { LiveExtractionView } from "../LiveExtractionView";
 import { toDateInputValue } from "@/lib/dates";
 
 type Side = "buyer" | "listing" | "both" | "investor";
@@ -138,6 +139,8 @@ export function NewTransactionWizard() {
   const [dragging, setDragging] = useState(false);
 
   const [busy, setBusy] = useState(false);
+  const [reading, setReading] = useState(false);
+  const [missingCritical, setMissingCritical] = useState<string[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [extraction, setExtraction] = useState<Extraction | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -194,35 +197,31 @@ export function NewTransactionWizard() {
     });
   }
 
-  async function readContract() {
-    const primary = files[primaryIdx];
-    if (!primary) {
+  // Read the contract(s) LIVE — the split-screen streaming view reads
+  // every uploaded doc, merges them, and calls onLiveComplete. The
+  // primary file is moved to the front so it anchors the merge.
+  function readContract() {
+    if (files.length === 0) {
       setErr("Add the contract file first (or skip to enter manually).");
       return;
     }
-    setBusy(true);
     setErr(null);
-    try {
-      const fd = new FormData();
-      fd.append("file", primary);
-      const res = await fetch("/api/automation/upload-contract-to-create", {
-        method: "POST",
-        body: fd,
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setErr(data.error ?? res.statusText);
-        return;
-      }
-      const ex: Extraction = data.extraction ?? {};
-      setExtraction(ex);
-      hydrateForm(ex);
-      setStep("review");
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "extraction failed");
-    } finally {
-      setBusy(false);
-    }
+    setMissingCritical([]);
+    setReading(true);
+  }
+
+  const orderedFiles =
+    primaryIdx > 0
+      ? [files[primaryIdx], ...files.filter((_, i) => i !== primaryIdx)]
+      : files;
+
+  function onLiveComplete(rawEx: Record<string, unknown>, missing: string[]) {
+    const ex = rawEx as Extraction;
+    setExtraction(ex);
+    hydrateForm(ex);
+    setMissingCritical(missing);
+    setReading(false);
+    setStep("review");
   }
 
   function skipToManual() {
@@ -332,7 +331,27 @@ export function NewTransactionWizard() {
         </>
       )}
 
-      {step === "setup" && (
+      {reading && (
+        <div className="mt-2">
+          <div className="reos-label">New deal</div>
+          <h1 className="mt-1 font-display text-2xl font-semibold">
+            Reading your contract…
+          </h1>
+          <p className="mb-4 mt-1 text-sm text-text-muted">
+            Watch Atlas read the document and build the deal in real time.
+          </p>
+          <LiveExtractionView
+            files={orderedFiles}
+            onComplete={onLiveComplete}
+            onError={(m) => {
+              setErr(m);
+              setReading(false);
+            }}
+          />
+        </div>
+      )}
+
+      {step === "setup" && !reading && (
         <div className="mt-2 grid gap-8 lg:grid-cols-2 lg:items-start">
           <AtlasWelcome />
           <div className="space-y-6">
@@ -527,6 +546,14 @@ export function NewTransactionWizard() {
                 </span>
               )}
               <span className="ml-auto">Editable — empty = not found.</span>
+            </div>
+          )}
+
+          {missingCritical.length > 0 && (
+            <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+              <b>Heads up —</b> these didn&apos;t come through: {missingCritical.join(", ")}.
+              They may not be in the contract (e.g. cash offers have no financing
+              deadline), or add the missing document. Fill by hand if needed.
             </div>
           )}
 
