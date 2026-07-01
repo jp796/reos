@@ -367,24 +367,37 @@ export function NewTransactionWizard() {
             </div>
           {/* Side picker */}
           <div>
-            <div className="mb-2 text-sm font-medium">Which side do you represent?</div>
+            <style>{`
+              @keyframes reosGlow {
+                0%, 100% { box-shadow: 0 0 0 0 rgba(59,130,246,0.0); }
+                50% { box-shadow: 0 0 18px 2px rgba(59,130,246,0.45); }
+              }
+              .reos-glow { animation: reosGlow 2s ease-in-out infinite; }
+            `}</style>
+            <div className="mb-3 text-lg font-bold text-text">
+              Which side do you represent?
+            </div>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {SIDES.map((s) => {
+              {SIDES.map((s, i) => {
                 const Icon = s.icon;
                 const active = side === s.id;
+                // Pulse to invite a click while nothing is chosen; steady
+                // glow on the selected card once one is picked.
+                const glow = side === null || active;
                 return (
                   <button
                     key={s.id}
                     type="button"
                     onClick={() => setSide(s.id)}
+                    style={side === null ? { animationDelay: `${i * 150}ms` } : undefined}
                     className={`flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors ${
                       active
                         ? "border-brand-500 bg-brand-50 ring-1 ring-brand-200"
                         : "border-border bg-surface hover:border-border-strong"
-                    }`}
+                    } ${glow ? "reos-glow" : ""}`}
                   >
-                    <Icon className={`h-4 w-4 ${active ? "text-brand-600" : "text-text-muted"}`} />
-                    <span className="text-sm font-medium text-text">{s.label}</span>
+                    <Icon className={`h-5 w-5 ${active ? "text-brand-600" : "text-text-muted"}`} />
+                    <span className="text-base font-bold text-text">{s.label}</span>
                     <span className="text-xs text-text-muted">{s.hint}</span>
                   </button>
                 );

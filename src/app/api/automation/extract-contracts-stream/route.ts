@@ -29,6 +29,8 @@ import {
 } from "@/services/ai/ContractExtractionService";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
 export const maxDuration = 300;
 
 const CRITICAL: Array<keyof ContractExtraction> = [
@@ -70,6 +72,9 @@ export async function POST(req: NextRequest) {
       const send = (ev: Record<string, unknown>) => {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(ev)}\n\n`));
       };
+      // 2KB padding comment defeats proxy/gzip byte-threshold buffering
+      // so early events actually reach the browser as they're sent.
+      controller.enqueue(encoder.encode(`:${" ".repeat(2048)}\n\n`));
       try {
         const extractions: ContractExtraction[] = [];
         for (let i = 0; i < files.length; i++) {
@@ -128,6 +133,7 @@ export async function POST(req: NextRequest) {
     headers: {
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
+      "Content-Encoding": "none",
       Connection: "keep-alive",
       "X-Accel-Buffering": "no",
     },
