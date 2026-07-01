@@ -3,14 +3,16 @@
 /**
  * LiveExtractionView — the split-screen "watch it read" experience.
  * Left: the document being read, page by page, in real time. Right: the
- * fields + timeline populating live as each value streams from the model
- * (like watching code get written on one side and the result on the
- * other). Consumes the SSE stream from /api/automation/extract-contracts-stream.
+ * deal builds live as each value streams from the model — deal terms,
+ * contingencies + provisions (with any non-standard term surfaced as its
+ * own row), and a task list derived from the deadlines as they land.
+ * Consumes the SSE stream from /api/automation/extract-contracts-stream.
  */
 
 import { useEffect, useRef, useState } from "react";
 
 type Field = { value: unknown; source: "text" | "vision" | "computed" };
+type Contingency = { name: string; status: string; description?: string };
 
 interface Props {
   files: File[];
@@ -18,7 +20,6 @@ interface Props {
   onError: (message: string) => void;
 }
 
-// The fields we surface on the right, in the order they matter to a TC.
 const DISPLAY: Array<{ key: string; label: string; kind: "date" | "money" | "pct" | "text" | "list" }> = [
   { key: "propertyAddress", label: "Property", kind: "text" },
   { key: "buyers", label: "Buyer(s)", kind: "list" },
@@ -39,6 +40,24 @@ const DISPLAY: Array<{ key: string; label: string; kind: "date" | "money" | "pct
   { key: "buyerSideCommissionPct", label: "Buyer commission", kind: "pct" },
 ];
 
+// A date field → the task it implies (built live as the date lands).
+const TASK_FOR_DATE: Record<string, string> = {
+  earnestMoneyDueDate: "Deliver earnest money",
+  inspectionDeadline: "Complete inspection",
+  inspectionObjectionDeadline: "Submit inspection objection",
+  titleCommitmentDeadline: "Receive title commitment",
+  titleObjectionDeadline: "Submit title objection",
+  financingDeadline: "Secure financing",
+  walkthroughDate: "Final walkthrough",
+  closingDate: "Close",
+};
+
+// Standard contingencies — anything else is a custom/new term we surface.
+const STANDARD = [
+  "inspection", "financing", "appraisal", "title", "insurance", "walkthrough",
+  "possession", "hoa", "survey", "disclosure", "sale of", "risk of loss",
+];
+
 function fmt(kind: string, value: unknown): string {
   if (value == null || value === "") return "";
   if (kind === "money") return `$${Number(value).toLocaleString()}`;
@@ -47,11 +66,19 @@ function fmt(kind: string, value: unknown): string {
   return String(value);
 }
 
+function fmtDate(iso: unknown): string {
+  if (typeof iso !== "string" || !iso) return "";
+  const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(iso) ? `${iso}T12:00:00` : iso);
+  return Number.isNaN(d.getTime())
+    ? String(iso)
+    : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 export function LiveExtractionView({ files, onComplete, onError }: Props) {
   const [log, setLog] = useState<Array<{ text: string; kind: "doc" | "status" }>>([]);
   const [fields, setFields] = useState<Record<string, Field>>({});
-  const [contingencies, setContingencies] = useState<string[]>([]);
-  const [phase, setPhase] = useState<"reading" | "vision" | "merging" | "done">("reading");
+  const [contingencies, setContingencies] = useState<Contingency[]>([]);
+  const [done, setDone] = useState(false);
   const logEndRef = useRef<HTMLDivElement>(null);
   const startedRef = useRef(false);
 
@@ -81,21 +108,19 @@ export function LiveExtractionView({ files, onComplete, onError }: Props) {
         const decoder = new TextDecoder();
         let buf = "";
         for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
+          const { done: rdone, value } = await reader.read();
+          if (rdone) break;
           buf += decoder.decode(value, { stream: true });
           const parts = buf.split("\n\n");
           buf = parts.pop() ?? "";
           for (const part of parts) {
             const line = part.split("\n").find((l) => l.startsWith("data:"));
             if (!line) continue;
-            let ev: Record<string, unknown>;
             try {
-              ev = JSON.parse(line.slice(5).trim());
+              handle(JSON.parse(line.slice(5).trim()));
             } catch {
-              continue;
+              /* skip */
             }
-            handle(ev);
           }
         }
       } catch (e) {
@@ -108,34 +133,27 @@ export function LiveExtractionView({ files, onComplete, onError }: Props) {
     function handle(ev: Record<string, unknown>) {
       const type = ev.type as string;
       if (type === "doc") {
-        setPhase("reading");
-        setLog((l) => [
-          ...l,
-          { text: `Document ${ev.index}/${ev.total}: ${ev.name}`, kind: "doc" },
-        ]);
+        setLog((l) => [...l, { text: `Document ${ev.index}/${ev.total}: ${ev.name}`, kind: "doc" }]);
       } else if (type === "status") {
-        const msg = String(ev.message);
-        if (/visually|pages/i.test(msg)) setPhase("vision");
-        if (/merg/i.test(msg)) setPhase("merging");
-        setLog((l) => [...l, { text: msg, kind: "status" }]);
+        setLog((l) => [...l, { text: String(ev.message), kind: "status" }]);
       } else if (type === "field") {
         const key = String(ev.key);
         if (key === "contingencies" && Array.isArray(ev.value)) {
-          setContingencies(
-            (ev.value as Array<{ name?: string }>).map((c) => c?.name ?? "").filter(Boolean),
-          );
+          const list = (ev.value as Array<Record<string, unknown>>)
+            .map((c) => ({
+              name: String(c?.name ?? ""),
+              status: String(c?.status ?? "applies"),
+              description: c?.description ? String(c.description) : undefined,
+            }))
+            .filter((c) => c.name);
+          // Merge — a later doc's richer list replaces the earlier one.
+          setContingencies((prev) => (list.length >= prev.length ? list : prev));
           return;
         }
-        setFields((f) => ({
-          ...f,
-          [key]: { value: ev.value, source: ev.source as Field["source"] },
-        }));
+        setFields((f) => ({ ...f, [key]: { value: ev.value, source: ev.source as Field["source"] } }));
       } else if (type === "merged") {
-        setPhase("done");
-        onComplete(
-          ev.extraction as Record<string, unknown>,
-          (ev.missingCritical as string[]) ?? [],
-        );
+        setDone(true);
+        onComplete(ev.extraction as Record<string, unknown>, (ev.missingCritical as string[]) ?? []);
       } else if (type === "error") {
         onError(String(ev.message));
       }
@@ -145,6 +163,18 @@ export function LiveExtractionView({ files, onComplete, onError }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Tasks derived live from whichever deadline fields have landed.
+  const tasks = Object.entries(TASK_FOR_DATE)
+    .map(([key, label]) => {
+      const v = fields[key]?.value;
+      return typeof v === "string" && v ? { label, date: v } : null;
+    })
+    .filter((t): t is { label: string; date: string } => t !== null)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const isCustom = (name: string) =>
+    !STANDARD.some((s) => name.toLowerCase().includes(s));
+
   const filledCount = DISPLAY.filter((d) => fields[d.key]?.value != null).length;
 
   return (
@@ -152,25 +182,12 @@ export function LiveExtractionView({ files, onComplete, onError }: Props) {
       {/* LEFT — reading the document */}
       <div className="rounded-lg border border-border bg-surface-2/40 p-4">
         <div className="mb-2 flex items-center gap-2">
-          <span
-            className={`inline-block h-2 w-2 rounded-full ${
-              phase === "done" ? "bg-emerald-500" : "animate-pulse bg-brand-500"
-            }`}
-          />
-          <h3 className="text-sm font-medium">
-            {phase === "done" ? "Finished reading" : "Reading the document…"}
-          </h3>
+          <span className={`inline-block h-2 w-2 rounded-full ${done ? "bg-emerald-500" : "animate-pulse bg-brand-500"}`} />
+          <h3 className="text-sm font-medium">{done ? "Finished reading" : "Reading the document…"}</h3>
         </div>
-        <div className="max-h-[26rem] space-y-1 overflow-y-auto font-mono text-xs leading-relaxed">
+        <div className="max-h-[30rem] space-y-1 overflow-y-auto font-mono text-xs leading-relaxed">
           {log.map((l, i) => (
-            <div
-              key={i}
-              className={
-                l.kind === "doc"
-                  ? "mt-2 font-semibold text-text"
-                  : "text-text-muted"
-              }
-            >
+            <div key={i} className={l.kind === "doc" ? "mt-2 font-semibold text-text" : "text-text-muted"}>
               {l.kind === "doc" ? "📄 " : "   "}
               {l.text}
             </div>
@@ -179,55 +196,94 @@ export function LiveExtractionView({ files, onComplete, onError }: Props) {
         </div>
       </div>
 
-      {/* RIGHT — the extraction building up */}
-      <div className="rounded-lg border border-border bg-surface p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-medium">Extracting the deal</h3>
-          <span className="text-xs text-text-muted">{filledCount} fields</span>
+      {/* RIGHT — the deal building up */}
+      <div className="max-h-[30rem] space-y-4 overflow-y-auto rounded-lg border border-border bg-surface p-4">
+        {/* Deal terms */}
+        <div>
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-sm font-medium">Deal terms</h3>
+            <span className="text-xs text-text-muted">{filledCount} fields</span>
+          </div>
+          <div className="space-y-1">
+            {DISPLAY.map((d) => {
+              const f = fields[d.key];
+              const has = f?.value != null && f.value !== "";
+              return (
+                <div
+                  key={d.key}
+                  className={`flex items-center justify-between gap-3 rounded px-2 py-1 text-sm transition-colors ${
+                    has ? "bg-emerald-50 dark:bg-emerald-950/30" : ""
+                  }`}
+                >
+                  <span className="text-text-muted">{d.label}</span>
+                  <span className="flex items-center gap-1.5 text-right font-medium">
+                    {has ? (
+                      <>
+                        {fmt(d.kind, f.value)}
+                        {f.source === "computed" && (
+                          <span className="rounded bg-accent-100 px-1 text-[10px] text-accent-600">derived</span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-text-subtle/40">·····</span>
+                    )}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
-        <div className="space-y-1.5">
-          {DISPLAY.map((d) => {
-            const f = fields[d.key];
-            const has = f?.value != null && f.value !== "";
-            return (
-              <div
-                key={d.key}
-                className={`flex items-center justify-between gap-3 rounded px-2 py-1 text-sm transition-colors ${
-                  has ? "bg-emerald-50 dark:bg-emerald-950/30" : "bg-transparent"
-                }`}
-              >
-                <span className="text-text-muted">{d.label}</span>
-                <span className="flex items-center gap-1.5 text-right font-medium">
-                  {has ? (
-                    <>
-                      {fmt(d.kind, f.value)}
-                      {f.source === "computed" && (
-                        <span className="rounded bg-accent-100 px-1 text-[10px] text-accent-600">
-                          derived
+
+        {/* Contingencies + provisions (custom terms flagged) */}
+        {contingencies.length > 0 && (
+          <div className="border-t border-border pt-3">
+            <div className="reos-label mb-1.5 opacity-70">
+              Contingencies &amp; provisions ({contingencies.length})
+            </div>
+            <ul className="space-y-1">
+              {contingencies.map((c, i) => {
+                const custom = isCustom(c.name);
+                return (
+                  <li key={i} className="flex items-start gap-2 text-sm">
+                    <span className={custom ? "text-accent-500" : "text-emerald-500"}>
+                      {custom ? "✦" : "•"}
+                    </span>
+                    <span>
+                      <span className="font-medium">{c.name}</span>
+                      {custom && (
+                        <span className="ml-1.5 rounded bg-accent-100 px-1 text-[10px] text-accent-600">
+                          new term
                         </span>
                       )}
-                    </>
-                  ) : (
-                    <span className="text-text-subtle/40">·····</span>
-                  )}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-        {contingencies.length > 0 && (
-          <div className="mt-3 border-t border-border pt-2">
-            <div className="reos-label mb-1 opacity-70">Contingencies found</div>
-            <div className="flex flex-wrap gap-1.5">
-              {contingencies.map((c, i) => (
-                <span
-                  key={i}
-                  className="rounded-full border border-border bg-surface-2 px-2 py-0.5 text-xs text-text-muted"
-                >
-                  {c}
-                </span>
+                      {c.status && c.status !== "applies" && (
+                        <span className="ml-1.5 text-xs text-text-muted">({c.status})</span>
+                      )}
+                      {c.description && (
+                        <span className="block text-xs text-text-muted">{c.description}</span>
+                      )}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+
+        {/* Tasks derived from the deadlines */}
+        {tasks.length > 0 && (
+          <div className="border-t border-border pt-3">
+            <div className="reos-label mb-1.5 opacity-70">Task list ({tasks.length})</div>
+            <ul className="space-y-1">
+              {tasks.map((t, i) => (
+                <li key={i} className="flex items-center justify-between gap-3 text-sm">
+                  <span className="flex items-center gap-2">
+                    <span className="inline-block h-3.5 w-3.5 rounded-sm border border-border" />
+                    {t.label}
+                  </span>
+                  <span className="text-xs text-text-muted">by {fmtDate(t.date)}</span>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
         )}
       </div>
