@@ -205,8 +205,12 @@ export interface ContractExtraction {
    *  the inspection period (or Effective Date if the form says so). */
   inspectionObjectionDays: ContractExtractionField<number>;
   inspectionObjectionUnit: ContractExtractionField<"business" | "calendar">;
+  /** Days for the seller to deliver the title commitment, from the
+   *  Effective Date (e.g. "10 Business Days after mutual acceptance"). */
+  titleCommitmentDays: ContractExtractionField<number>;
+  titleCommitmentUnit: ContractExtractionField<"business" | "calendar">;
   /** Days to object to title, from receipt of the title commitment.
-   *  Not auto-computed (no commitment-receipt date), surfaced for the TC. */
+   *  Computed off the title-commitment deadline when that is known. */
   titleObjectionDays: ContractExtractionField<number>;
   titleObjectionUnit: ContractExtractionField<"business" | "calendar">;
   /** Days to secure financing, from Effective Date. */
@@ -314,7 +318,8 @@ When the absolute date field is null because the contract only gives an offset, 
   - earnestMoneyDueDays / earnestMoneyDueUnit  ("business" or "calendar")
   - inspectionPeriodDays / inspectionPeriodUnit
   - inspectionObjectionDays / inspectionObjectionUnit
-  - titleObjectionDays / titleObjectionUnit
+  - titleCommitmentDays / titleCommitmentUnit  ("deliver the title commitment N Business Days after mutual acceptance")
+  - titleObjectionDays / titleObjectionUnit  ("within N Business Days of receipt of the title commitment")
   - financingDeadlineDays / financingDeadlineUnit
 Set unit to "business" when the text says "business days", else "calendar". Always extract BOTH the absolute date (if stated) and the offset (if stated). One contract may have some absolute and some relative — fill whatever each field is.
 
@@ -381,6 +386,8 @@ const SCHEMA_HINT = `{
   "inspectionPeriodUnit":  { "value": "business|calendar", "confidence": 0-1, "snippet": "..." },
   "inspectionObjectionDays":{ "value": 0 or null, "confidence": 0-1, "snippet": "..." },
   "inspectionObjectionUnit":{ "value": "business|calendar", "confidence": 0-1, "snippet": "..." },
+  "titleCommitmentDays":   { "value": 0 or null, "confidence": 0-1, "snippet": "..." },
+  "titleCommitmentUnit":   { "value": "business|calendar", "confidence": 0-1, "snippet": "..." },
   "titleObjectionDays":    { "value": 0 or null, "confidence": 0-1, "snippet": "..." },
   "titleObjectionUnit":    { "value": "business|calendar", "confidence": 0-1, "snippet": "..." },
   "financingDeadlineDays": { "value": 0 or null, "confidence": 0-1, "snippet": "..." },
@@ -424,9 +431,15 @@ export class ContractExtractionService {
     // offsets came back instead — Vision reads the same words and
     // won't find absolute dates that don't exist. Skip the wasteful
     // Vision call; computeRelativeDeadlines() handles those.
+    // Skip Vision only when the missing dates are explained by RELATIVE
+    // offsets we can actually compute — which requires an effective date
+    // to anchor them. Offsets with NO effective date still need Vision
+    // (to read the acceptance date or the absolute filled-in dates).
+    const canComputeFromOffsets =
+      hasRelativeOffsets(textExtraction) &&
+      textExtraction.effectiveDate?.value != null;
     const criticalMissing =
-      criticalTimelineMissing(textExtraction) &&
-      !hasRelativeOffsets(textExtraction);
+      criticalTimelineMissing(textExtraction) && !canComputeFromOffsets;
 
     if (!thin && !criticalMissing) {
       return { ...computeRelativeDeadlines(textExtraction), _path: "text" };
@@ -632,23 +645,30 @@ ${SCHEMA_HINT}`;
  * contract WILL contain.
  */
 function criticalTimelineMissing(ex: ContractExtraction): boolean {
-  const critical: Array<ContractExtractionField<unknown>> = [
-    ex.closingDate,
+  // If a Rider (compensation-only) doc, timeline emptiness is expected —
+  // don't burn a Vision call.
+  const isRider = ex.compensationOnSeparateRider?.value === true;
+  if (isRider) return false;
+  const deadlines: Array<ContractExtractionField<unknown>> = [
     ex.inspectionDeadline,
     ex.inspectionObjectionDeadline,
     ex.financingDeadline,
     ex.earnestMoneyDueDate,
   ];
-  const present = critical.filter((f) => f && f.value != null).length;
-  // If a Rider (compensation-only) doc, timeline emptiness is expected —
-  // don't burn a Vision call. compensationOnSeparateRider=true OR a
-  // contractStage of "unknown" with zero timeline → leave as text.
-  const isRider = ex.compensationOnSeparateRider?.value === true;
-  if (isRider) return false;
-  // Trigger Vision when NONE of the five critical deadlines came back,
-  // or when closingDate specifically is missing (the single most
-  // important field — a real purchase contract always has one).
-  return present === 0 || ex.closingDate?.value == null;
+  const deadlinesPresent = deadlines.filter((f) => f && f.value != null).length;
+  // Escalate to Vision when the text pass didn't capture the timeline:
+  //   - no closing date (a real purchase contract always has one), OR
+  //   - no effective/acceptance date (the anchor for every deadline), OR
+  //   - the filled deadline set is largely empty (<2 of 4).
+  // Flattened WY WAR / Dotloop contracts put the CLAUSES in the text
+  // layer but the FILLED-IN date values in graphic overlays — so
+  // closing+price can come back via text while every deadline stays
+  // null. That is still an incomplete extraction and MUST hit Vision.
+  return (
+    ex.closingDate?.value == null ||
+    ex.effectiveDate?.value == null ||
+    deadlinesPresent < 2
+  );
 }
 
 /** True when the extraction captured any relative-deadline offset —
@@ -778,9 +798,16 @@ export function mergeExtractionsByRecency(
 export function deriveWalkthrough(
   ex: ContractExtraction,
 ): ContractExtraction {
-  const wt = ex.walkthroughDate?.value;
+  const wt = ex.walkthroughDate?.value as string | null;
   const closing = ex.closingDate?.value as string | null;
-  if ((wt === null || wt === undefined || wt === "") && closing) {
+  if (!closing) return ex;
+  // Set the final walkthrough to 24h before closing when it's unstated,
+  // OR when the contract only says "on/before the day of closing" (so the
+  // model returned the closing date itself) — a walkthrough belongs the
+  // day before, not on closing day.
+  const needsDerive =
+    wt === null || wt === undefined || wt === "" || wt >= closing;
+  if (needsDerive) {
     const d = new Date(`${closing}T00:00:00`);
     if (!Number.isNaN(d.getTime())) {
       d.setDate(d.getDate() - 1);
@@ -963,6 +990,8 @@ function normalize(parsed: unknown): ContractExtraction {
     inspectionPeriodUnit: asField<"business" | "calendar">(o.inspectionPeriodUnit),
     inspectionObjectionDays: asField<number>(o.inspectionObjectionDays),
     inspectionObjectionUnit: asField<"business" | "calendar">(o.inspectionObjectionUnit),
+    titleCommitmentDays: asField<number>(o.titleCommitmentDays),
+    titleCommitmentUnit: asField<"business" | "calendar">(o.titleCommitmentUnit),
     titleObjectionDays: asField<number>(o.titleObjectionDays),
     titleObjectionUnit: asField<"business" | "calendar">(o.titleObjectionUnit),
     financingDeadlineDays: asField<number>(o.financingDeadlineDays),
@@ -985,10 +1014,9 @@ function normalize(parsed: unknown): ContractExtraction {
  * surfaces "enter the Effective Date to auto-fill deadlines."
  *
  * Anchors:
- *   earnest money / inspection / financing → Effective Date
+ *   earnest money / inspection / financing / title commitment → Effective Date
  *   inspection objection → end of inspection period (so it stacks)
- *   title objection → NOT computed (anchored to title-commitment
- *     receipt, which isn't a date we have)
+ *   title objection → title-commitment deadline (so it stacks)
  */
 export function computeRelativeDeadlines(
   ex: ContractExtraction,
@@ -1064,6 +1092,42 @@ export function computeRelativeDeadlines(
     out.financingDeadline = computed(
       derive(effective, out.financingDeadlineDays.value, unit),
       `${out.financingDeadlineDays.value} ${unit} days from Effective Date`,
+    );
+  }
+
+  // Title commitment — anchored to Effective Date ("deliver the title
+  // commitment N Business Days after mutual acceptance").
+  let titleCommitmentEnd: Date | null = null;
+  if (
+    out.titleCommitmentDeadline.value == null &&
+    typeof out.titleCommitmentDays.value === "number"
+  ) {
+    const unit =
+      out.titleCommitmentUnit.value === "calendar" ? "calendar" : "business";
+    const iso = derive(effective, out.titleCommitmentDays.value, unit);
+    titleCommitmentEnd = new Date(`${iso}T00:00:00`);
+    out.titleCommitmentDeadline = computed(
+      iso,
+      `${out.titleCommitmentDays.value} ${unit} days from Effective Date`,
+    );
+  } else if (out.titleCommitmentDeadline.value) {
+    titleCommitmentEnd = new Date(`${out.titleCommitmentDeadline.value}T00:00:00`);
+  }
+
+  // Title objection — anchored to the title-commitment deadline ("within
+  // N Business Days of receipt of the title commitment"). Now computable
+  // because titleCommitmentEnd is known above.
+  if (
+    out.titleObjectionDeadline.value == null &&
+    typeof out.titleObjectionDays.value === "number" &&
+    titleCommitmentEnd &&
+    !Number.isNaN(titleCommitmentEnd.getTime())
+  ) {
+    const unit =
+      out.titleObjectionUnit.value === "calendar" ? "calendar" : "business";
+    out.titleObjectionDeadline = computed(
+      derive(titleCommitmentEnd, out.titleObjectionDays.value, unit),
+      `${out.titleObjectionDays.value} ${unit} days after title commitment`,
     );
   }
 
