@@ -9,7 +9,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/require-session";
-import { readFormFields } from "@/services/ai/FormFillService";
+import { readFormFields, detectXfa } from "@/services/ai/FormFillService";
+import { extractTextLayout } from "@/services/ai/PdfTextLayout";
 import { Prisma } from "@prisma/client";
 
 export const runtime = "nodejs";
@@ -22,7 +23,7 @@ export async function GET() {
     where: { accountId: actor.accountId },
     select: {
       id: true, name: true, category: true, fileName: true,
-      fieldCount: true, isFlat: true, createdAt: true,
+      fieldCount: true, isFlat: true, isXfa: true, hasText: true, createdAt: true,
     },
     orderBy: { createdAt: "desc" },
   });
@@ -51,14 +52,29 @@ export async function POST(req: NextRequest) {
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
+  const bytes = new Uint8Array(buffer);
   let fields;
   try {
-    fields = await readFormFields(new Uint8Array(buffer));
+    fields = await readFormFields(bytes);
   } catch (err) {
     return NextResponse.json(
       { error: `couldn't read PDF: ${err instanceof Error ? err.message.slice(0, 120) : "error"}` },
       { status: 400 },
     );
+  }
+
+  // Classify: fillable (AcroForm) vs flat. For flat, distinguish an
+  // Adobe-only XFA (unusable until flattened) from a real flat PDF with
+  // a text layer (the mapper can anchor to it).
+  const isXfa = detectXfa(bytes);
+  let hasText = false;
+  if (fields.length === 0 && !isXfa) {
+    try {
+      const layout = await extractTextLayout(bytes);
+      hasText = layout.items.length >= 20;
+    } catch {
+      hasText = false;
+    }
   }
 
   const name = String(form.get("name") ?? "").trim() || file.name.replace(/\.pdf$/i, "");
@@ -74,8 +90,13 @@ export async function POST(req: NextRequest) {
       fieldsJson: fields as unknown as Prisma.InputJsonValue,
       fieldCount: fields.length,
       isFlat: fields.length === 0,
+      isXfa,
+      hasText,
     },
-    select: { id: true, name: true, category: true, fieldCount: true, isFlat: true },
+    select: {
+      id: true, name: true, category: true, fieldCount: true,
+      isFlat: true, isXfa: true, hasText: true,
+    },
   });
 
   return NextResponse.json({ ok: true, form: created });

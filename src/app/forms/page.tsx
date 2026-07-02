@@ -22,7 +22,7 @@ export default async function FormsPage() {
       where: { accountId: actor.accountId },
       select: {
         id: true, name: true, category: true, fileName: true,
-        fieldCount: true, isFlat: true, createdAt: true,
+        fieldCount: true, isFlat: true, isXfa: true, hasText: true, createdAt: true,
       },
       orderBy: { createdAt: "desc" },
     }),

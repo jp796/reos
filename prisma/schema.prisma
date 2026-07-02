@@ -782,6 +782,12 @@ model FormTemplate {
   fieldsJson Json?    @map("fields_json")
   fieldCount Int      @default(0) @map("field_count")
   isFlat     Boolean  @default(false) @map("is_flat")
+  /// Adobe-only XFA form — renders as the "install Adobe" page to
+  /// everything else, so it must be flattened (Adobe Print→PDF) before
+  /// it's fillable. Distinct from a usable flat PDF with a text layer.
+  isXfa      Boolean  @default(false) @map("is_xfa")
+  /// True when a flat PDF has a real text layer (anchors → mapper works).
+  hasText    Boolean  @default(false) @map("has_text")
   /// For flat forms: the saved per-field coordinate map (the "set up
   /// once, reuse" placements the mapper produces). Placement[] shape.
   placementsJson Json? @map("placements_json")

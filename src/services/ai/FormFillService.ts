@@ -29,6 +29,13 @@ export interface FieldValue {
   value: string | boolean; // string for text/dropdown/radio, boolean for checkbox
 }
 
+/** Detect an Adobe-only XFA form (carries an /XFA entry in its AcroForm
+ *  dict). These render as the "install Adobe" page everywhere except
+ *  Adobe, so they can't be filled/mapped until flattened. */
+export function detectXfa(pdfBytes: Uint8Array): boolean {
+  return Buffer.from(pdfBytes).includes("/XFA");
+}
+
 /** Read the fillable fields from a PDF. Empty array = flat PDF. */
 export async function readFormFields(pdfBytes: Uint8Array): Promise<FormField[]> {
   const doc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });

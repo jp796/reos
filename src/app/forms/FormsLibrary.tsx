@@ -18,6 +18,8 @@ interface FormRow {
   fileName: string;
   fieldCount: number;
   isFlat: boolean;
+  isXfa: boolean;
+  hasText: boolean;
   createdAt: string;
 }
 interface Deal { id: string; address: string; }
@@ -45,7 +47,8 @@ export function FormsLibrary({
     setBusy(true);
     let added = 0;
     let fillable = 0;
-    let flat = 0;
+    let flatReady = 0;
+    let xfa = 0;
     let failed = 0;
     for (const file of files) {
       try {
@@ -59,13 +62,15 @@ export function FormsLibrary({
           continue;
         }
         added++;
-        if (data.form.isFlat) flat++;
+        if (data.form.isXfa) xfa++;
+        else if (data.form.isFlat) flatReady++;
         else fillable++;
         setForms((f) => [
           {
             id: data.form.id, name: data.form.name, category: data.form.category,
             fileName: file.name, fieldCount: data.form.fieldCount,
-            isFlat: data.form.isFlat, createdAt: new Date().toISOString(),
+            isFlat: data.form.isFlat, isXfa: data.form.isXfa, hasText: data.form.hasText,
+            createdAt: new Date().toISOString(),
           },
           ...f,
         ]);
@@ -76,10 +81,13 @@ export function FormsLibrary({
     setBusy(false);
     startTransition(() => router.refresh());
     if (added > 0) {
-      toast.success(
-        `Added ${added} form${added === 1 ? "" : "s"}`,
-        `${fillable} fillable${flat ? `, ${flat} flat (no fields)` : ""}${failed ? ` · ${failed} failed` : ""}.`,
-      );
+      const bits = [
+        `${fillable} fillable`,
+        flatReady ? `${flatReady} flat` : "",
+        xfa ? `${xfa} XFA (flatten first)` : "",
+        failed ? `${failed} failed` : "",
+      ].filter(Boolean);
+      toast.success(`Added ${added} form${added === 1 ? "" : "s"}`, bits.join(" · "));
     } else {
       toast.error("Upload failed", `${failed} file${failed === 1 ? "" : "s"} couldn't be added.`);
     }
@@ -154,10 +162,22 @@ export function FormsLibrary({
                     <div className="font-medium">{f.name}</div>
                     <div className="text-xs text-text-muted">
                       {f.category ? `${f.category} · ` : ""}
-                      {f.isFlat ? (
-                        <span className="text-amber-600">flat PDF — no fillable fields</span>
+                      {!f.isFlat ? (
+                        <span className="text-emerald-600">
+                          {f.fieldCount} fillable fields — ready to fill
+                        </span>
+                      ) : f.isXfa ? (
+                        <span className="text-red-600">
+                          ⚠ Adobe-only XFA — flatten first (open in Adobe → Print → Save as PDF), then re-upload
+                        </span>
+                      ) : f.hasText ? (
+                        <span className="text-amber-600">
+                          flat PDF with text layer — ready for the mapper (next build)
+                        </span>
                       ) : (
-                        `${f.fieldCount} fillable fields`
+                        <span className="text-amber-600">
+                          flat scan — no text layer; the mapper will handle it (next build)
+                        </span>
                       )}
                     </div>
                   </div>
