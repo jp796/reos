@@ -41,36 +41,47 @@ export function FormsLibrary({
   const [filling, setFilling] = useState<string | null>(null);
 
   async function upload(files: File[]) {
-    const file = files[0];
-    if (!file) return;
+    if (files.length === 0) return;
     setBusy(true);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("category", category);
-      const res = await fetch("/api/forms", { method: "POST", body: fd });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "upload failed");
+    let added = 0;
+    let fillable = 0;
+    let flat = 0;
+    let failed = 0;
+    for (const file of files) {
+      try {
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("category", category);
+        const res = await fetch("/api/forms", { method: "POST", body: fd });
+        const data = await res.json();
+        if (!res.ok) {
+          failed++;
+          continue;
+        }
+        added++;
+        if (data.form.isFlat) flat++;
+        else fillable++;
+        setForms((f) => [
+          {
+            id: data.form.id, name: data.form.name, category: data.form.category,
+            fileName: file.name, fieldCount: data.form.fieldCount,
+            isFlat: data.form.isFlat, createdAt: new Date().toISOString(),
+          },
+          ...f,
+        ]);
+      } catch {
+        failed++;
+      }
+    }
+    setBusy(false);
+    startTransition(() => router.refresh());
+    if (added > 0) {
       toast.success(
-        "Form added",
-        data.form.isFlat
-          ? "Heads up: no fillable fields detected (flat PDF)."
-          : `${data.form.fieldCount} fillable fields detected.`,
+        `Added ${added} form${added === 1 ? "" : "s"}`,
+        `${fillable} fillable${flat ? `, ${flat} flat (no fields)` : ""}${failed ? ` · ${failed} failed` : ""}.`,
       );
-      startTransition(() => router.refresh());
-      // Optimistic add so it shows immediately.
-      setForms((f) => [
-        {
-          id: data.form.id, name: data.form.name, category: data.form.category,
-          fileName: file.name, fieldCount: data.form.fieldCount,
-          isFlat: data.form.isFlat, createdAt: new Date().toISOString(),
-        },
-        ...f,
-      ]);
-    } catch (e) {
-      toast.error("Upload failed", e instanceof Error ? e.message : "unknown");
-    } finally {
-      setBusy(false);
+    } else {
+      toast.error("Upload failed", `${failed} file${failed === 1 ? "" : "s"} couldn't be added.`);
     }
   }
 
@@ -121,10 +132,11 @@ export function FormsLibrary({
           </select>
         </div>
         <DropZone
+          multiple
           onFiles={upload}
           disabled={busy}
-          kind="blank form PDF"
-          explainer="Upload a blank fillable form (offer, counter, addendum, disclosure). Atlas reads its fields so it can fill them for any deal. Fillable (AcroForm) PDFs work best."
+          kind="blank form PDF(s)"
+          explainer="Drop one or several blank forms at once (offer, counter, addendum, disclosure). Atlas reads each form's fields so it can fill them for any deal. Fillable (AcroForm) PDFs work best — flat PDFs get flagged."
         />
       </section>
 
