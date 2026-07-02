@@ -102,6 +102,30 @@ export function TaskPanel({
     { id: string; name: string; itemCount: number }[]
   >([]);
   const [applyingTpl, setApplyingTpl] = useState(false);
+  const [generating, setGenerating] = useState(false);
+
+  // Generate an AI task list tailored to THIS deal's contract terms.
+  async function generateAi() {
+    setGenerating(true);
+    try {
+      const res = await fetch(`/api/transactions/${transactionId}/generate-tasks`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "generation failed");
+      toast.success(
+        data.created > 0 ? "Task list generated" : "Already up to date",
+        data.summary ?? `${data.created} task(s) added.`,
+      );
+      startTransition(() => router.refresh());
+    } catch (e) {
+      toast.error("Couldn't generate", e instanceof Error ? e.message : "unknown");
+    } finally {
+      setGenerating(false);
+    }
+  }
 
   async function loadTemplates() {
     if (templates.length > 0) return;
@@ -278,6 +302,16 @@ export function TaskPanel({
           </span>
         </h2>
         <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={generateAi}
+            disabled={generating || pending}
+            className="inline-flex items-center gap-1 rounded border border-brand-400 bg-brand-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50"
+            title="Generate a task list tailored to this contract (dates, contingencies, side)"
+          >
+            <Sparkles className="h-3 w-3" strokeWidth={2.4} />
+            {generating ? "Generating…" : items.length > 0 ? "Regenerate with Atlas" : "Generate task list"}
+          </button>
           {items.length === 0 && (
             <button
               type="button"
