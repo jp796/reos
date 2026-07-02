@@ -76,6 +76,7 @@ model Account {
 
   users                     User[]
   contacts                  Contact[]
+  formTemplates             FormTemplate[]
   transactions              Transaction[]
   assets                    Asset[]
   projects                  Project[]
@@ -764,6 +765,30 @@ model Document {
 
   @@index([transactionId])
   @@map("documents")
+}
+
+/// Account-level library of blank forms (offer, counter, addendum,
+/// disclosure…) that Atlas fills with a deal's data, then routes to
+/// e-sign. Fillable (AcroForm) forms fill exactly; flat forms are
+/// flagged (isFlat) for the coordinate-overlay path.
+model FormTemplate {
+  id         String   @id @default(cuid())
+  accountId  String   @map("account_id")
+  name       String
+  category   String?  // offer, counter, addendum, disclosure, other
+  fileName   String   @map("file_name")
+  rawBytes   Bytes    @map("raw_bytes")
+  /// Cached FormField[] (name+type+options) read from the AcroForm.
+  fieldsJson Json?    @map("fields_json")
+  fieldCount Int      @default(0) @map("field_count")
+  isFlat     Boolean  @default(false) @map("is_flat")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+  @@map("form_templates")
 }
 
 model EsignRequest {
