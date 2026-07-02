@@ -782,6 +782,9 @@ model FormTemplate {
   fieldsJson Json?    @map("fields_json")
   fieldCount Int      @default(0) @map("field_count")
   isFlat     Boolean  @default(false) @map("is_flat")
+  /// For flat forms: the saved per-field coordinate map (the "set up
+  /// once, reuse" placements the mapper produces). Placement[] shape.
+  placementsJson Json? @map("placements_json")
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
 
