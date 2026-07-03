@@ -12,6 +12,10 @@ import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { requireSession, assertSameAccount } from "@/lib/require-session";
 import { aiFillForm } from "@/services/ai/FormFillService";
+import { overlayTextOnPdf } from "@/services/ai/FormOverlayService";
+import { FIELD_CATALOG, formatFieldValue } from "@/services/ai/FormFieldCatalog";
+
+interface MappedField { field: string; page: number; xPt: number; yPt: number; size?: number }
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -57,16 +61,23 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const guard = assertSameAccount(actor, txn.accountId);
   if (guard) return guard;
 
-  if (form.isFlat) {
+  if (form.isXfa) {
     return NextResponse.json({
       ok: false,
-      reason: "flat_form",
-      error:
-        "This form has no fillable fields (it's a flat PDF). Upload the fillable version of the form, or I'll add coordinate-overlay filling next.",
+      reason: "xfa",
+      error: "This form is unflattened XFA. Re-upload it so REOS can flatten it first.",
+    });
+  }
+  const placements = (form.placementsJson as unknown as MappedField[] | null) ?? [];
+  if (form.isFlat && placements.length === 0) {
+    return NextResponse.json({
+      ok: false,
+      reason: "map_needed",
+      error: "Map this form's fields first (open it in the field mapper), then fill.",
     });
   }
 
-  // Build the deal facts the AI maps onto the form.
+  // Build the deal facts.
   const buyers: string[] = [];
   const sellers: string[] = [];
   const primaryIsBuyer = txn.side === "buy" || txn.side === "both" || txn.side === "buyer";
@@ -102,11 +113,32 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     primaryContactPhone: txn.contact.primaryPhone,
   };
 
-  let result;
+  let filledBytes: Uint8Array;
+  let filled = 0;
+  let total = 0;
   try {
-    result = await aiFillForm(env.OPENAI_API_KEY, new Uint8Array(form.rawBytes), facts, {
-      flatten: false,
-    });
+    if (!form.isFlat) {
+      // Fillable AcroForm — AI maps facts onto the form fields.
+      const r = await aiFillForm(env.OPENAI_API_KEY, new Uint8Array(form.rawBytes), facts, {
+        flatten: false,
+      });
+      filledBytes = r.bytes;
+      filled = r.filled;
+      total = r.fields.length;
+    } else {
+      // Flat form — stamp values at the mapped coordinates.
+      const overlays = placements
+        .map((p) => {
+          const cat = FIELD_CATALOG.find((c) => c.key === p.field);
+          const text = formatFieldValue(cat?.kind ?? "text", facts[p.field]);
+          return { page: p.page, x: p.xPt, y: p.yPt, text, size: p.size ?? 10 };
+        })
+        .filter((o) => o.text);
+      const r = await overlayTextOnPdf(new Uint8Array(form.rawBytes), overlays);
+      filledBytes = r.bytes;
+      filled = r.drawn;
+      total = placements.length;
+    }
   } catch (err) {
     return NextResponse.json(
       { error: `fill failed: ${err instanceof Error ? err.message.slice(0, 160) : "error"}` },
@@ -122,7 +154,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       category,
       fileName: outName,
       mimeType: "application/pdf",
-      rawBytes: Buffer.from(result.bytes),
+      rawBytes: Buffer.from(filledBytes),
       source: "form_fill",
       uploadOrigin: `form:${form.id}`,
       uploadedAt: new Date(),
@@ -134,9 +166,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     ok: true,
     documentId: doc.id,
     fileName: doc.fileName,
-    filled: result.filled,
-    totalFields: result.fields.length,
-    failed: result.failed,
-    summary: `Filled ${result.filled} of ${result.fields.length} fields on "${form.name}" for ${txn.propertyAddress ?? "the deal"}. Saved to the deal's documents — ready to e-sign.`,
+    filled,
+    totalFields: total,
+    summary: `Filled ${filled} of ${total} field(s) on "${form.name}" for ${txn.propertyAddress ?? "the deal"}. Saved to the deal's documents — ready to e-sign.`,
   });
 }

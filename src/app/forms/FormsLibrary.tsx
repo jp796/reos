@@ -182,11 +182,19 @@ export function FormsLibrary({
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    {f.isFlat && !f.isXfa && (
+                      <a
+                        href={`/forms/${f.id}/map`}
+                        className="rounded border border-border bg-surface px-2.5 py-1 text-xs font-medium text-text-muted hover:border-brand-400 hover:text-brand-700"
+                      >
+                        Map fields
+                      </a>
+                    )}
                     <select
                       value={fillFor[f.id] ?? ""}
                       onChange={(e) => setFillFor((m) => ({ ...m, [f.id]: e.target.value }))}
-                      disabled={f.isFlat}
-                      className="max-w-[14rem] rounded border border-border bg-surface-2 px-2 py-1 text-xs disabled:opacity-50"
+                      disabled={f.isXfa}
+                      className="max-w-[12rem] rounded border border-border bg-surface-2 px-2 py-1 text-xs disabled:opacity-50"
                     >
                       <option value="">Fill for deal…</option>
                       {deals.map((d) => (
@@ -196,7 +204,7 @@ export function FormsLibrary({
                     <button
                       type="button"
                       onClick={() => fill(f.id)}
-                      disabled={f.isFlat || filling === f.id}
+                      disabled={f.isXfa || filling === f.id}
                       className="rounded-md bg-brand-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-50"
                     >
                       {filling === f.id ? "Filling…" : "Fill + save"}

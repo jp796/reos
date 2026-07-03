@@ -53,9 +53,13 @@ export async function overlayTextOnPdf(
     const value = p.check ? "X" : (p.text ?? "");
     if (!value) { skipped++; continue; }
     try {
+      const w = page.getWidth();
+      const h = page.getHeight();
       page.drawText(value, {
-        x: p.x,
-        y: p.y,
+        // Keep the start on-page so a rough auto-placement never renders
+        // a value off the edge (the mapper nudges the exact spot).
+        x: Math.min(Math.max(p.x, 2), w - 4),
+        y: Math.min(Math.max(p.y, 2), h - 4),
         size: p.size ?? 10,
         font,
         color: rgb(0.06, 0.09, 0.36), // ink blue, reads as filled-in
