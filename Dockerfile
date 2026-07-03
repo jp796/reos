@@ -32,12 +32,17 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 
 RUN apk add --no-cache openssl libc6-compat poppler-utils tini \
+    chromium nss freetype harfbuzz ca-certificates ttf-freefont font-noto \
     && addgroup -S reos && adduser -S reos -G reos
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 # Cloud Run injects PORT; default to 3000 for local `docker run`.
 ENV PORT=3000
+# XFA form flattening uses Alpine's system Chromium (Playwright's bundled
+# browser is glibc-only and won't run on musl). playwright-core drives it.
+ENV CHROMIUM_PATH=/usr/bin/chromium-browser
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 # The standalone output is a self-contained server.js + its own
 # node_modules (only the bits Next determined it needs).
@@ -49,6 +54,12 @@ COPY --from=builder --chown=reos:reos /app/public ./public
 # pick these up correctly, so we drop them in explicitly.
 COPY --from=builder --chown=reos:reos /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder --chown=reos:reos /app/node_modules/@prisma/client ./node_modules/@prisma/client
+
+# pdfjs assets (standard fonts + cmaps, read at runtime by the XFA
+# flattener) and playwright-core (dynamic-imported, so Next's standalone
+# tracer may not include it).
+COPY --from=builder --chown=reos:reos /app/node_modules/pdfjs-dist ./node_modules/pdfjs-dist
+COPY --from=builder --chown=reos:reos /app/node_modules/playwright-core ./node_modules/playwright-core
 
 USER reos
 EXPOSE 3000

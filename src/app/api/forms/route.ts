@@ -11,10 +11,11 @@ import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/require-session";
 import { readFormFields, detectXfa } from "@/services/ai/FormFillService";
 import { extractTextLayout } from "@/services/ai/PdfTextLayout";
+import { flattenXfaToPdf } from "@/services/ai/XfaFlattenService";
 import { Prisma } from "@prisma/client";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 export async function GET() {
   const actor = await requireSession();
@@ -63,12 +64,28 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Classify: fillable (AcroForm) vs flat. For flat, distinguish an
-  // Adobe-only XFA (unusable until flattened) from a real flat PDF with
-  // a text layer (the mapper can anchor to it).
-  const isXfa = detectXfa(bytes);
+  // Classify + normalize. Fillable (AcroForm) → use as-is. Adobe-only
+  // XFA → auto-flatten it here (headless Chromium + pdfjs) into a usable
+  // flat PDF with a text layer. A real flat PDF → probe its text layer.
+  let storeBytes: Buffer = buffer;
+  let isXfa = detectXfa(bytes);
+  let isFlat = fields.length === 0;
   let hasText = false;
-  if (fields.length === 0 && !isXfa) {
+
+  if (isXfa) {
+    try {
+      const flat = await flattenXfaToPdf(bytes);
+      storeBytes = Buffer.from(flat);
+      const layout = await extractTextLayout(new Uint8Array(storeBytes));
+      hasText = layout.items.length >= 20;
+      isXfa = false; // it's now a usable flat form
+      isFlat = true;
+    } catch (err) {
+      console.warn("[forms] XFA flatten failed:", err instanceof Error ? err.message : err);
+      // Keep the original XFA; leave it flagged for manual handling.
+      isXfa = true;
+    }
+  } else if (isFlat) {
     try {
       const layout = await extractTextLayout(bytes);
       hasText = layout.items.length >= 20;
@@ -86,10 +103,10 @@ export async function POST(req: NextRequest) {
       name,
       category,
       fileName: file.name,
-      rawBytes: buffer,
+      rawBytes: storeBytes,
       fieldsJson: fields as unknown as Prisma.InputJsonValue,
       fieldCount: fields.length,
-      isFlat: fields.length === 0,
+      isFlat,
       isXfa,
       hasText,
     },
