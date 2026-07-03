@@ -54,6 +54,9 @@ function toNum(v: unknown): number | null {
 
 interface Body {
   address?: string;
+  /** Which side the user represents ("buy" | "sell"); from the wizard
+   *  side-picker. When given it wins over inference. */
+  side?: string | null;
   buyerName?: string | null;
   sellerName?: string | null;
   effectiveDate?: string | null;
@@ -144,10 +147,18 @@ export async function POST(req: NextRequest) {
   const buyerPct = toNum(body.buyerSideCommissionPct);
   const buyerAmt = toNum(body.buyerSideCommissionAmount);
 
-  // Contact lookup / create — prefer buyer, fall back to seller, else
-  // placeholder based on address.
+  // Which side the user represents. The wizard's side-picker wins; only
+  // fall back to inference when it isn't supplied.
+  const explicitSide: "buy" | "sell" | null =
+    body.side === "buy" || body.side === "sell" ? body.side : null;
+
+  // Contact lookup / create — the primary contact is the party the user
+  // represents: the SELLER on a sell-side (listing) deal, otherwise the
+  // BUYER. Falls back to the other party, then an address placeholder.
   const principalName =
-    body.buyerName?.trim() || body.sellerName?.trim() || null;
+    (explicitSide === "sell"
+      ? body.sellerName?.trim() || body.buyerName?.trim()
+      : body.buyerName?.trim() || body.sellerName?.trim()) || null;
   let contact;
   if (principalName) {
     contact = await prisma.contact.findFirst({
@@ -175,10 +186,15 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // Side inference: if the contact we matched is the buyer, it's a
-  // buy-side deal; else default sell-side.
+  // Side: the caller's explicit side wins. Otherwise the primary contact
+  // is the buyer whenever the contract names one (see principalName), so
+  // it's buy-side; only sell-side when there's no buyer. NEVER string-
+  // compare contact.fullName to body.buyerName — a fuzzy/case-insensitive
+  // contact match makes that fail and silently flips a buy to a sell
+  // (this mislabeled investor purchases: the buyer entity showed as the
+  // seller).
   const side: "buy" | "sell" =
-    body.buyerName && contact.fullName === body.buyerName ? "buy" : "sell";
+    explicitSide ?? (body.buyerName?.trim() ? "buy" : "sell");
 
   const existing = await prisma.transaction.findFirst({
     where: {
@@ -264,6 +280,32 @@ export async function POST(req: NextRequest) {
       } as Prisma.InputJsonValue,
     },
   });
+
+  // Record the OTHER party — the seller on a buy-side deal, the buyer on
+  // a sell-side deal — as a co-participant so both roles show on the deal
+  // (the primary contact is the party the user represents).
+  const otherName = (side === "sell" ? body.buyerName : body.sellerName)?.trim();
+  if (otherName && otherName.toLowerCase() !== (principalName ?? "").toLowerCase()) {
+    const otherContact =
+      (await prisma.contact.findFirst({
+        where: { accountId: account.id, fullName: { equals: otherName, mode: "insensitive" } },
+      })) ??
+      (await prisma.contact.create({
+        data: { accountId: account.id, fullName: otherName, sourceName: "Contract upload / scan" },
+      }));
+    const otherRole = side === "sell" ? "co_buyer" : "co_seller";
+    await prisma.transactionParticipant.upsert({
+      where: {
+        transactionId_contactId_role: {
+          transactionId: txn.id,
+          contactId: otherContact.id,
+          role: otherRole,
+        },
+      },
+      create: { transactionId: txn.id, contactId: otherContact.id, role: otherRole },
+      update: {},
+    });
+  }
 
   // Seed ONE milestone per known date so the timeline renders rich.
   const milestoneSpec: Array<{

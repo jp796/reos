@@ -243,6 +243,10 @@ export function NewTransactionWizard() {
     try {
       const body: Record<string, unknown> = {
         address: form.address.trim(),
+        // Map the side-picker to the deal's buy/sell side so the primary
+        // contact + roles aren't mis-inferred (listing = sell, everything
+        // else the user represents the buyer).
+        side: side === "listing" ? "sell" : "buy",
         buyerName: form.buyerName.trim() || null,
         sellerName: form.sellerName.trim() || null,
         effectiveDate: form.effectiveDate || null,
