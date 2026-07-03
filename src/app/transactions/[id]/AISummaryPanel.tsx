@@ -57,7 +57,7 @@ export function AISummaryPanel({
   }
 
   return (
-    <section className="mt-8 rounded-md border border-border bg-gradient-to-br from-neutral-50 to-white p-4">
+    <section className="mt-8 rounded-md border border-border bg-gradient-to-br from-neutral-50 to-white dark:from-surface-2 dark:to-surface p-4">
       <div className="flex items-baseline justify-between">
         <h2 className="text-lg font-medium">AI summary</h2>
         <div className="flex items-center gap-3 text-xs text-text-muted">

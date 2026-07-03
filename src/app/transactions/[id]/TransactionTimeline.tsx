@@ -336,12 +336,12 @@ export function TransactionTimeline(props: Props) {
         </div>
         <div className="flex items-center gap-2 text-xs">
           {props.effectiveDate && (
-            <span className="rounded bg-emerald-50 px-2 py-1 text-emerald-700">
+            <span className="rounded bg-emerald-50 px-2 py-1 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
               Effective {fmt(props.effectiveDate)}
             </span>
           )}
           {props.closingDate && (
-            <span className="rounded bg-emerald-50 px-2 py-1 text-emerald-700">
+            <span className="rounded bg-emerald-50 px-2 py-1 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
               Closing {fmt(props.closingDate)}
             </span>
           )}

@@ -127,6 +127,21 @@ export default async function BoardPage({
         </p>
       </header>
 
+      {/* HNL Deal-to-Close Heat Timeline (embedded dashboard). */}
+      <details open className="mb-6 rounded-xl border border-border bg-surface">
+        <summary className="cursor-pointer select-none px-4 py-2.5 text-sm font-medium text-text">
+          Deal-to-Close Heat Timeline
+        </summary>
+        <div className="px-2 pb-2">
+          <iframe
+            src="https://hnl-deal-heat.netlify.app/?key=heat-closer-771&embed=1"
+            title="Deal-to-Close Heat Timeline"
+            className="h-[1000px] w-full rounded-lg border-0"
+            loading="lazy"
+          />
+        </div>
+      </details>
+
       {/* Strategy tabs */}
       <div className="mb-4 flex flex-wrap gap-1.5">
         {STRATEGIES.map((s) => {
