@@ -27,6 +27,12 @@ import {
   type ContractExtraction,
   type ExtractStreamEvent,
 } from "@/services/ai/ContractExtractionService";
+import {
+  generateAiTasks,
+  buildTaskGenInputFromExtraction,
+  type TaskGenInput,
+} from "@/services/ai/AiTaskGenerationService";
+import { learnedTitlesForDeal } from "@/services/core/TaskTemplateLearnService";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -63,8 +69,16 @@ export async function POST(req: NextRequest) {
       status: 400,
     });
   }
+  const rawSide = String(form.get("side") ?? "");
+  const side: TaskGenInput["side"] =
+    rawSide === "buyer" || rawSide === "listing" || rawSide === "both" || rawSide === "investor"
+      ? rawSide
+      : null;
+  const strategy = String(form.get("strategy") ?? "") || null;
+  const accountId = actor.accountId;
+  const apiKey = env.OPENAI_API_KEY; // narrowed to string by the guard above
 
-  const svc = new ContractExtractionService(env.OPENAI_API_KEY);
+  const svc = new ContractExtractionService(apiKey);
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream<Uint8Array>({
@@ -112,11 +126,49 @@ export async function POST(req: NextRequest) {
           return v === null || v === undefined || v === "";
         });
 
+        // Phase 1 + 2 done (deal terms + contingencies). NOT terminal —
+        // the client keeps the reading screen and moves to phase 3.
         send({
           type: "merged",
           extraction: merged,
           documentCount: extractions.length,
           missingCritical: missing,
+        });
+
+        // ── Phase 3: the REAL AI task list ──
+        send({ type: "status", message: "Building the task list from the contract…" });
+        let tasks: Awaited<ReturnType<typeof generateAiTasks>> = [];
+        try {
+          const learnedTaskTitles = await learnedTitlesForDeal(accountId, {
+            side,
+            strategy,
+            financingType:
+              (merged.financingType?.value as string | null) ?? null,
+          });
+          const input = buildTaskGenInputFromExtraction(
+            merged as unknown as Record<string, unknown>,
+            { side, strategy, learnedTaskTitles },
+          );
+          tasks = await generateAiTasks(apiKey, input);
+          // Reveal one at a time so the list visibly builds. The tasks are
+          // 100% real (one model call); only the reveal is sequential.
+          for (const task of tasks) {
+            send({ type: "task", task });
+            await new Promise((r) => setTimeout(r, 90));
+          }
+        } catch (err) {
+          send({
+            type: "status",
+            message: `Task list unavailable (${err instanceof Error ? err.message.slice(0, 80) : "error"}).`,
+          });
+        }
+
+        send({
+          type: "done",
+          extraction: merged,
+          documentCount: extractions.length,
+          missingCritical: missing,
+          tasks,
         });
       } catch (err) {
         send({

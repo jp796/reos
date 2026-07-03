@@ -12,6 +12,7 @@ import {
   type GeneratedTask,
   type TaskGenInput,
 } from "@/services/ai/AiTaskGenerationService";
+import { learnedTitlesForDeal } from "./TaskTemplateLearnService";
 
 const iso = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : null);
 
@@ -29,6 +30,9 @@ export async function generateDealTasks(
   opts?: {
     contingencies?: Array<{ name: string; status?: string; description?: string }>;
     financingType?: string | null;
+    /** Tasks already generated (e.g. streamed in the live view) — persist
+     *  these instead of a second model call. */
+    preGeneratedTasks?: GeneratedTask[];
   },
 ): Promise<GenerateDealTasksResult | null> {
   if (!env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY not configured");
@@ -47,12 +51,19 @@ export async function generateDealTasks(
       | Array<{ name: string; status?: string; description?: string }>
       | undefined) ?? [];
 
+  const financingType = opts?.financingType ?? (txn.lenderName ? "Financed" : null);
+  const learnedTaskTitles = await learnedTitlesForDeal(accountId, {
+    side: txn.side,
+    strategy: txn.asset?.strategy ?? null,
+    financingType,
+  });
+
   const input: TaskGenInput = {
     side: (txn.side as TaskGenInput["side"]) ?? null,
     strategy: txn.asset?.strategy ?? null,
     propertyAddress: txn.propertyAddress,
     purchasePrice: txn.financials?.salePrice ?? null,
-    financingType: opts?.financingType ?? (txn.lenderName ? "Financed" : null),
+    financingType,
     titleCompany: txn.titleCompanyName,
     lender: txn.lenderName,
     dates: {
@@ -68,9 +79,15 @@ export async function generateDealTasks(
       possessionDate: iso(txn.possessionDate),
     },
     contingencies: opts?.contingencies ?? snapshotConts,
+    learnedTaskTitles,
   };
 
-  const tasks = await generateAiTasks(env.OPENAI_API_KEY, input);
+  // Reuse tasks already generated in the live view (token-efficient);
+  // otherwise generate now.
+  const tasks =
+    opts?.preGeneratedTasks && opts.preGeneratedTasks.length > 0
+      ? opts.preGeneratedTasks
+      : await generateAiTasks(env.OPENAI_API_KEY, input);
 
   const existing = await db.task.findMany({
     where: { transactionId: txn.id },

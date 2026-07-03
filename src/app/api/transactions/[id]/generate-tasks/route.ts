@@ -12,6 +12,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSession, assertSameAccount } from "@/lib/require-session";
 import { generateDealTasks } from "@/services/core/GenerateDealTasksService";
+import type { GeneratedTask } from "@/services/ai/AiTaskGenerationService";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -32,12 +33,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const body = (await req.json().catch(() => ({}))) as {
     contingencies?: Array<{ name: string; status?: string; description?: string }>;
     financingType?: string;
+    tasks?: GeneratedTask[];
   };
 
   try {
     const result = await generateDealTasks(prisma, txn.accountId, id, {
       contingencies: body.contingencies,
       financingType: body.financingType,
+      preGeneratedTasks: body.tasks,
     });
     if (!result) return NextResponse.json({ error: "deal not found" }, { status: 404 });
     return NextResponse.json({ ok: true, ...result });

@@ -2,21 +2,35 @@
 
 /**
  * LiveExtractionView — the split-screen "watch it read" experience.
- * Left: the document being read, page by page, in real time. Right: the
- * deal builds live as each value streams from the model — deal terms,
- * contingencies + provisions (with any non-standard term surfaced as its
- * own row), and a task list derived from the deadlines as they land.
- * Consumes the SSE stream from /api/automation/extract-contracts-stream.
+ * Left: the document being read in real time. Right: the deal builds in
+ * THREE visible phases that stream in sequence, like watching Claude work
+ *   1. Deal terms   2. Contingency framework   3. Task list
+ * The task list is the REAL AI-generated list (streamed from the engine),
+ * not a static date map. The screen does not advance to review until all
+ * three phases have streamed in (the `done` event).
  */
 
 import { useEffect, useRef, useState } from "react";
 
 type Field = { value: unknown; source: "text" | "vision" | "computed" };
 type Contingency = { name: string; status: string; description?: string };
+type Task = {
+  title: string;
+  dueDate: string | null;
+  owner?: string;
+  priority?: string;
+  category?: string;
+};
 
 interface Props {
   files: File[];
-  onComplete: (extraction: Record<string, unknown>, missingCritical: string[]) => void;
+  side?: string | null;
+  strategy?: string | null;
+  onComplete: (
+    extraction: Record<string, unknown>,
+    missingCritical: string[],
+    tasks: Task[],
+  ) => void;
   onError: (message: string) => void;
 }
 
@@ -40,23 +54,17 @@ const DISPLAY: Array<{ key: string; label: string; kind: "date" | "money" | "pct
   { key: "buyerSideCommissionPct", label: "Buyer commission", kind: "pct" },
 ];
 
-// A date field → the task it implies (built live as the date lands).
-const TASK_FOR_DATE: Record<string, string> = {
-  earnestMoneyDueDate: "Deliver earnest money",
-  inspectionDeadline: "Complete inspection",
-  inspectionObjectionDeadline: "Submit inspection objection",
-  titleCommitmentDeadline: "Receive title commitment",
-  titleObjectionDeadline: "Submit title objection",
-  financingDeadline: "Secure financing",
-  walkthroughDate: "Final walkthrough",
-  closingDate: "Close",
-};
-
-// Standard contingencies — anything else is a custom/new term we surface.
 const STANDARD = [
   "inspection", "financing", "appraisal", "title", "insurance", "walkthrough",
   "possession", "hoa", "survey", "disclosure", "sale of", "risk of loss",
 ];
+
+const PRIORITY_TONE: Record<string, string> = {
+  urgent: "text-red-600 dark:text-red-400",
+  high: "text-amber-600 dark:text-amber-400",
+  normal: "text-text-muted",
+  low: "text-text-subtle",
+};
 
 function fmt(kind: string, value: unknown): string {
   if (value == null || value === "") return "";
@@ -74,11 +82,14 @@ function fmtDate(iso: unknown): string {
     : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-export function LiveExtractionView({ files, onComplete, onError }: Props) {
+type Phase = "reading" | "tasks" | "done";
+
+export function LiveExtractionView({ files, side, strategy, onComplete, onError }: Props) {
   const [log, setLog] = useState<Array<{ text: string; kind: "doc" | "status" }>>([]);
   const [fields, setFields] = useState<Record<string, Field>>({});
   const [contingencies, setContingencies] = useState<Contingency[]>([]);
-  const [done, setDone] = useState(false);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [phase, setPhase] = useState<Phase>("reading");
   const logEndRef = useRef<HTMLDivElement>(null);
   const startedRef = useRef(false);
 
@@ -95,6 +106,8 @@ export function LiveExtractionView({ files, onComplete, onError }: Props) {
       try {
         const fd = new FormData();
         for (const f of files) fd.append("file", f);
+        if (side) fd.append("side", side);
+        if (strategy) fd.append("strategy", strategy);
         const res = await fetch("/api/automation/extract-contracts-stream", {
           method: "POST",
           body: fd,
@@ -146,14 +159,23 @@ export function LiveExtractionView({ files, onComplete, onError }: Props) {
               description: c?.description ? String(c.description) : undefined,
             }))
             .filter((c) => c.name);
-          // Merge — a later doc's richer list replaces the earlier one.
           setContingencies((prev) => (list.length >= prev.length ? list : prev));
           return;
         }
         setFields((f) => ({ ...f, [key]: { value: ev.value, source: ev.source as Field["source"] } }));
       } else if (type === "merged") {
-        setDone(true);
-        onComplete(ev.extraction as Record<string, unknown>, (ev.missingCritical as string[]) ?? []);
+        // Terms + contingencies done — move to phase 3 (tasks), don't leave.
+        setPhase("tasks");
+      } else if (type === "task") {
+        const t = ev.task as Task;
+        if (t?.title) setTasks((prev) => [...prev, t]);
+      } else if (type === "done") {
+        setPhase("done");
+        onComplete(
+          ev.extraction as Record<string, unknown>,
+          (ev.missingCritical as string[]) ?? [],
+          (ev.tasks as Task[]) ?? [],
+        );
       } else if (type === "error") {
         onError(String(ev.message));
       }
@@ -163,129 +185,155 @@ export function LiveExtractionView({ files, onComplete, onError }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Tasks derived live from whichever deadline fields have landed.
-  const tasks = Object.entries(TASK_FOR_DATE)
-    .map(([key, label]) => {
-      const v = fields[key]?.value;
-      return typeof v === "string" && v ? { label, date: v } : null;
-    })
-    .filter((t): t is { label: string; date: string } => t !== null)
-    .sort((a, b) => a.date.localeCompare(b.date));
-
-  const isCustom = (name: string) =>
-    !STANDARD.some((s) => name.toLowerCase().includes(s));
-
+  const isCustom = (name: string) => !STANDARD.some((s) => name.toLowerCase().includes(s));
   const filledCount = DISPLAY.filter((d) => fields[d.key]?.value != null).length;
 
+  const steps: Array<{ label: string; state: "done" | "active" | "pending" }> = [
+    { label: "Deal terms", state: phase === "reading" ? "active" : "done" },
+    { label: "Contingencies", state: phase === "reading" ? "active" : "done" },
+    { label: "Task list", state: phase === "done" ? "done" : phase === "tasks" ? "active" : "pending" },
+  ];
+
   return (
-    <div className="grid gap-4 md:grid-cols-2">
-      {/* LEFT — reading the document */}
-      <div className="rounded-lg border border-border bg-surface-2/40 p-4">
-        <div className="mb-2 flex items-center gap-2">
-          <span className={`inline-block h-2 w-2 rounded-full ${done ? "bg-emerald-500" : "animate-pulse bg-brand-500"}`} />
-          <h3 className="text-sm font-medium">{done ? "Finished reading" : "Reading the document…"}</h3>
-        </div>
-        <div className="max-h-[30rem] space-y-1 overflow-y-auto font-mono text-xs leading-relaxed">
-          {log.map((l, i) => (
-            <div key={i} className={l.kind === "doc" ? "mt-2 font-semibold text-text" : "text-text-muted"}>
-              {l.kind === "doc" ? "📄 " : "   "}
-              {l.text}
-            </div>
-          ))}
-          <div ref={logEndRef} />
-        </div>
+    <div className="space-y-3">
+      {/* Phase progress header */}
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        {steps.map((s, i) => (
+          <span key={i} className="flex items-center gap-1.5">
+            <span
+              className={`inline-flex h-4 w-4 items-center justify-center rounded-full text-[10px] ${
+                s.state === "done"
+                  ? "bg-emerald-500 text-white"
+                  : s.state === "active"
+                    ? "animate-pulse bg-brand-500 text-white"
+                    : "bg-surface-2 text-text-subtle"
+              }`}
+            >
+              {s.state === "done" ? "✓" : i + 1}
+            </span>
+            <span className={s.state === "pending" ? "text-text-subtle" : "text-text"}>{s.label}</span>
+            {i < steps.length - 1 && <span className="text-text-subtle">→</span>}
+          </span>
+        ))}
       </div>
 
-      {/* RIGHT — the deal building up */}
-      <div className="max-h-[30rem] space-y-4 overflow-y-auto rounded-lg border border-border bg-surface p-4">
-        {/* Deal terms */}
-        <div>
-          <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-sm font-medium">Deal terms</h3>
-            <span className="text-xs text-text-muted">{filledCount} fields</span>
+      <div className="grid gap-4 md:grid-cols-2">
+        {/* LEFT — reading the document */}
+        <div className="rounded-lg border border-border bg-surface-2/40 p-4">
+          <div className="mb-2 flex items-center gap-2">
+            <span className={`inline-block h-2 w-2 rounded-full ${phase === "done" ? "bg-emerald-500" : "animate-pulse bg-brand-500"}`} />
+            <h3 className="text-sm font-medium">
+              {phase === "done" ? "Finished" : phase === "tasks" ? "Building the task list…" : "Reading the document…"}
+            </h3>
           </div>
-          <div className="space-y-1">
-            {DISPLAY.map((d) => {
-              const f = fields[d.key];
-              const has = f?.value != null && f.value !== "";
-              return (
-                <div
-                  key={d.key}
-                  className={`flex items-center justify-between gap-3 rounded px-2 py-1 text-sm transition-colors ${
-                    has ? "bg-emerald-50 dark:bg-emerald-950/30" : ""
-                  }`}
-                >
-                  <span className="text-text-muted">{d.label}</span>
-                  <span className="flex items-center gap-1.5 text-right font-medium">
-                    {has ? (
-                      <>
-                        {fmt(d.kind, f.value)}
-                        {f.source === "computed" && (
-                          <span className="rounded bg-accent-100 px-1 text-[10px] text-accent-600">derived</span>
-                        )}
-                      </>
-                    ) : (
-                      <span className="text-text-subtle/40">·····</span>
-                    )}
-                  </span>
-                </div>
-              );
-            })}
+          <div className="max-h-[30rem] space-y-1 overflow-y-auto font-mono text-xs leading-relaxed">
+            {log.map((l, i) => (
+              <div key={i} className={l.kind === "doc" ? "mt-2 font-semibold text-text" : "text-text-muted"}>
+                {l.kind === "doc" ? "📄 " : "   "}
+                {l.text}
+              </div>
+            ))}
+            <div ref={logEndRef} />
           </div>
         </div>
 
-        {/* Contingencies + provisions (custom terms flagged) */}
-        {contingencies.length > 0 && (
-          <div className="border-t border-border pt-3">
-            <div className="reos-label mb-1.5 opacity-70">
-              Contingencies &amp; provisions ({contingencies.length})
+        {/* RIGHT — the deal building up */}
+        <div className="max-h-[30rem] space-y-4 overflow-y-auto rounded-lg border border-border bg-surface p-4">
+          {/* Phase 1 — Deal terms */}
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-sm font-medium">Deal terms</h3>
+              <span className="text-xs text-text-muted">{filledCount} fields</span>
             </div>
-            <ul className="space-y-1">
-              {contingencies.map((c, i) => {
-                const custom = isCustom(c.name);
+            <div className="space-y-1">
+              {DISPLAY.map((d) => {
+                const f = fields[d.key];
+                const has = f?.value != null && f.value !== "";
                 return (
-                  <li key={i} className="flex items-start gap-2 text-sm">
-                    <span className={custom ? "text-accent-500" : "text-emerald-500"}>
-                      {custom ? "✦" : "•"}
+                  <div
+                    key={d.key}
+                    className={`flex items-center justify-between gap-3 rounded px-2 py-1 text-sm transition-colors ${
+                      has ? "bg-emerald-50 dark:bg-emerald-950/30" : ""
+                    }`}
+                  >
+                    <span className="text-text-muted">{d.label}</span>
+                    <span className="flex items-center gap-1.5 text-right font-medium">
+                      {has ? (
+                        <>
+                          {fmt(d.kind, f.value)}
+                          {f.source === "computed" && (
+                            <span className="rounded bg-accent-100 px-1 text-[10px] text-accent-600">derived</span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-text-subtle/40">·····</span>
+                      )}
                     </span>
-                    <span>
-                      <span className="font-medium">{c.name}</span>
-                      {custom && (
-                        <span className="ml-1.5 rounded bg-accent-100 px-1 text-[10px] text-accent-600">
-                          new term
-                        </span>
-                      )}
-                      {c.status && c.status !== "applies" && (
-                        <span className="ml-1.5 text-xs text-text-muted">({c.status})</span>
-                      )}
-                      {c.description && (
-                        <span className="block text-xs text-text-muted">{c.description}</span>
-                      )}
-                    </span>
-                  </li>
+                  </div>
                 );
               })}
-            </ul>
+            </div>
           </div>
-        )}
 
-        {/* Tasks derived from the deadlines */}
-        {tasks.length > 0 && (
-          <div className="border-t border-border pt-3">
-            <div className="reos-label mb-1.5 opacity-70">Task list ({tasks.length})</div>
-            <ul className="space-y-1">
-              {tasks.map((t, i) => (
-                <li key={i} className="flex items-center justify-between gap-3 text-sm">
-                  <span className="flex items-center gap-2">
-                    <span className="inline-block h-3.5 w-3.5 rounded-sm border border-border" />
-                    {t.label}
-                  </span>
-                  <span className="text-xs text-text-muted">by {fmtDate(t.date)}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+          {/* Phase 2 — Contingency framework */}
+          {contingencies.length > 0 && (
+            <div className="border-t border-border pt-3">
+              <div className="reos-label mb-1.5 opacity-70">
+                Contingency framework ({contingencies.length})
+              </div>
+              <ul className="space-y-1">
+                {contingencies.map((c, i) => {
+                  const custom = isCustom(c.name);
+                  return (
+                    <li key={i} className="flex items-start gap-2 text-sm">
+                      <span className={custom ? "text-accent-500" : "text-emerald-500"}>{custom ? "✦" : "•"}</span>
+                      <span>
+                        <span className="font-medium">{c.name}</span>
+                        {custom && (
+                          <span className="ml-1.5 rounded bg-accent-100 px-1 text-[10px] text-accent-600">new term</span>
+                        )}
+                        {c.status && c.status !== "applies" && (
+                          <span className="ml-1.5 text-xs text-text-muted">({c.status})</span>
+                        )}
+                        {c.description && <span className="block text-xs text-text-muted">{c.description}</span>}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+
+          {/* Phase 3 — the REAL AI task list */}
+          {(phase !== "reading" || tasks.length > 0) && (
+            <div className="border-t border-border pt-3">
+              <div className="reos-label mb-1.5 flex items-center gap-2 opacity-70">
+                Task list ({tasks.length})
+                {phase === "tasks" && <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-brand-500" />}
+              </div>
+              {tasks.length === 0 && phase === "tasks" ? (
+                <p className="text-xs text-text-muted">Atlas is writing tasks from the contract…</p>
+              ) : (
+                <ul className="space-y-1">
+                  {tasks.map((t, i) => (
+                    <li key={i} className="flex items-center justify-between gap-3 text-sm">
+                      <span className="flex items-center gap-2">
+                        <span className="inline-block h-3.5 w-3.5 rounded-sm border border-border" />
+                        {t.title}
+                      </span>
+                      <span className="flex items-center gap-2 text-xs">
+                        {t.priority && t.priority !== "normal" && (
+                          <span className={PRIORITY_TONE[t.priority] ?? "text-text-muted"}>{t.priority}</span>
+                        )}
+                        {t.dueDate && <span className="text-text-muted">by {fmtDate(t.dueDate)}</span>}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -142,6 +142,7 @@ export function NewTransactionWizard() {
 
   const [busy, setBusy] = useState(false);
   const [reading, setReading] = useState(false);
+  const [aiTasks, setAiTasks] = useState<unknown[]>([]);
   const [missingCritical, setMissingCritical] = useState<string[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [extraction, setExtraction] = useState<Extraction | null>(null);
@@ -217,11 +218,16 @@ export function NewTransactionWizard() {
       ? [files[primaryIdx], ...files.filter((_, i) => i !== primaryIdx)]
       : files;
 
-  function onLiveComplete(rawEx: Record<string, unknown>, missing: string[]) {
+  function onLiveComplete(
+    rawEx: Record<string, unknown>,
+    missing: string[],
+    tasks: unknown[],
+  ) {
     const ex = rawEx as Extraction;
     setExtraction(ex);
     hydrateForm(ex);
     setMissingCritical(missing);
+    setAiTasks(Array.isArray(tasks) ? tasks : []);
     setReading(false);
     setStep("review");
   }
@@ -309,7 +315,9 @@ export function NewTransactionWizard() {
         await fetch(`/api/transactions/${data.transactionId}/generate-tasks`, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ contingencies: conts, financingType }),
+          // Persist the tasks already streamed in the live view (no second
+          // model call); fall back to generating if none were captured.
+          body: JSON.stringify({ contingencies: conts, financingType, tasks: aiTasks }),
         }).catch(() => {});
       } else if (data.transactionId && taskTemplateId) {
         await fetch(`/api/transactions/${data.transactionId}/apply-task-template`, {
@@ -359,6 +367,8 @@ export function NewTransactionWizard() {
           </p>
           <LiveExtractionView
             files={orderedFiles}
+            side={side}
+            strategy={side === "investor" ? strategy : null}
             onComplete={onLiveComplete}
             onError={(m) => {
               setErr(m);

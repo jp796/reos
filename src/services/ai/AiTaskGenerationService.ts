@@ -40,6 +40,64 @@ export interface TaskGenInput {
   sellers?: string[] | null;
   dates: Record<string, string | null>; // effectiveDate, closingDate, …
   contingencies?: Array<{ name: string; status?: string; description?: string }>;
+  /** Recurring task titles from similar past deals (learned templates) —
+   *  the model is told to fold these in. See TaskTemplateLearnService. */
+  learnedTaskTitles?: string[];
+}
+
+/**
+ * Build a TaskGenInput from a ContractExtraction (fields are {value}
+ * objects). Used by the live stream + create flow so the same engine
+ * runs on the fresh extraction and on the persisted deal.
+ */
+export function buildTaskGenInputFromExtraction(
+  ex: Record<string, unknown>,
+  opts?: { side?: TaskGenInput["side"]; strategy?: string | null; learnedTaskTitles?: string[] },
+): TaskGenInput {
+  const fv = (k: string): unknown => {
+    const f = ex[k] as { value?: unknown } | undefined;
+    return f && typeof f === "object" ? f.value : undefined;
+  };
+  const str = (v: unknown) => (typeof v === "string" && v ? v : null);
+  const num = (v: unknown) => (typeof v === "number" ? v : null);
+  const rawConts = fv("contingencies");
+  const contingencies = Array.isArray(rawConts)
+    ? rawConts
+        .map((c) => {
+          const o = (c ?? {}) as Record<string, unknown>;
+          return {
+            name: String(o.name ?? ""),
+            status: o.status ? String(o.status) : undefined,
+            description: o.description ? String(o.description) : undefined,
+          };
+        })
+        .filter((c) => c.name)
+    : [];
+  return {
+    side: opts?.side ?? null,
+    strategy: opts?.strategy ?? null,
+    propertyAddress: str(fv("propertyAddress")),
+    purchasePrice: num(fv("purchasePrice")),
+    financingType: str(fv("financingType")),
+    titleCompany: str(fv("titleCompanyName")),
+    lender: str(fv("lenderName")),
+    buyers: Array.isArray(fv("buyers")) ? (fv("buyers") as string[]) : null,
+    sellers: Array.isArray(fv("sellers")) ? (fv("sellers") as string[]) : null,
+    dates: {
+      effectiveDate: str(fv("effectiveDate")),
+      earnestMoneyDueDate: str(fv("earnestMoneyDueDate")),
+      inspectionDeadline: str(fv("inspectionDeadline")),
+      inspectionObjectionDeadline: str(fv("inspectionObjectionDeadline")),
+      titleCommitmentDeadline: str(fv("titleCommitmentDeadline")),
+      titleObjectionDeadline: str(fv("titleObjectionDeadline")),
+      financingDeadline: str(fv("financingDeadline")),
+      walkthroughDate: str(fv("walkthroughDate")),
+      closingDate: str(fv("closingDate")),
+      possessionDate: str(fv("possessionDate")),
+    },
+    contingencies,
+    learnedTaskTitles: opts?.learnedTaskTitles,
+  };
 }
 
 // Deadline safety net — guarantees a task for each present deadline, and
@@ -81,6 +139,10 @@ function buildUserPrompt(input: TaskGenInput): string {
   const contLines = (input.contingencies ?? [])
     .map((c) => `  - ${c.name}${c.status ? ` [${c.status}]` : ""}${c.description ? `: ${c.description}` : ""}`)
     .join("\n");
+  const learned = (input.learnedTaskTitles ?? []).slice(0, 25);
+  const learnedBlock = learned.length
+    ? `\nRECURRING ON SIMILAR PAST DEALS (fold in any that fit THIS contract; don't add ones that don't apply)\n${learned.map((t) => `  - ${t}`).join("\n")}\n`
+    : "";
 
   return `Build the complete TC task list for this deal.
 
@@ -98,7 +160,7 @@ ${dateLines || "  (none extracted)"}
 
 CONTINGENCIES / PROVISIONS
 ${contLines || "  (none)"}
-
+${learnedBlock}
 RULES
 - One task per real DEADLINE above, dueDate = that date. Prep tasks may be dated a few days earlier.
 - One task per APPLICABLE contingency (satisfy or remove it before its deadline). Skip contingencies marked waived/removed/n/a.

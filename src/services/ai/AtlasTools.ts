@@ -23,6 +23,7 @@ import { isDealVisible } from "@/lib/deal-visibility";
 import { rescanDeal } from "@/services/core/RescanDealService";
 import { synthesizeDeal } from "@/services/core/DocumentSynthesisService";
 import { generateDealTasks } from "@/services/core/GenerateDealTasksService";
+import { learnTaskTemplates } from "@/services/core/TaskTemplateLearnService";
 import { gmailForAccount } from "@/services/integrations/gmailForAccount";
 import { syncDealCalendar } from "@/services/core/syncDealCalendar";
 import {
@@ -324,6 +325,28 @@ export const ATLAS_TOOLS: Record<string, ToolDef> = {
         decision: "applied",
       });
       return { ok: true, summary: res.summary, data: { ...res, transactionId: r.deal.id } };
+    },
+  },
+
+  learn_task_templates: {
+    // Sensitive: rewrites the account's learned task templates.
+    tier: "sensitive",
+    description:
+      "Learn reusable task templates from history — mine the account's CLOSED deals, group them by type (side, cash-vs-financed, strategy, state), find the tasks that recur across most deals of each type, and save them as learned templates that then augment the AI task list for new deals of the same type. Account-level (no specific deal). Use when asked to learn/refresh task templates from past deals, or 'build templates from my history'. Idempotent — safe to re-run.",
+    schema: z.object({}),
+    run: async (db, actor) => {
+      const res = await learnTaskTemplates(db, actor.accountId);
+      await audit(db, actor, {
+        entityType: "account",
+        entityId: actor.accountId,
+        action: "learn_task_templates",
+        decision: "applied",
+      });
+      const summary =
+        res.templatesWritten > 0
+          ? `Learned ${res.templatesWritten} template(s) from ${res.scannedDeals} closed deal(s): ${res.detail.map((d) => `${d.name} (${d.tasks} tasks)`).join(", ")}.`
+          : `Scanned ${res.scannedDeals} closed deal(s) — not enough recurring history yet (need ≥3 similar deals).`;
+      return { ok: true, summary, data: res };
     },
   },
 
@@ -715,6 +738,8 @@ export function previewAction(name: string, args: Record<string, unknown>): stri
       return `Read all documents on ${deal} and rebuild its current timeline + contingency status`;
     case "generate_tasks":
       return `Generate an AI task list for ${deal} from its contract terms`;
+    case "learn_task_templates":
+      return `Learn reusable task templates from your closed deals`;
     default:
       return `${name} ${JSON.stringify(args)}`;
   }
@@ -749,6 +774,10 @@ const PARAM_SCHEMAS: Record<string, Record<string, unknown>> = {
         description: "re-read every document from scratch (ignore cache); only when explicitly asked",
       },
     },
+  },
+  learn_task_templates: {
+    type: "object",
+    properties: {},
   },
   generate_tasks: {
     type: "object",
