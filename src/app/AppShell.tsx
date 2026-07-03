@@ -72,13 +72,25 @@ interface ShellUser {
   investor?: boolean;
 }
 
+export type NavDealGroup = "active_listing" | "under_contract" | "closed" | "void";
+export interface NavDeal { id: string; address: string; group: NavDealGroup }
+
+const DEAL_GROUPS: Array<{ key: NavDealGroup; label: string }> = [
+  { key: "active_listing", label: "Active Listing" },
+  { key: "under_contract", label: "Under Contract" },
+  { key: "closed", label: "Closed" },
+  { key: "void", label: "Void" },
+];
+
 export function AppShell({
   children,
   user,
+  navDeals = [],
   signOutAction,
 }: {
   children: React.ReactNode;
   user: ShellUser | null;
+  navDeals?: NavDeal[];
   signOutAction: () => Promise<void>;
 }) {
   const pathname = usePathname();
@@ -164,6 +176,7 @@ export function AppShell({
           <SidebarContents
             pathname={pathname}
             user={user}
+            navDeals={navDeals}
             signOutAction={signOutAction}
             collapsed={collapsed}
             onToggle={toggleCollapsed}
@@ -192,6 +205,7 @@ export function AppShell({
               <SidebarContents
                 pathname={pathname}
                 user={user}
+                navDeals={navDeals}
                 signOutAction={signOutAction}
                 collapsed={false}
               />
@@ -242,12 +256,14 @@ export function AppShell({
 function SidebarContents({
   pathname,
   user,
+  navDeals,
   signOutAction,
   collapsed,
   onToggle,
 }: {
   pathname: string;
   user: ShellUser | null;
+  navDeals: NavDeal[];
   signOutAction: () => Promise<void>;
   collapsed: boolean;
   onToggle?: () => void;
@@ -319,6 +335,53 @@ function SidebarContents({
           );
         })}
       </nav>
+
+      {/* Transactions grouped by status — property address under each. */}
+      {!collapsed && navDeals.length > 0 && (
+        <div className="mt-4 space-y-3 overflow-y-auto">
+          {DEAL_GROUPS.map((g) => {
+            const items = navDeals.filter((d) => d.group === g.key);
+            if (items.length === 0) return null;
+            const shown = items.slice(0, 8);
+            return (
+              <div key={g.key}>
+                <div className="reos-label mb-1 flex items-center justify-between px-2 opacity-60">
+                  <span>{g.label}</span>
+                  <span className="tabular-nums">{items.length}</span>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  {shown.map((d) => {
+                    const active = pathname === `/transactions/${d.id}`;
+                    return (
+                      <Link
+                        key={d.id}
+                        href={`/transactions/${d.id}`}
+                        title={d.address}
+                        className={cn(
+                          "truncate rounded px-2 py-1 text-xs transition-colors",
+                          active
+                            ? "bg-brand-50 font-medium text-brand-700"
+                            : "text-text-muted hover:bg-surface-2 hover:text-text",
+                        )}
+                      >
+                        {d.address}
+                      </Link>
+                    );
+                  })}
+                  {items.length > shown.length && (
+                    <Link
+                      href="/transactions"
+                      className="px-2 py-1 text-xs text-text-subtle hover:text-text"
+                    >
+                      +{items.length - shown.length} more
+                    </Link>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {collapsed ? (
         <div className="mt-auto flex flex-col items-center gap-1.5">

@@ -29,6 +29,7 @@ import {
   CheckCircle2,
   Circle,
   AlertOctagon,
+  CalendarDays,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useToast } from "@/app/ToastProvider";
@@ -482,12 +483,12 @@ function TaskRow({
   return (
     <li
       className={cn(
-        "group flex flex-wrap items-start gap-2 rounded border px-3 py-2 text-sm transition-colors",
+        "group flex flex-wrap items-start gap-2.5 rounded-lg border px-3 py-2.5 text-sm transition-colors",
         task.completedAt
-          ? "border-border bg-surface-2/50 opacity-70"
+          ? "border-border/60 bg-surface-2/40 opacity-70"
           : overdue
-            ? "border-red-200 bg-red-50/40"
-            : "border-border bg-surface hover:border-border-strong",
+            ? "border-red-200/70 bg-red-50/30 dark:border-red-900/40 dark:bg-red-950/20"
+            : "border-border/70 bg-surface hover:border-border",
       )}
     >
       <button
@@ -563,13 +564,14 @@ function TaskRow({
             type="button"
             onClick={() => setEditingDate(true)}
             className={cn(
-              "rounded border px-1.5 py-0.5 text-[11px] font-medium transition-colors",
+              "inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-medium transition-colors",
               task.dueAt
                 ? "border-border bg-surface text-text-muted hover:border-border-strong"
                 : "border-dashed border-border bg-surface text-text-subtle hover:border-border-strong",
             )}
             title="Edit due date"
           >
+            <CalendarDays className="h-3 w-3 shrink-0 opacity-70" strokeWidth={2} />
             {task.dueAt ? fmtDate(task.dueAt) : "+ date"}
           </button>
         )}

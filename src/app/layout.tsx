@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Montserrat } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "./ThemeProvider";
-import { AppShell } from "./AppShell";
+import { AppShell, type NavDeal, type NavDealGroup } from "./AppShell";
 import { normalizeEntitlements } from "@/lib/entitlements";
 import { ToastProvider } from "./ToastProvider";
 import { TermsAcceptModal } from "./TermsAcceptModal";
@@ -10,6 +10,7 @@ import { PendingDeletionBanner } from "./PendingDeletionBanner";
 import { auth, signOut } from "@/auth";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/require-session";
+import { dealVisibilityWhere } from "@/lib/deal-visibility";
 import { env } from "@/lib/env";
 import { PwaRegister } from "./PwaRegister";
 
@@ -103,10 +104,11 @@ export default async function RootLayout({
   // looking at their home account hid the investor surfaces for them.
   let deletionScheduledAt: string | null = null;
   let investorEntitled = false;
+  let navDeals: NavDeal[] = [];
   if (session?.user?.email) {
     const actor = await requireSession();
     const activeAccountId = actor instanceof Response ? null : actor.accountId;
-    if (activeAccountId) {
+    if (activeAccountId && !(actor instanceof Response)) {
       const acct = await prisma.account.findUnique({
         where: { id: activeAccountId },
         select: { deletionRequestedAt: true, entitlementsJson: true },
@@ -115,6 +117,25 @@ export default async function RootLayout({
       investorEntitled = normalizeEntitlements(
         acct?.entitlementsJson ?? null,
       ).includes("investor");
+
+      // Deals for the grouped Transactions nav section.
+      const rows = await prisma.transaction.findMany({
+        where: {
+          accountId: activeAccountId,
+          ...dealVisibilityWhere(actor),
+        },
+        select: { id: true, propertyAddress: true, contractDate: true, side: true, status: true },
+        orderBy: { updatedAt: "desc" },
+        take: 200,
+      });
+      navDeals = rows.map((r) => {
+        let group: NavDealGroup;
+        if (r.status === "dead") group = "void";
+        else if (r.status === "closed") group = "closed";
+        else if (r.side === "sell" && !r.contractDate) group = "active_listing";
+        else group = "under_contract";
+        return { id: r.id, address: r.propertyAddress ?? "(no address)", group };
+      });
     }
   }
 
@@ -137,6 +158,7 @@ export default async function RootLayout({
           <ToastProvider>
             <AppShell
               user={user ? { ...user, investor: investorEntitled } : null}
+              navDeals={navDeals}
               signOutAction={doSignOut}
             >
               {deletionScheduledAt && (
