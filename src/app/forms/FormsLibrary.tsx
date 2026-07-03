@@ -41,6 +41,7 @@ export function FormsLibrary({
   const [category, setCategory] = useState("offer");
   const [fillFor, setFillFor] = useState<Record<string, string>>({});
   const [filling, setFilling] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   async function upload(files: File[]) {
     if (files.length === 0) return;
@@ -116,6 +117,13 @@ export function FormsLibrary({
     }
   }
 
+  const q = query.trim().toLowerCase();
+  const shown = q
+    ? forms.filter((f) =>
+        [f.name, f.category ?? "", f.fileName].some((s) => s.toLowerCase().includes(q)),
+      )
+    : forms;
+
   return (
     <div>
       <div className="mb-1 reos-label">Forms Library</div>
@@ -150,12 +158,23 @@ export function FormsLibrary({
 
       {/* Library */}
       <section className="mt-8">
-        <h2 className="mb-3 text-lg font-medium">Your forms ({forms.length})</h2>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-medium">Your forms ({shown.length})</h2>
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search forms…"
+            className="w-full max-w-xs rounded-md border border-border bg-surface-2 px-3 py-1.5 text-sm focus:border-brand-500 focus:outline-none"
+          />
+        </div>
         {forms.length === 0 ? (
           <p className="text-sm text-text-muted">No forms yet — drop one above.</p>
+        ) : shown.length === 0 ? (
+          <p className="text-sm text-text-muted">No forms match &ldquo;{query}&rdquo;.</p>
         ) : (
           <ul className="space-y-2">
-            {forms.map((f) => (
+            {shown.map((f) => (
               <li key={f.id} className="rounded-lg border border-border bg-surface p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
