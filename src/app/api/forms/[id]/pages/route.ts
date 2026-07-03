@@ -12,7 +12,7 @@ import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/require-session";
 import { renderPdfForVision, pdfPageCount } from "@/services/ai/PdfRender";
 import { pdfPageSizes } from "@/services/ai/FormOverlayService";
-import { extractTextLayout, anchorRightOf } from "@/services/ai/PdfTextLayout";
+import { extractTextLayout, anchorInLine } from "@/services/ai/PdfTextLayout";
 import { FIELD_CATALOG } from "@/services/ai/FormFieldCatalog";
 
 export const runtime = "nodejs";
@@ -60,7 +60,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   if (saved.length === 0) {
     const layout = await extractTextLayout(new Uint8Array(buffer));
     placements = FIELD_CATALOG.map((f) => {
-      const a = anchorRightOf(layout, f.anchors, { gap: 6 });
+      const a = anchorInLine(layout, f.find, f.mode);
       return a ? { field: f.key, page: a.page, xPt: a.x, yPt: a.y } : null;
     }).filter((p): p is MappedField => p !== null);
   } else {
@@ -68,7 +68,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     const layout = await extractTextLayout(new Uint8Array(buffer));
     for (const f of FIELD_CATALOG) {
       if (savedByField.has(f.key)) continue;
-      const a = anchorRightOf(layout, f.anchors, { gap: 6 });
+      const a = anchorInLine(layout, f.find, f.mode);
       if (a) placements.push({ field: f.key, page: a.page, xPt: a.x, yPt: a.y });
     }
   }

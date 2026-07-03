@@ -53,7 +53,7 @@ const VIEWER_HTML = `<!doctype html><html><head><meta charset="utf-8">
     eventBus, linkService, enableXfa: true, textLayerMode: 1,
   });
   linkService.setViewer(viewer);
-  eventBus.on("pagesloaded", () => { setTimeout(() => { window.__done = true; }, 1200); });
+  eventBus.on("pagesloaded", () => { setTimeout(() => { window.__done = true; }, 3000); });
   try {
     const doc = await pdfjs.getDocument({
       url: "/form.pdf", enableXfa: true,
@@ -103,7 +103,10 @@ export async function flattenXfaToPdf(xfaBytes: Uint8Array): Promise<Uint8Array>
     args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
   });
   try {
-    const page = await browser.newPage({ viewport: { width: 900, height: 1200 } });
+    // Tall viewport so pdfjs renders EVERY page (it lazy-renders only
+    // pages in view; a short viewport truncated the output). All pages
+    // "visible" ⇒ all built into the DOM ⇒ page.pdf captures them all.
+    const page = await browser.newPage({ viewport: { width: 900, height: 15000 } });
     await page.goto(`http://localhost:${port}/viewer.html`, { waitUntil: "load", timeout: 45000 });
     await page.waitForFunction(() => (window as unknown as { __done?: boolean }).__done === true, {
       timeout: 45000,

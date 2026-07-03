@@ -78,25 +78,36 @@ export async function extractTextLayout(pdfBytes: Uint8Array): Promise<TextLayou
 }
 
 /**
- * Find the best position to place a value for a labeled field: locate the
- * label text on the page and return a point just to its right (same
- * baseline). Returns null when the label isn't found. `labels` are tried
- * in order; matching is case-insensitive substring on a normalized line.
+ * Place a value relative to a label that lives INSIDE a line-string.
+ * Flattened forms render each line as one text item with the blanks
+ * inline (e.g. "dated ___, from ___"), so we locate the line containing a
+ * `find` phrase and compute the x-position by the phrase's character
+ * offset within the line (proportional to the item width).
+ *
+ * mode "after"     → x at the END of the found phrase (the blank follows).
+ * mode "lineStart" → x at the line's left edge (blank starts the line,
+ *                    e.g. "$____ Dollars payable" or a seller blank line).
+ *
+ * `finds` are tried in order; first line-match wins. Returns null if none.
  */
-export function anchorRightOf(
+export function anchorInLine(
   layout: TextLayout,
-  labels: string[],
+  finds: string[],
+  mode: "after" | "lineStart",
   opts?: { gap?: number },
 ): { page: number; x: number; y: number } | null {
-  const gap = opts?.gap ?? 6;
-  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
-  for (const label of labels) {
-    const want = norm(label);
-    // exact-ish item match first
-    const hit = layout.items.find((it) => norm(it.str).includes(want));
-    if (hit) {
-      return { page: hit.page, x: hit.x + hit.width + gap, y: hit.y };
+  const gap = opts?.gap ?? 3;
+  for (const find of finds) {
+    const f = find.toLowerCase();
+    const hit = layout.items.find((it) => it.str.toLowerCase().includes(f));
+    if (!hit) continue;
+    if (mode === "lineStart") {
+      return { page: hit.page, x: hit.x + gap, y: hit.y };
     }
+    const idx = hit.str.toLowerCase().indexOf(f);
+    const endChar = idx + find.length;
+    const frac = hit.str.length > 0 ? endChar / hit.str.length : 0;
+    return { page: hit.page, x: hit.x + frac * hit.width + gap, y: hit.y };
   }
   return null;
 }
