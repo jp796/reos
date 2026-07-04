@@ -311,12 +311,15 @@ export function DocumentLibraryPanel({ transactionId, documents }: Props) {
     <section className="mt-8">
       <div className="mb-3 flex items-baseline justify-between gap-3">
         <h2 className="text-lg font-medium">Document library</h2>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-text-muted">
-            {documents.length} file{documents.length === 1 ? "" : "s"} · Ready for Rezen prep
-          </span>
-          <UploadDocsControl transactionId={transactionId} />
-        </div>
+        <span className="text-xs text-text-muted">
+          {documents.length} file{documents.length === 1 ? "" : "s"} · Ready for Rezen prep
+        </span>
+      </div>
+      {/* Always-visible drop zone — drop a new/updated contract here and
+          Atlas re-reads it (dates, earnest, contingencies) for review +
+          apply. Previously this only showed when the deal had zero docs. */}
+      <div className="mb-4">
+        <UploadDocsControl transactionId={transactionId} variant="primary" />
       </div>
       <ul className="space-y-2">
         {documents.map((d) => (
