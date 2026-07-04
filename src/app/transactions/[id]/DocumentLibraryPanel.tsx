@@ -22,7 +22,8 @@
  * concerns crossing the client boundary.
  */
 
-import { type DragEvent, useRef, useState, useTransition } from "react";
+import { type DragEvent, useEffect, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   Download,
@@ -32,6 +33,8 @@ import {
   Mail,
   Upload as UploadIcon,
   FileText,
+  HardDrive,
+  X,
 } from "lucide-react";
 import { useToast } from "../../ToastProvider";
 
@@ -103,19 +106,24 @@ function fmtConfidence(c: number | null): string {
  * Posts to POST /api/transactions/:id/documents, then refreshes so the
  * new docs appear here (and in the E-sign PDF picker + compliance audit).
  */
-function UploadDocsControl({
-  transactionId,
-  variant = "button",
-}: {
-  transactionId: string;
-  variant?: "button" | "primary";
-}) {
+function UploadDocsControl({ transactionId }: { transactionId: string }) {
   const router = useRouter();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [open, setOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const [, startTransition] = useTransition();
+
+  // Dismiss the modal on Escape (unless an upload is in flight).
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !busy) setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, busy]);
 
   // After files land, reconcile the WHOLE document set so a new
   // notice/addendum's effect (amended dates, resolved contingencies,
@@ -206,6 +214,7 @@ function UploadDocsControl({
       }
       if (!reviewFlow) await syncFromDocuments();
       startTransition(() => router.refresh());
+      setOpen(false); // reached only on success — dismiss the modal
     } catch (e) {
       toast.error("Upload failed", e instanceof Error ? e.message : "unknown");
     } finally {
@@ -243,83 +252,130 @@ function UploadDocsControl({
     />
   );
 
-  if (variant === "primary") {
-    return (
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={() => inputRef.current?.click()}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            inputRef.current?.click();
-          }
-        }}
-        {...drag}
-        className={`flex w-full cursor-pointer flex-col items-center gap-1.5 rounded-lg border border-dashed px-4 py-8 text-center transition-colors ${
-          dragging
-            ? "border-brand-500 bg-brand-50 dark:bg-brand-950/30"
-            : "border-border bg-surface-2/40 hover:border-brand-400"
-        }`}
-      >
-        <UploadIcon className="h-5 w-5 text-text-muted" />
-        <span className="text-sm font-medium text-text">
-          {busy
-            ? "Uploading…"
-            : dragging
-              ? "Drop to add"
-              : "Drag & drop files here, or click to browse"}
-        </span>
-        <span className="text-xs text-text-muted">
-          Any file lands in the library — a PDF contract is auto-read too
-        </span>
-        {fileInput}
-      </div>
-    );
-  }
-
   return (
-    <label
-      {...drag}
-      className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
-        dragging
-          ? "border-brand-500 bg-brand-50 text-brand-700"
-          : "border-border bg-surface text-text-muted hover:border-border-strong hover:text-text"
-      }`}
-    >
-      <UploadIcon className="h-3.5 w-3.5" />
-      {busy ? "Uploading…" : "Upload files"}
-      {fileInput}
-    </label>
+    <>
+      {/* Minimalist trigger — the drop zone lives in the modal. */}
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700"
+      >
+        <UploadIcon className="h-4 w-4" strokeWidth={2} />
+        Upload files
+      </button>
+
+      {open &&
+        createPortal(
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Upload files"
+            onClick={() => !busy && setOpen(false)}
+            className="fixed inset-0 z-[95] flex items-center justify-center bg-black/60 px-4 py-8 backdrop-blur-sm"
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-2xl overflow-hidden rounded-xl border border-border bg-surface shadow-2xl"
+            >
+              <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
+                <h3 className="text-base font-semibold text-text">Upload files</h3>
+                <button
+                  type="button"
+                  onClick={() => !busy && setOpen(false)}
+                  className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:bg-surface-2 hover:text-text"
+                  aria-label="Close"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="p-5">
+                {/* Drop zone */}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => inputRef.current?.click()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      inputRef.current?.click();
+                    }
+                  }}
+                  {...drag}
+                  className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-14 text-center transition-colors ${
+                    dragging
+                      ? "border-brand-500 bg-brand-50 dark:bg-brand-950/30"
+                      : "border-border bg-surface-2/30 hover:border-brand-400"
+                  }`}
+                >
+                  <UploadIcon className="h-6 w-6 text-text-muted" />
+                  <span className="text-base font-medium text-text">
+                    {busy
+                      ? "Uploading…"
+                      : dragging
+                        ? "Drop to add"
+                        : "Drag & drop your files here"}
+                  </span>
+                  <span className="text-xs text-text-muted">
+                    Any file lands in the library — a PDF contract is auto-read too
+                  </span>
+                </div>
+
+                {/* Locations */}
+                <div className="my-4 flex items-center gap-3 text-xs text-text-muted">
+                  <span className="h-px flex-1 bg-border" />
+                  or select from
+                  <span className="h-px flex-1 bg-border" />
+                </div>
+                <div className="flex justify-center">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => inputRef.current?.click()}
+                    className="inline-flex items-center gap-2 rounded-md border border-border bg-surface px-4 py-2 text-sm font-medium text-text transition-colors hover:border-brand-500 disabled:opacity-50"
+                  >
+                    <HardDrive className="h-4 w-4" strokeWidth={2} />
+                    My local device
+                  </button>
+                </div>
+              </div>
+              {fileInput}
+            </div>
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 
 export function DocumentLibraryPanel({ transactionId, documents }: Props) {
   if (documents.length === 0) {
     return (
-      <section className="mt-8">
-        <UploadDocsControl transactionId={transactionId} variant="primary" />
-        <p className="mt-2 text-center text-xs text-text-muted">
-          No documents yet — drop any file above (or a contract to auto-extract).
-          Files are auto-classified for Rezen and selectable in E-sign.
-        </p>
+      <section className="mt-8 rounded-lg border border-dashed border-border bg-surface-2/30 px-4 py-10 text-center">
+        <div className="flex flex-col items-center gap-3">
+          <p className="text-sm text-text-muted">
+            No documents yet. Upload a contract to auto-extract, or drop any file
+            for the library (auto-classified for Rezen + selectable in E-sign).
+          </p>
+          <UploadDocsControl transactionId={transactionId} />
+        </div>
       </section>
     );
   }
 
   return (
     <section className="mt-8">
-      <div className="mb-3 flex items-baseline justify-between gap-3">
-        <h2 className="text-lg font-medium">Document library</h2>
-        <span className="text-xs text-text-muted">
-          {documents.length} file{documents.length === 1 ? "" : "s"} · Ready for Rezen prep
-        </span>
-      </div>
-      {/* Always-visible drop zone — drop a new/updated contract here and
-          Atlas re-reads it (dates, earnest, contingencies) for review +
-          apply. Previously this only showed when the deal had zero docs. */}
-      <div className="mb-4">
-        <UploadDocsControl transactionId={transactionId} variant="primary" />
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="flex items-baseline gap-3">
+          <h2 className="text-lg font-medium">Document library</h2>
+          <span className="text-xs text-text-muted">
+            {documents.length} file{documents.length === 1 ? "" : "s"} · Ready for Rezen prep
+          </span>
+        </div>
+        {/* Minimalist trigger — opens a modal drop zone. Drop a new/updated
+            contract here and Atlas re-reads it (dates, earnest, contingencies)
+            for review + apply. */}
+        <UploadDocsControl transactionId={transactionId} />
       </div>
       <ul className="space-y-2">
         {documents.map((d) => (
