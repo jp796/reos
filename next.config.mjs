@@ -4,6 +4,12 @@ const nextConfig = {
   // Run / Docker can copy just that + .next/static + public and run
   // `node server.js`, no `npm install` at runtime.
   output: "standalone",
+  // Next's built-in gzip BUFFERS streaming (SSE) responses — it holds the
+  // whole body then flushes at the end, which broke the live "watch it
+  // read" screen. Disable it so ReadableStream responses flush
+  // incrementally. (Cloud Run / the browser still handle transport; page
+  // payloads are small enough that the perf cost is negligible.)
+  compress: false,
   experimental: {
     serverActions: { bodySizeLimit: "10mb" },
   },

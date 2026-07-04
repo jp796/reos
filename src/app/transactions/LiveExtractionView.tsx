@@ -85,7 +85,7 @@ function fmtDate(iso: unknown): string {
 type Phase = "reading" | "tasks" | "done";
 
 export function LiveExtractionView({ files, side, strategy, onComplete, onError }: Props) {
-  const [log, setLog] = useState<Array<{ text: string; kind: "doc" | "status" }>>([]);
+  const [log, setLog] = useState<Array<{ text: string; kind: "doc" | "status" | "found" }>>([]);
   const [fields, setFields] = useState<Record<string, Field>>({});
   const [contingencies, setContingencies] = useState<Contingency[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -160,15 +160,36 @@ export function LiveExtractionView({ files, side, strategy, onComplete, onError 
             }))
             .filter((c) => c.name);
           setContingencies((prev) => (list.length >= prev.length ? list : prev));
+          if (list.length > 0) {
+            setLog((l) => [
+              ...l,
+              { text: `◆ Contingencies: ${list.map((c) => c.name).join(", ")}`, kind: "found" },
+            ]);
+          }
           return;
         }
         setFields((f) => ({ ...f, [key]: { value: ev.value, source: ev.source as Field["source"] } }));
+        // Brain-transparency: show WHAT was read + WHERE (the source text).
+        const dd = DISPLAY.find((d) => d.key === key);
+        if (dd && ev.value != null && ev.value !== "") {
+          const snip =
+            typeof ev.snippet === "string" && ev.snippet.trim()
+              ? ` — "${ev.snippet.trim().slice(0, 64)}"`
+              : "";
+          setLog((l) => [
+            ...l,
+            { text: `✓ ${dd.label}: ${fmt(dd.kind, ev.value)}${snip}`, kind: "found" },
+          ]);
+        }
       } else if (type === "merged") {
         // Terms + contingencies done — move to phase 3 (tasks), don't leave.
         setPhase("tasks");
       } else if (type === "task") {
         const t = ev.task as Task;
-        if (t?.title) setTasks((prev) => [...prev, t]);
+        if (t?.title) {
+          setTasks((prev) => [...prev, t]);
+          setLog((l) => [...l, { text: `＋ Task: ${t.title}`, kind: "found" }]);
+        }
       } else if (type === "done") {
         setPhase("done");
         onComplete(
@@ -228,7 +249,16 @@ export function LiveExtractionView({ files, side, strategy, onComplete, onError 
           </div>
           <div className="max-h-[30rem] space-y-1 overflow-y-auto font-mono text-xs leading-relaxed">
             {log.map((l, i) => (
-              <div key={i} className={l.kind === "doc" ? "mt-2 font-semibold text-text" : "text-text-muted"}>
+              <div
+                key={i}
+                className={
+                  l.kind === "doc"
+                    ? "mt-2 font-semibold text-text"
+                    : l.kind === "found"
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : "text-text-muted"
+                }
+              >
                 {l.kind === "doc" ? "📄 " : "   "}
                 {l.text}
               </div>
