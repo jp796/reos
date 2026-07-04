@@ -27,6 +27,7 @@ export async function GET(_req: NextRequest) {
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
       "X-Accel-Buffering": "no",
+      "Access-Control-Allow-Origin": "*",
     },
   });
 }
