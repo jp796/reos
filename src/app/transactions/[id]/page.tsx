@@ -445,6 +445,8 @@ export default async function TransactionDetailPage({
         <Fact label="Title commitment" value={fmtDate(txn.titleDeadline)} />
         <Fact label="Title objection" value={fmtDate(txn.titleObjectionDate)} />
         <Fact label="Appraisal" value={fmtDate(txn.appraisalDate)} />
+        <Fact label="Earnest money" value={fmtMoney(txn.earnestMoneyAmount)} />
+        <Fact label="Earnest due" value={fmtDate(txn.earnestMoneyDueDate)} />
         <Fact label="Lender" value={txn.lenderName ?? "—"} />
         <Fact label="Title co." value={txn.titleCompanyName ?? "—"} />
         <Fact label="Sale price" value={fmtMoney(txn.financials?.salePrice)} />

@@ -109,6 +109,7 @@ export async function createDealFromExtraction(
     earnestDueDerived = true;
   }
 
+  const earnestMoneyAmount = toNum(fields.earnestMoneyAmount);
   const purchasePrice = toNum(fields.purchasePrice);
   const sellerPct = toNum(fields.sellerSideCommissionPct);
   const sellerAmt = toNum(fields.sellerSideCommissionAmount);
@@ -207,6 +208,7 @@ export async function createDealFromExtraction(
       financingDeadline,
       walkthroughDate,
       earnestMoneyDueDate,
+      earnestMoneyAmount,
       titleCompanyName: fields.titleCompany?.slice(0, 120) ?? null,
       lenderName: fields.lenderName?.slice(0, 120) ?? null,
       contractStage: stage,

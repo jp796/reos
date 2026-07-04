@@ -266,6 +266,7 @@ export async function POST(req: NextRequest) {
       financingDeadline,
       walkthroughDate,
       earnestMoneyDueDate,
+      earnestMoneyAmount,
       titleCompanyName: body.titleCompany?.slice(0, 120) ?? null,
       lenderName: body.lenderName?.slice(0, 120) ?? null,
       contractStage: stage,
@@ -307,14 +308,23 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  // Cash deals have no financing contingency; only flag financing as
+  // missing when the deal is actually financed.
+  const isFinanced = !!(
+    body.lenderName?.trim() || financingDeadline
+  );
   // Seed ONE milestone per known date so the timeline renders rich.
+  // `expected: true` deadlines that come back null are kept as null-date
+  // ("needs date") milestones so the TC SEES an unfilled deadline instead
+  // of it vanishing — the 7008 failure mode. Others skip when null.
   const milestoneSpec: Array<{
     type: string;
     label: string;
     dueAt: Date | null;
     ownerRole: string;
+    expected: boolean;
   }> = [
-    { type: "contract_effective", label: "Under contract", dueAt: effectiveDate, ownerRole: "agent" },
+    { type: "contract_effective", label: "Under contract", dueAt: effectiveDate, ownerRole: "agent", expected: true },
     {
       type: "earnest_money",
       label: earnestDueDerived
@@ -322,12 +332,13 @@ export async function POST(req: NextRequest) {
         : "Earnest money due",
       dueAt: earnestMoneyDueDate,
       ownerRole: "client",
+      expected: true,
     },
-    { type: "inspection", label: "Inspection deadline", dueAt: inspectionDeadline, ownerRole: "inspector" },
-    { type: "inspection_objection", label: "Inspection objection deadline", dueAt: inspectionObjectionDeadline, ownerRole: "client" },
-    { type: "title_commitment", label: "Title commitment due", dueAt: titleCommitmentDeadline, ownerRole: "title" },
-    { type: "title_objection", label: "Title objection deadline", dueAt: titleObjectionDeadline, ownerRole: "client" },
-    { type: "financing_approval", label: "Financing approval deadline", dueAt: financingDeadline, ownerRole: "lender" },
+    { type: "inspection", label: "Inspection deadline", dueAt: inspectionDeadline, ownerRole: "inspector", expected: true },
+    { type: "inspection_objection", label: "Inspection objection deadline", dueAt: inspectionObjectionDeadline, ownerRole: "client", expected: true },
+    { type: "title_commitment", label: "Title commitment due", dueAt: titleCommitmentDeadline, ownerRole: "title", expected: false },
+    { type: "title_objection", label: "Title objection deadline", dueAt: titleObjectionDeadline, ownerRole: "client", expected: false },
+    { type: "financing_approval", label: "Financing approval deadline", dueAt: financingDeadline, ownerRole: "lender", expected: isFinanced },
     {
       type: "walkthrough",
       label: walkthroughDerived
@@ -335,22 +346,24 @@ export async function POST(req: NextRequest) {
         : "Final walkthrough",
       dueAt: walkthroughDate,
       ownerRole: "agent",
+      expected: false,
     },
-    { type: "closing", label: "Closing", dueAt: closingDate, ownerRole: "title" },
-    { type: "possession", label: "Possession", dueAt: possessionDate, ownerRole: "client" },
+    { type: "closing", label: "Closing", dueAt: closingDate, ownerRole: "title", expected: true },
+    { type: "possession", label: "Possession", dueAt: possessionDate, ownerRole: "client", expected: false },
   ];
   let milestonesCreated = 0;
   for (const s of milestoneSpec) {
-    if (!s.dueAt) continue;
+    if (!s.dueAt && !s.expected) continue;
+    const missing = !s.dueAt;
     await prisma.milestone.create({
       data: {
         transactionId: txn.id,
         type: s.type,
-        label: s.label,
+        label: missing ? `${s.label} — date not found, confirm` : s.label,
         dueAt: s.dueAt,
         ownerRole: s.ownerRole,
         source: "extracted",
-        confidenceScore: 0.9,
+        confidenceScore: missing ? 0.3 : 0.9,
       },
     });
     milestonesCreated++;

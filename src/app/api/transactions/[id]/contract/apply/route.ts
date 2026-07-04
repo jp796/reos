@@ -156,6 +156,10 @@ export async function POST(
     earnestDueDerived = true;
   }
   setIfFree(data, "earnestMoneyDueDate", earnestDue, "earnestMoneyDueDate", txn.earnestMoneyDueDate);
+  // Earnest money AMOUNT — the AI reads it but it previously had nowhere
+  // to persist, so the dollar figure was silently dropped. Store it.
+  const earnestAmount = toNum(fieldVal(ext, "earnestMoneyAmount"));
+  setIfFree(data, "earnestMoneyAmount", earnestAmount, "earnestMoneyAmount", txn.earnestMoneyAmount);
   // Walkthrough: prefer the explicit date on the contract. If absent,
   // apply state-default rules (e.g. Wyoming = closing − 1 calendar
   // day). State is sourced from the existing txn or from the extracted
@@ -197,8 +201,25 @@ export async function POST(
   // --- Milestones: upsert one per extracted deadline.
   // Keyed by (transactionId, type) + source="contract_extraction" so a
   // re-apply updates instead of duplicates.
-  const mileStoneSpec: Array<{ type: string; label: string; dueAt: Date | null; ownerRole: string }> = [
-    { type: "contract_effective", label: "Under contract", dueAt: effectiveDate, ownerRole: "agent" },
+  // A financed deal is one where the contract named a lender / financing
+  // type, or already carries a financing deadline. Cash deals legitimately
+  // have no financing contingency, so we don't flag it as missing on them.
+  const isFinanced = !!(
+    toStr(fieldVal(ext, "financingType")) ||
+    toStr(fieldVal(ext, "lenderName")) ||
+    lender ||
+    financingDeadline ||
+    txn.financingDeadline
+  );
+
+  // `expected: true` deadlines that come back null are NOT silently
+  // dropped — they're created as null-date milestones the timeline
+  // renders as "needs date" so the TC SEES the gap and confirms it,
+  // instead of the deadline vanishing (the 7008 failure mode). Deadlines
+  // that are legitimately absent on many forms (title objection, possession)
+  // stay skip-when-null to avoid noise.
+  const mileStoneSpec: Array<{ type: string; label: string; dueAt: Date | null; ownerRole: string; expected: boolean }> = [
+    { type: "contract_effective", label: "Under contract", dueAt: effectiveDate, ownerRole: "agent", expected: true },
     {
       type: "earnest_money",
       label: earnestDueDerived
@@ -206,12 +227,13 @@ export async function POST(
         : "Earnest money due",
       dueAt: earnestDue,
       ownerRole: "client",
+      expected: true,
     },
-    { type: "inspection", label: "Inspection deadline", dueAt: inspectionDeadline, ownerRole: "inspector" },
-    { type: "inspection_objection", label: "Inspection objection deadline", dueAt: inspectionObjectionDeadline, ownerRole: "client" },
-    { type: "title_commitment", label: "Title commitment due", dueAt: titleDeadline, ownerRole: "title" },
-    { type: "title_objection", label: "Title objection deadline", dueAt: titleObjectionDeadline, ownerRole: "client" },
-    { type: "financing_approval", label: "Financing approval deadline", dueAt: financingDeadline, ownerRole: "lender" },
+    { type: "inspection", label: "Inspection deadline", dueAt: inspectionDeadline, ownerRole: "inspector", expected: true },
+    { type: "inspection_objection", label: "Inspection objection deadline", dueAt: inspectionObjectionDeadline, ownerRole: "client", expected: true },
+    { type: "title_commitment", label: "Title commitment due", dueAt: titleDeadline, ownerRole: "title", expected: false },
+    { type: "title_objection", label: "Title objection deadline", dueAt: titleObjectionDeadline, ownerRole: "client", expected: false },
+    { type: "financing_approval", label: "Financing approval deadline", dueAt: financingDeadline, ownerRole: "lender", expected: isFinanced },
     {
       type: "walkthrough",
       label: walkthroughDerived
@@ -219,25 +241,35 @@ export async function POST(
         : "Final walkthrough",
       dueAt: walkthrough,
       ownerRole: "agent",
+      expected: false,
     },
-    { type: "closing", label: "Closing", dueAt: closingDate, ownerRole: "title" },
-    { type: "possession", label: "Possession", dueAt: possessionDate, ownerRole: "client" },
+    { type: "closing", label: "Closing", dueAt: closingDate, ownerRole: "title", expected: true },
+    { type: "possession", label: "Possession", dueAt: possessionDate, ownerRole: "client", expected: false },
   ];
 
   let milestonesUpserted = 0;
+  let milestonesFlagged = 0;
   for (const spec of mileStoneSpec) {
-    if (!spec.dueAt) continue;
+    // Skip only when the deadline is both absent AND not expected on this
+    // deal — otherwise create/keep it (null date => "needs date" flag).
+    if (!spec.dueAt && !spec.expected) continue;
+    const missing = !spec.dueAt;
+    // For an expected-but-missing deadline, label it as needing a date so
+    // the TC can't miss that the contract didn't specify it.
+    const label = missing ? `${spec.label} — date not found, confirm` : spec.label;
     const existing = await prisma.milestone.findFirst({
       where: { transactionId: txn.id, type: spec.type },
     });
     if (existing) {
+      // Never overwrite a real date (or a user-entered one) with null.
+      const nextDue = spec.dueAt ?? existing.dueAt;
       await prisma.milestone.update({
         where: { id: existing.id },
         data: {
-          dueAt: spec.dueAt,
-          label: spec.label,
+          dueAt: nextDue,
+          label: nextDue ? spec.label : label,
           source: "extracted",
-          confidenceScore: 0.9,
+          confidenceScore: missing ? 0.3 : 0.9,
         },
       });
     } else {
@@ -245,15 +277,16 @@ export async function POST(
         data: {
           transactionId: txn.id,
           type: spec.type,
-          label: spec.label,
+          label,
           dueAt: spec.dueAt,
           ownerRole: spec.ownerRole,
           source: "extracted",
-          confidenceScore: 0.9,
+          confidenceScore: missing ? 0.3 : 0.9,
         },
       });
     }
-    milestonesUpserted++;
+    if (missing) milestonesFlagged++;
+    else milestonesUpserted++;
   }
 
   // --- Compensation → TransactionFinancials (editable later by user)
@@ -373,6 +406,7 @@ export async function POST(
   return NextResponse.json({
     ok: true,
     milestonesUpserted,
+    milestonesFlagged,
     participantsCreated,
     appliedFields: Object.keys(data).filter(
       (k) => !["contractAppliedAt", "pendingContractJson"].includes(k),

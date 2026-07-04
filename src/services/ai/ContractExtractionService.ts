@@ -1278,19 +1278,37 @@ export function computeRelativeDeadlines(
     inspectionEnd = new Date(`${out.inspectionDeadline.value}T00:00:00`);
   }
 
-  // Inspection objection — anchored to end of inspection period
+  // Inspection objection — anchored to the end of the inspection period
+  // WHEN there is one. Many forms (WY Realtors "Contract to Buy and Sell",
+  // for instance) have NO separate inspection-completion date: the
+  // Objection Deadline itself is "N Business Days from mutual acceptance"
+  // and IS the operative inspection deadline. In that case inspectionEnd
+  // is null, so anchor the objection to the Effective Date instead —
+  // otherwise a fully-filled WY objection day-count would never compute.
   if (
     out.inspectionObjectionDeadline.value == null &&
-    typeof out.inspectionObjectionDays.value === "number" &&
-    inspectionEnd &&
-    !Number.isNaN(inspectionEnd.getTime())
+    typeof out.inspectionObjectionDays.value === "number"
   ) {
     const unit =
       out.inspectionObjectionUnit.value === "calendar" ? "calendar" : "business";
+    const hasPeriodEnd = inspectionEnd && !Number.isNaN(inspectionEnd.getTime());
+    const anchor = hasPeriodEnd ? (inspectionEnd as Date) : effective;
+    const iso = derive(anchor, out.inspectionObjectionDays.value, unit);
     out.inspectionObjectionDeadline = computed(
-      derive(inspectionEnd, out.inspectionObjectionDays.value, unit),
-      `${out.inspectionObjectionDays.value} ${unit} days after inspection period`,
+      iso,
+      `${out.inspectionObjectionDays.value} ${unit} days ${
+        hasPeriodEnd ? "after inspection period" : "from Effective Date"
+      }`,
     );
+    // When the objection deadline IS the inspection deadline (no separate
+    // period end on the form), mirror it into inspectionDeadline too so the
+    // timeline shows an inspection milestone rather than only an objection.
+    if (!hasPeriodEnd && out.inspectionDeadline.value == null) {
+      out.inspectionDeadline = computed(
+        iso,
+        `objection deadline (form has no separate inspection period)`,
+      );
+    }
   }
 
   // Financing
