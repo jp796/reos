@@ -185,7 +185,6 @@ export async function POST(req: NextRequest) {
     headers: {
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
-      "Content-Encoding": "none",
       Connection: "keep-alive",
       "X-Accel-Buffering": "no",
     },
