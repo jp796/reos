@@ -338,10 +338,10 @@ export default async function TodayPage({
                         href={`/transactions/${txn.id}`}
                         className="font-medium hover:underline"
                       >
-                        {txn.contact.fullName}
+                        {txn.propertyAddress ?? "No address"}
                       </Link>
                       <div className="text-xs opacity-80">
-                        {txn.propertyAddress ?? "No address"} · {txn.transactionType}
+                        {txn.contact.fullName} · {txn.transactionType}
                       </div>
                       <div className="mt-1 text-xs">
                         {risk.factors[0]?.description ?? "—"}
@@ -430,10 +430,10 @@ export default async function TodayPage({
                     href={`/transactions/${t.id}`}
                     className="font-medium hover:underline"
                   >
-                    {t.contact.fullName}
+                    {t.propertyAddress ?? "No address"}
                   </Link>
                   <div className="text-xs text-text-muted">
-                    {t.propertyAddress ?? "No address"} ·{" "}
+                    {t.contact.fullName} ·{" "}
                     {t.transactionType}
                   </div>
                 </div>
@@ -471,10 +471,10 @@ export default async function TodayPage({
                     href={`/transactions/${txn.id}`}
                     className="font-medium hover:underline"
                   >
-                    {txn.contact.fullName}
+                    {txn.propertyAddress ?? "No address"}
                   </Link>
                   <div className="text-xs text-text-muted">
-                    {txn.propertyAddress ?? "No address"} ·{" "}
+                    {txn.contact.fullName} ·{" "}
                     {txn.transactionType}
                   </div>
                 </div>
@@ -608,8 +608,8 @@ function MilestoneRow({
           {m.label}
         </Link>
         <div className={`text-xs ${subText}`}>
-          {m.transaction.contact.fullName}
-          {m.transaction.propertyAddress && <> · {m.transaction.propertyAddress}</>}
+          {m.transaction.propertyAddress ?? m.transaction.contact.fullName}
+          {m.transaction.propertyAddress && <> · {m.transaction.contact.fullName}</>}
         </div>
       </div>
       <div className="text-right text-sm">
@@ -667,8 +667,8 @@ function TaskRow({
           {t.title}
         </Link>
         <div className={`text-xs ${subText}`}>
-          {t.transaction.contact.fullName}
-          {t.transaction.propertyAddress && <> · {t.transaction.propertyAddress}</>}
+          {t.transaction.propertyAddress ?? t.transaction.contact.fullName}
+          {t.transaction.propertyAddress && <> · {t.transaction.contact.fullName}</>}
           {" · "}
           {t.assignedTo ?? "coordinator"}
           {t.priority !== "normal" && (
