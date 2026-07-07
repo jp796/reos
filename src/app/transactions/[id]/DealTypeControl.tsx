@@ -30,18 +30,60 @@ const STRATEGIES: Array<{
   { value: "creative", label: "Creative finance", representation: "principal", titlePath: "takes_title" },
 ];
 
+// Creative-finance sub-structures we support (no wraps). Each swaps the
+// checklist + deadline set on the deal.
+const SUBSTRUCTURES: Array<{ value: string; label: string }> = [
+  { value: "subject_to", label: "Subject-to" },
+  { value: "seller_finance", label: "Owner carry (seller finance)" },
+  { value: "lease_option", label: "Lease option" },
+];
+
 export function DealTypeControl({
   assetId,
   strategy,
+  creativeSubstructure,
 }: {
   assetId: string;
   strategy: string;
+  creativeSubstructure?: string | null;
 }) {
   const router = useRouter();
   const toast = useToast();
   const [value, setValue] = useState(strategy);
+  const [sub, setSub] = useState(creativeSubstructure ?? "");
   const [busy, setBusy] = useState(false);
   const [, startTransition] = useTransition();
+
+  async function changeSub(next: string) {
+    if (next === sub) return;
+    const prev = sub;
+    setSub(next);
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/assets/${assetId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ creativeSubstructure: next || null }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setSub(prev);
+        toast.error("Couldn't set structure", data.error ?? res.statusText);
+        return;
+      }
+      const n = data.seeded?.created ?? 0;
+      toast.success(
+        "Creative checklist updated",
+        `${SUBSTRUCTURES.find((s) => s.value === next)?.label ?? next} — ${n} task${n === 1 ? "" : "s"} seeded for this stage.`,
+      );
+      startTransition(() => router.refresh());
+    } catch (e) {
+      setSub(prev);
+      toast.error("Couldn't set structure", e instanceof Error ? e.message : "error");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function change(next: string) {
     if (next === value) return;
@@ -104,8 +146,26 @@ export function DealTypeControl({
           </option>
         ))}
       </select>
+      {value === "creative" && (
+        <>
+          <span className="reos-label">Structure</span>
+          <select
+            value={sub}
+            onChange={(e) => changeSub(e.target.value)}
+            disabled={busy}
+            className="rounded border border-border bg-surface-2 px-2 py-1 text-xs font-medium disabled:opacity-50"
+          >
+            <option value="">— pick structure —</option>
+            {SUBSTRUCTURES.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </>
+      )}
       {busy && <span className="text-xs text-text-muted">Saving…</span>}
-      {!busy && isInvestor && (
+      {!busy && isInvestor && value !== "creative" && (
         <span className="inline-flex items-center gap-0.5 text-xs text-emerald-700">
           <Check className="h-3 w-3" strokeWidth={2.5} /> investor
         </span>

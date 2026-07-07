@@ -149,6 +149,7 @@ export default async function TransactionDetailPage({
           representation: true,
           titlePath: true,
           currentStageName: true,
+          creativeSubstructure: true,
           economicsJson: true,
         },
       },
@@ -896,6 +897,7 @@ export default async function TransactionDetailPage({
             <DealTypeControl
               assetId={txn.asset.id}
               strategy={txn.asset.strategy}
+              creativeSubstructure={txn.asset.creativeSubstructure}
             />
           )}
           {canToggleRestriction(actor.role) && (

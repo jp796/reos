@@ -20,7 +20,7 @@
  */
 
 import type { PrismaClient } from "@prisma/client";
-import type { Strategy } from "./DealClassifierService";
+import type { Strategy, CreativeSubstructure } from "./DealClassifierService";
 import {
   firstStage,
   nextStage,
@@ -35,11 +35,16 @@ type Db = PrismaClient;
 
 async function instantiateStage(
   db: Db,
-  opts: { assetId: string; transactionId: string; stage: StageTemplate },
+  opts: {
+    assetId: string;
+    transactionId: string;
+    stage: StageTemplate;
+    sub?: CreativeSubstructure | null;
+  },
 ): Promise<number> {
-  const { assetId, transactionId, stage } = opts;
+  const { assetId, transactionId, stage, sub } = opts;
   let created = 0;
-  for (const t of humanTasks(stage)) {
+  for (const t of humanTasks(stage, sub)) {
     // Dedupe — re-applying a stage must not double up its tasks.
     const exists = await db.task.findFirst({
       where: { assetId, stageKey: stage.key, templateKey: t.key },
@@ -86,7 +91,7 @@ export async function applyStrategyTemplate(
 ): Promise<{ applied: boolean; stageKey: string | null; created: number }> {
   const asset = await db.asset.findUnique({
     where: { id: opts.assetId },
-    select: { id: true, strategy: true, currentStageName: true },
+    select: { id: true, strategy: true, currentStageName: true, creativeSubstructure: true },
   });
   if (!asset) return { applied: false, stageKey: null, created: 0 };
   const strategy = asset.strategy as Strategy;
@@ -104,6 +109,7 @@ export async function applyStrategyTemplate(
     assetId: asset.id,
     transactionId: txnId,
     stage,
+    sub: asset.creativeSubstructure as CreativeSubstructure | null,
   });
   await db.asset.update({
     where: { id: asset.id },
@@ -130,7 +136,7 @@ export async function generateRecurringTasks(
 ): Promise<{ generated: number; monthKey: string | null }> {
   const asset = await db.asset.findUnique({
     where: { id: opts.assetId },
-    select: { id: true, strategy: true, currentStageName: true },
+    select: { id: true, strategy: true, currentStageName: true, creativeSubstructure: true },
   });
   if (!asset?.currentStageName) return { generated: 0, monthKey: null };
   const strategy = asset.strategy as Strategy;
@@ -142,9 +148,10 @@ export async function generateRecurringTasks(
   const txnId = await primaryTransactionId(db, asset.id);
   if (!txnId) return { generated: 0, monthKey: null };
 
+  const sub = asset.creativeSubstructure as CreativeSubstructure | null;
   const monthKey = monthKeyOf(opts.asOf ?? new Date());
   let generated = 0;
-  for (const t of humanTasks(stage)) {
+  for (const t of humanTasks(stage, sub)) {
     const templateKey = `${t.key}#${monthKey}`;
     const exists = await db.task.findFirst({
       where: { assetId: asset.id, stageKey: stage.key, templateKey },
@@ -178,7 +185,7 @@ export async function setStage(
 ): Promise<{ ok: boolean; stageKey: string | null; created: number }> {
   const asset = await db.asset.findUnique({
     where: { id: opts.assetId },
-    select: { id: true, strategy: true },
+    select: { id: true, strategy: true, creativeSubstructure: true },
   });
   if (!asset) return { ok: false, stageKey: null, created: 0 };
   const strategy = asset.strategy as Strategy;
@@ -191,6 +198,7 @@ export async function setStage(
     assetId: asset.id,
     transactionId: txnId,
     stage,
+    sub: asset.creativeSubstructure as CreativeSubstructure | null,
   });
   await db.asset.update({
     where: { id: asset.id },
@@ -238,7 +246,7 @@ export async function advanceStage(
 }> {
   const asset = await db.asset.findUnique({
     where: { id: opts.assetId },
-    select: { id: true, strategy: true, currentStageName: true },
+    select: { id: true, strategy: true, currentStageName: true, creativeSubstructure: true },
   });
   if (!asset) {
     return { advanced: false, done: false, from: null, to: null, created: 0 };
@@ -272,6 +280,7 @@ export async function advanceStage(
     assetId: asset.id,
     transactionId: txnId,
     stage: next,
+    sub: asset.creativeSubstructure as CreativeSubstructure | null,
   });
   await db.asset.update({
     where: { id: asset.id },

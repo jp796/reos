@@ -14,6 +14,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { requireSession } from "@/lib/require-session";
+import { applyStrategyTemplate } from "@/services/core/StageEngine";
+import { seedCreativeDeadlines } from "@/services/core/creativeDeadlines";
 
 export const runtime = "nodejs";
 
@@ -81,8 +83,38 @@ export async function PATCH(
   }
 
   const updated = await prisma.asset.update({ where: { id: asset.id }, data });
+
+  // Re-seed the checklist when the deal type OR the creative sub-structure
+  // changes. We clear the INCOMPLETE template-seeded stage tasks (so the old
+  // strategy's / old sub-structure's checklist doesn't linger), reset the
+  // lifecycle, then instantiate stage 1 for the new classification. Completed
+  // tasks are preserved as history. Retail has no lifecycle → no-op reseed.
+  const strategyChanged =
+    body.strategy !== undefined && body.strategy !== asset.strategy;
+  const subChanged = body.creativeSubstructure !== undefined;
+  let seeded: { applied: boolean; stageKey: string | null; created: number } | null = null;
+  if (strategyChanged || subChanged) {
+    await prisma.task.deleteMany({
+      where: { assetId: updated.id, stageKey: { not: null }, completedAt: null },
+    });
+    await prisma.asset.update({
+      where: { id: updated.id },
+      data: { currentStageName: null },
+    });
+    seeded = await applyStrategyTemplate(prisma, { assetId: updated.id });
+    // Creative-finance deals get their sub-structure-specific deadline set
+    // seeded onto the timeline as "needs date" milestones (idempotent).
+    if (updated.strategy === "creative") {
+      await seedCreativeDeadlines(prisma, {
+        assetId: updated.id,
+        substructure: updated.creativeSubstructure,
+      });
+    }
+  }
+
   return NextResponse.json({
     ok: true,
+    seeded,
     asset: {
       id: updated.id,
       representation: updated.representation,

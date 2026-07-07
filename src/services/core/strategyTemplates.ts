@@ -15,7 +15,7 @@
  * onto Task rows.
  */
 
-import type { Strategy } from "./DealClassifierService";
+import type { Strategy, CreativeSubstructure } from "./DealClassifierService";
 
 export type OwnerRole =
   | "agent"
@@ -32,6 +32,11 @@ export interface TaskTemplate {
   ownerRole: OwnerRole;
   /** System action (no human owner) — engine completes it, doesn't queue it. */
   auto?: boolean;
+  /** Creative-finance sub-structure gate. When set, the task is only
+   *  instantiated for a deal whose creativeSubstructure is in this list
+   *  (e.g. a land-trust task only for subject_to). Tasks with no `subs`
+   *  are the shared CF core (or apply to every non-creative strategy). */
+  subs?: CreativeSubstructure[];
 }
 
 export interface StageTemplate {
@@ -388,16 +393,28 @@ const CREATIVE: StageTemplate[] = [
     name: "Under Contract / Structuring",
     order: 1,
     tasks: [
-      { key: "execute_instruments", name: "Execute attorney-drafted instruments (note+DOT / lease+option / wrap-AITD / sub-to)", ownerRole: "agent" },
+      // ── Shared CF core ──
+      { key: "attorney_draft", name: "Attorney drafts the instruments for this structure", ownerRole: "agent" },
+      { key: "authorization_release", name: "Authorization to Release / Limited POA to loan servicer", ownerRole: "agent" },
       { key: "title_insurance", name: "Title search + title insurance (confirm underlying loan/liens)", ownerRole: "title" },
-      { key: "loan_servicing_setup", name: "Set up third-party loan servicing", ownerRole: "agent" },
-      { key: "underlying_payment_method", name: "Establish underlying-mortgage payment method", ownerRole: "agent" },
-      { key: "confirm_loan_current", name: "Confirm seller's loan current", ownerRole: "agent" },
-      { key: "insurance_transfer", name: "Insurance transfer / add insured", ownerRole: "agent" },
-      { key: "record_deed_note", name: "Record deed (sub-to) or note", ownerRole: "title" },
-      { key: "due_on_sale_plan", name: "Due-on-sale risk plan", ownerRole: "agent" },
+      { key: "insurance_transfer", name: "Insurance transfer / add insured (watch due-on-sale trigger)", ownerRole: "agent" },
       { key: "scaffold_drive_chat", name: "Drive + Chat space", ownerRole: "agent", auto: true },
       { key: "upload_executed_docs", name: "Upload all executed docs", ownerRole: "agent" },
+      // ── Subject-to ──
+      { key: "sub2_deed", name: "Execute + record warranty deed into land trust", ownerRole: "title", subs: ["subject_to"] },
+      { key: "land_trust", name: "Set up land trust + assign beneficial interest (due-on-sale shield)", ownerRole: "agent", subs: ["subject_to"] },
+      { key: "loan_servicing_setup", name: "Set up third-party loan servicing for the underlying loan", ownerRole: "agent", subs: ["subject_to"] },
+      { key: "underlying_payment_method", name: "Establish underlying-mortgage payment method", ownerRole: "agent", subs: ["subject_to"] },
+      { key: "confirm_loan_current", name: "Confirm seller's loan current (reinstate arrears if any)", ownerRole: "agent", subs: ["subject_to"] },
+      { key: "due_on_sale_plan", name: "Due-on-sale risk plan", ownerRole: "agent", subs: ["subject_to"] },
+      // ── Owner carry (seller financing, free & clear) ──
+      { key: "promissory_note", name: "Promissory note + deed of trust + amortization schedule", ownerRole: "agent", subs: ["seller_finance"] },
+      { key: "dodd_frank", name: "Dodd-Frank / SAFE compliance check — verify w/ counsel or RMLO (owner-occupant)", ownerRole: "agent", subs: ["seller_finance"] },
+      { key: "record_deed_dot", name: "Record deed to buyer + deed of trust to seller", ownerRole: "title", subs: ["seller_finance"] },
+      // ── Lease option ──
+      { key: "lease_option_docs", name: "Execute lease + SEPARATE option agreement (avoid equitable-mortgage recharacterization)", ownerRole: "agent", subs: ["lease_option"] },
+      { key: "option_consideration", name: "Collect option consideration + set rent-credit terms", ownerRole: "agent", subs: ["lease_option"] },
+      { key: "memorandum_option", name: "Record Memorandum of Option (protect equitable interest)", ownerRole: "title", subs: ["lease_option"] },
     ],
   },
   {
@@ -416,14 +433,14 @@ const CREATIVE: StageTemplate[] = [
     order: 3,
     isRecurring: true,
     tasks: [
-      { key: "pay_underlying", name: "Pay underlying mortgage ON TIME (top-severity recurring)", ownerRole: "agent" },
+      { key: "pay_underlying", name: "Pay underlying mortgage ON TIME (top-severity recurring)", ownerRole: "agent", subs: ["subject_to"] },
+      { key: "monitor_loan", name: "Monitor underlying loan", ownerRole: "agent", subs: ["subject_to"] },
+      { key: "monitor_due_on_sale", name: "Monitor due-on-sale exposure", ownerRole: "agent", subs: ["subject_to"] },
       { key: "collect_payment", name: "Collect tenant / buyer payment", ownerRole: "agent" },
       { key: "payment_reconciliation", name: "Monthly payment reconciliation", ownerRole: "agent" },
-      { key: "monitor_loan", name: "Monitor underlying loan", ownerRole: "agent" },
-      { key: "monitor_due_on_sale", name: "Monitor due-on-sale exposure", ownerRole: "agent" },
-      { key: "track_balloon", name: "Track balloon / exit date (lead-time alerts)", ownerRole: "agent" },
+      { key: "track_balloon", name: "Track balloon / exit / option-expiration date (lead-time alerts)", ownerRole: "agent" },
       { key: "periodic_statements", name: "Send periodic statements", ownerRole: "agent" },
-      { key: "annual_1098", name: "Annual 1098 (if lender)", ownerRole: "agent" },
+      { key: "annual_1098", name: "Annual 1098 to buyer (you're the lender)", ownerRole: "agent", subs: ["seller_finance"] },
       { key: "insurance_renewal", name: "Insurance renewal tracking", ownerRole: "agent" },
     ],
   },
@@ -495,8 +512,19 @@ export function nextStage(
 }
 
 /** Human (non-auto) tasks for a stage — the ones the engine queues. */
-export function humanTasks(stage: StageTemplate): TaskTemplate[] {
-  return stage.tasks.filter((t) => !t.auto);
+export function humanTasks(
+  stage: StageTemplate,
+  sub?: CreativeSubstructure | null,
+): TaskTemplate[] {
+  return stage.tasks.filter((t) => {
+    if (t.auto) return false;
+    // Substructure-gated tasks only apply to the matching sub-structure.
+    // A task with no `subs` is shared core and always applies.
+    if (t.subs && t.subs.length > 0) {
+      return sub != null && t.subs.includes(sub);
+    }
+    return true;
+  });
 }
 
 /** True when the given stage of a strategy is recurring (hold/servicing
