@@ -456,10 +456,12 @@ export function NewTransactionWizard() {
           {/* Multi-file upload */}
           <div>
             <div className="mb-2 text-sm font-medium">Documents</div>
-            <div
-              role="button"
+            {/* A <label> wrapping the hidden input makes "click to add"
+                open the file picker NATIVELY (no programmatic .click(),
+                which was unreliable). Drag-and-drop handlers stay on the
+                label; keyboard opens it via the ref for accessibility. */}
+            <label
               tabIndex={0}
-              onClick={() => fileRef.current?.click()}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
@@ -494,18 +496,18 @@ export function NewTransactionWizard() {
               <span className="text-xs text-text-muted">
                 Purchase contract, listing agreement, disclosures, addenda — PDFs or photos
               </span>
-            </div>
-            <input
-              ref={fileRef}
-              type="file"
-              multiple
-              accept="application/pdf,image/*"
-              className="hidden"
-              onChange={(e) => {
-                addFiles(e.target.files);
-                e.target.value = "";
-              }}
-            />
+              <input
+                ref={fileRef}
+                type="file"
+                multiple
+                accept="application/pdf,image/*"
+                className="hidden"
+                onChange={(e) => {
+                  addFiles(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+            </label>
             {files.length > 0 && (
               <ul className="mt-2 space-y-1.5">
                 {files.map((f, i) => (

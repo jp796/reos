@@ -238,8 +238,13 @@ function UploadDocsControl({ transactionId }: { transactionId: string }) {
     },
   };
 
+  // A stable input id so <label htmlFor> opens the picker NATIVELY (both
+  // the drop zone and the "My local device" button) — programmatic
+  // inputRef.current.click() was unreliable for "click to add".
+  const inputId = `reos-upload-${transactionId}`;
   const fileInput = (
     <input
+      id={inputId}
       ref={inputRef}
       type="file"
       multiple
@@ -290,11 +295,11 @@ function UploadDocsControl({ transactionId }: { transactionId: string }) {
               </div>
 
               <div className="p-5">
-                {/* Drop zone */}
-                <div
-                  role="button"
+                {/* Drop zone — a <label htmlFor> opens the picker natively
+                    on click; drag handlers cover drop; keyboard via ref. */}
+                <label
+                  htmlFor={inputId}
                   tabIndex={0}
-                  onClick={() => inputRef.current?.click()}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
@@ -319,7 +324,7 @@ function UploadDocsControl({ transactionId }: { transactionId: string }) {
                   <span className="text-xs text-text-muted">
                     Any file lands in the library — a PDF contract is auto-read too
                   </span>
-                </div>
+                </label>
 
                 {/* Locations */}
                 <div className="my-4 flex items-center gap-3 text-xs text-text-muted">
@@ -328,15 +333,15 @@ function UploadDocsControl({ transactionId }: { transactionId: string }) {
                   <span className="h-px flex-1 bg-border" />
                 </div>
                 <div className="flex justify-center">
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => inputRef.current?.click()}
-                    className="inline-flex items-center gap-2 rounded-md border border-border bg-surface px-4 py-2 text-sm font-medium text-text transition-colors hover:border-brand-500 disabled:opacity-50"
+                  <label
+                    htmlFor={inputId}
+                    className={`inline-flex cursor-pointer items-center gap-2 rounded-md border border-border bg-surface px-4 py-2 text-sm font-medium text-text transition-colors hover:border-brand-500 ${
+                      busy ? "pointer-events-none opacity-50" : ""
+                    }`}
                   >
                     <HardDrive className="h-4 w-4" strokeWidth={2} />
                     My local device
-                  </button>
+                  </label>
                 </div>
               </div>
               {fileInput}
