@@ -604,6 +604,50 @@ export const ATLAS_TOOLS: Record<string, ToolDef> = {
     },
   },
 
+  update_deal: {
+    tier: "write",
+    description:
+      "Manually update a contract field on a deal from chat. field is one of: purchase_price, earnest_amount, title_company, lender. value is the new value (a dollar number for prices/amounts, text for company/lender). For DATES use set_deadline instead.",
+    schema: z.object({
+      deal: z.string().min(1),
+      field: z.enum(["purchase_price", "earnest_amount", "title_company", "lender"]),
+      value: z.string().min(1),
+    }),
+    run: async (db, actor, args) => {
+      const a = args as { deal: string; field: string; value: string };
+      const r = await resolveDeal(db, actor, a.deal);
+      if ("error" in r) return r.error;
+      const num = () => {
+        const n = parseFloat(a.value.replace(/[,$\s]/g, ""));
+        return Number.isFinite(n) ? n : null;
+      };
+      let summary: string;
+      if (a.field === "purchase_price") {
+        const n = num();
+        if (n === null) return { ok: false, error: `"${a.value}" isn't a valid amount.`, reason: "invalid" };
+        await db.transactionFinancials.upsert({
+          where: { transactionId: r.deal.id },
+          create: { transactionId: r.deal.id, salePrice: n },
+          update: { salePrice: n },
+        });
+        summary = `Set purchase price = $${n.toLocaleString()} on ${r.deal.address}.`;
+      } else if (a.field === "earnest_amount") {
+        const n = num();
+        if (n === null) return { ok: false, error: `"${a.value}" isn't a valid amount.`, reason: "invalid" };
+        await db.transaction.update({ where: { id: r.deal.id }, data: { earnestMoneyAmount: n } });
+        summary = `Set earnest money = $${n.toLocaleString()} on ${r.deal.address}.`;
+      } else if (a.field === "title_company") {
+        await db.transaction.update({ where: { id: r.deal.id }, data: { titleCompanyName: a.value.slice(0, 120) } });
+        summary = `Set title company = "${a.value}" on ${r.deal.address}.`;
+      } else {
+        await db.transaction.update({ where: { id: r.deal.id }, data: { lenderName: a.value.slice(0, 120) } });
+        summary = `Set lender = "${a.value}" on ${r.deal.address}.`;
+      }
+      await audit(db, actor, { transactionId: r.deal.id, entityType: "transaction", entityId: r.deal.id, action: "update_deal", decision: "applied" });
+      return { ok: true, summary };
+    },
+  },
+
   advance_stage: {
     tier: "write",
     description: "Advance an investor deal to the next stage of its lifecycle (seeds that stage's tasks).",
@@ -718,6 +762,8 @@ export function previewAction(name: string, args: Record<string, unknown>): stri
       return `Complete task "${args.title}" on ${deal}`;
     case "set_deadline":
       return `Set ${String(args.kind).replace(/_/g, " ")} = ${args.date} on ${deal}`;
+    case "update_deal":
+      return `Set ${String(args.field).replace(/_/g, " ")} = ${args.value} on ${deal}`;
     case "advance_stage":
       return `Advance ${deal} to the next stage`;
     case "set_stage":
@@ -828,6 +874,15 @@ const PARAM_SCHEMAS: Record<string, Record<string, unknown>> = {
       deal: { type: "string" },
       kind: { type: "string", enum: Object.keys(DEADLINE_FIELDS) },
       date: { type: "string", description: "YYYY-MM-DD" },
+    },
+  },
+  update_deal: {
+    type: "object",
+    required: ["deal", "field", "value"],
+    properties: {
+      deal: { type: "string", description: "address or contact name" },
+      field: { type: "string", enum: ["purchase_price", "earnest_amount", "title_company", "lender"] },
+      value: { type: "string", description: "new value — a dollar number for price/amount, text for company/lender" },
     },
   },
   advance_stage: {
