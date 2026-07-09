@@ -62,7 +62,11 @@ export async function POST(
 
   const body = (await req.json().catch(() => null)) as {
     templateId?: string;
-    action?: "preview" | "send" | "send-raw";
+    /** Alternative to templateId — resolve THIS account's template of this
+     *  category (welcome / title / clear_to_close / post_close). Lets a
+     *  task's "Draft email" button ask for the right template by kind. */
+    category?: string;
+    action?: "preview" | "send" | "send-raw" | "draft";
     to?: string | string[];
     cc?: string | string[];
     subject?: string;
@@ -88,12 +92,18 @@ export async function POST(
 
   let rendered: ReturnType<typeof renderTemplate> | null = null;
 
-  if (body.templateId) {
-    const template = await prisma.emailTemplate.findUnique({
-      where: { id: body.templateId },
-    });
+  if (body.templateId || body.category) {
+    const template = body.templateId
+      ? await prisma.emailTemplate.findUnique({ where: { id: body.templateId } })
+      : await prisma.emailTemplate.findFirst({
+          where: { accountId: actor.accountId, category: body.category },
+          orderBy: { sortOrder: "asc" },
+        });
     if (!template) {
-      return NextResponse.json({ error: "template not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: body.category ? `No "${body.category}" email template found.` : "template not found" },
+        { status: 404 },
+      );
     }
     if (template.accountId !== actor.accountId) {
       return NextResponse.json({ error: "template not in your account" }, { status: 404 });
@@ -110,6 +120,55 @@ export async function POST(
       return NextResponse.json({ error: "templateId required for preview" }, { status: 400 });
     }
     return NextResponse.json({ ok: true, ...rendered });
+  }
+
+  // Draft mode — render the template + save a Gmail DRAFT (never sends).
+  // The task-driven "Draft email" button uses this: one click generates
+  // the right template pre-filled to the client, ready to review in Gmail.
+  if (body.action === "draft") {
+    if (!rendered) {
+      return NextResponse.json({ error: "templateId or category required for draft" }, { status: 400 });
+    }
+    if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.GOOGLE_REDIRECT_URI) {
+      return NextResponse.json({ error: "Google OAuth not configured" }, { status: 500 });
+    }
+    if (!txn.account.googleOauthTokensEncrypted) {
+      return NextResponse.json({ error: "Google not connected" }, { status: 400 });
+    }
+    const oauthD = new GoogleOAuthService(
+      { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET, redirectUri: env.GOOGLE_REDIRECT_URI, scopes: DEFAULT_SCOPES },
+      prisma,
+      getEncryptionService(),
+    );
+    const gAuthD = await oauthD.createAuthenticatedClient(actor.accountId);
+    const gmailD = google.gmail({ version: "v1", auth: gAuthD });
+    const clientEmail =
+      txn.contact?.primaryEmail && validEmail(txn.contact.primaryEmail)
+        ? txn.contact.primaryEmail
+        : "";
+    const hd = [`From: ${actor.email}`];
+    if (clientEmail) hd.push(`To: ${clientEmail}`);
+    hd.push(
+      `Subject: ${rendered.subject.replace(/[\r\n]/g, " ")}`,
+      "MIME-Version: 1.0",
+      'Content-Type: text/plain; charset="UTF-8"',
+      "Content-Transfer-Encoding: 7bit",
+    );
+    const rawD = Buffer.from(hd.join("\r\n") + "\r\n\r\n" + rendered.body)
+      .toString("base64")
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+    const draftRes = await gmailD.users.drafts.create({
+      userId: "me",
+      requestBody: { message: { raw: rawD } },
+    });
+    return NextResponse.json({
+      ok: true,
+      draftId: draftRes.data.id,
+      to: clientEmail || null,
+      subject: rendered.subject,
+    });
   }
 
   // Send modes require recipient list

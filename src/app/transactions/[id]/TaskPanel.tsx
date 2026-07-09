@@ -30,6 +30,7 @@ import {
   Circle,
   AlertOctagon,
   CalendarDays,
+  Mail,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useToast } from "@/app/ToastProvider";
@@ -77,6 +78,19 @@ function priorityClasses(p: string): string {
     default:
       return "border-border bg-surface text-text-subtle";
   }
+}
+
+// Retail-deal tasks that have a matching AI email template. When a task's
+// title matches, the row shows a "Draft email" button that renders the
+// account's template of this category for the deal + saves a Gmail draft.
+const EMAIL_TASK_CATEGORIES: Array<{ re: RegExp; category: string; label: string }> = [
+  { re: /welcome/i, category: "welcome", label: "Welcome email" },
+  { re: /title commitment|order title|title order|request title/i, category: "title", label: "Title email" },
+  { re: /clear to close|closing logistic|coordinate closing/i, category: "clear_to_close", label: "Closing-logistics email" },
+  { re: /post.?close|review request|leave a review|google review|zillow/i, category: "post_close", label: "Review-request email" },
+];
+function emailCategoryFor(title: string): { category: string; label: string } | null {
+  return EMAIL_TASK_CATEGORIES.find((m) => m.re.test(title)) ?? null;
 }
 
 function isOverdue(t: Task): boolean {
@@ -428,6 +442,7 @@ export function TaskPanel({
             <TaskRow
               key={t.id}
               task={t}
+              transactionId={transactionId}
               onPatch={(patch) => patchTask(t.id, patch)}
               onDelete={() => deleteTask(t.id)}
             />
@@ -445,6 +460,7 @@ export function TaskPanel({
               <TaskRow
                 key={t.id}
                 task={t}
+                transactionId={transactionId}
                 onPatch={(patch) => patchTask(t.id, patch)}
                 onDelete={() => deleteTask(t.id)}
               />
@@ -458,21 +474,51 @@ export function TaskPanel({
 
 function TaskRow({
   task,
+  transactionId,
   onPatch,
   onDelete,
 }: {
   task: Task;
+  transactionId: string;
   onPatch: (patch: Partial<Task>) => void;
   onDelete: () => void;
 }) {
+  const toast = useToast();
   const overdue = isOverdue(task);
   const [editingDate, setEditingDate] = useState(false);
   const [dateVal, setDateVal] = useState(toDateInputValue(task.dueAt));
+  const [drafting, setDrafting] = useState(false);
+  const emailCat = emailCategoryFor(task.title);
 
   function toggleComplete() {
     onPatch({
       completedAt: task.completedAt ? null : new Date().toISOString(),
     });
+  }
+
+  async function draftEmail() {
+    if (!emailCat) return;
+    setDrafting(true);
+    try {
+      const res = await fetch(`/api/transactions/${transactionId}/email`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ category: emailCat.category, action: "draft" }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error("Couldn't draft the email", data.error ?? res.statusText);
+        return;
+      }
+      toast.success(
+        "Email drafted",
+        `${emailCat.label} saved to Gmail${data.to ? ` for ${data.to}` : ""} — review + send.`,
+      );
+    } catch (e) {
+      toast.error("Couldn't draft the email", e instanceof Error ? e.message : "error");
+    } finally {
+      setDrafting(false);
+    }
   }
 
   function saveDate() {
@@ -532,6 +578,18 @@ function TaskRow({
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5">
+        {emailCat && !task.completedAt && (
+          <button
+            type="button"
+            onClick={draftEmail}
+            disabled={drafting}
+            className="inline-flex items-center gap-1 rounded border border-border bg-surface px-1.5 py-0.5 text-[11px] font-medium text-text-muted transition-colors hover:border-brand-500 hover:text-brand-700 disabled:opacity-50"
+            title={`Draft the ${emailCat.label} for this deal (saves a Gmail draft to review + send)`}
+          >
+            <Mail className="h-3 w-3" strokeWidth={2} />
+            {drafting ? "Drafting…" : "Draft email"}
+          </button>
+        )}
         {editingDate ? (
           <>
             <input
