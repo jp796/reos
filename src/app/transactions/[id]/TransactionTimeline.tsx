@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { toDateInputValue } from "@/lib/dates";
+import { toDateInputValue, fmtLocalDate } from "@/lib/dates";
 
 interface Milestone {
   id: string;
@@ -42,13 +42,11 @@ interface Props {
 
 const OWNER_CHOICES = ["agent", "lender", "title", "inspector", "client", "coagent"];
 
+// Delegate to the shared formatter so the row label and the edit input
+// (toDateInputValue) agree on legacy UTC-midnight dates — otherwise the
+// row showed one day, the edit field another, and saving shifted +1.
 function fmt(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  return fmtLocalDate(iso);
 }
 function rel(iso: string): string {
   const ms = new Date(iso).getTime() - Date.now();
