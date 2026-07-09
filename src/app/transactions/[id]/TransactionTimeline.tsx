@@ -365,7 +365,7 @@ export function TransactionTimeline(props: Props) {
             value={newLabel}
             onChange={(e) => setNewLabel(e.target.value)}
             placeholder="Milestone label (e.g. 'HOA docs due')"
-            className="rounded border border-border-strong px-2 py-1.5 text-sm"
+            className="rounded border border-border-strong bg-surface px-2 py-1.5 text-sm text-text placeholder:text-text-subtle"
             required
             autoFocus
           />
@@ -373,7 +373,7 @@ export function TransactionTimeline(props: Props) {
             type="date"
             value={newDate}
             onChange={(e) => setNewDate(e.target.value)}
-            className="rounded border border-border-strong px-2 py-1.5 text-sm"
+            className="rounded border border-border-strong bg-surface px-2 py-1.5 text-sm text-text placeholder:text-text-subtle"
             placeholder="Optional"
             title="Leave blank for a date-less checklist item"
           />
@@ -569,13 +569,13 @@ function EditRow({
         type="text"
         value={label}
         onChange={(e) => setLabel(e.target.value)}
-        className="rounded border border-border-strong px-2 py-1 text-sm"
+        className="rounded border border-border-strong bg-surface px-2 py-1 text-sm text-text placeholder:text-text-subtle"
       />
       <input
         type="date"
         value={dueAt}
         onChange={(e) => setDueAt(e.target.value)}
-        className="rounded border border-border-strong px-2 py-1 text-sm"
+        className="rounded border border-border-strong bg-surface px-2 py-1 text-sm text-text placeholder:text-text-subtle"
       />
       {/* Clear-date quick action — turns the milestone into a date-less
           checklist item. Calendar sync will skip it; timeline shows
