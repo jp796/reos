@@ -9,6 +9,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
+import { MILESTONE_TYPE_TO_TXN_FIELD } from "@/lib/milestone-fields";
 
 const STATUSES = new Set(["pending", "completed", "overdue", "cancelled"]);
 const OWNER_ROLES = new Set([
@@ -90,6 +91,21 @@ export async function PATCH(
     where: { id: mid },
     data,
   });
+
+  // Keep the mirrored Transaction date column in sync so the header,
+  // Details tab, Today, and calendar sync all reflect a timeline edit.
+  // Only when the date itself changed and this milestone type maps to a
+  // Transaction field.
+  if (body.dueAt !== undefined) {
+    const field = MILESTONE_TYPE_TO_TXN_FIELD[existing.type];
+    if (field) {
+      await prisma.transaction.update({
+        where: { id },
+        data: { [field]: data.dueAt ?? null } as Prisma.TransactionUpdateInput,
+      });
+    }
+  }
+
   return NextResponse.json({ ok: true, milestone: updated });
 }
 

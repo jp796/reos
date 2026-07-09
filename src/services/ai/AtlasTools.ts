@@ -20,6 +20,7 @@
 import { z } from "zod";
 import type { PrismaClient } from "@prisma/client";
 import { isDealVisible } from "@/lib/deal-visibility";
+import { TXN_FIELD_TO_MILESTONE_TYPE } from "@/lib/milestone-fields";
 import { rescanDeal } from "@/services/core/RescanDealService";
 import { synthesizeDeal } from "@/services/core/DocumentSynthesisService";
 import { generateDealTasks } from "@/services/core/GenerateDealTasksService";
@@ -599,6 +600,13 @@ export const ATLAS_TOOLS: Record<string, ToolDef> = {
       const d = new Date(a.date);
       if (Number.isNaN(d.getTime())) return { ok: false, error: `Invalid date "${a.date}".`, reason: "invalid" };
       await db.transaction.update({ where: { id: r.deal.id }, data: { [field]: d } });
+      // Mirror onto the timeline milestone of this type so the timeline
+      // stays in sync with the header/Details (bidirectional).
+      const mType = TXN_FIELD_TO_MILESTONE_TYPE[field];
+      if (mType) {
+        const ms = await db.milestone.findFirst({ where: { transactionId: r.deal.id, type: mType }, select: { id: true } });
+        if (ms) await db.milestone.update({ where: { id: ms.id }, data: { dueAt: d } });
+      }
       await audit(db, actor, { transactionId: r.deal.id, entityType: "transaction", entityId: r.deal.id, action: "set_deadline", decision: "applied" });
       return { ok: true, summary: `Set ${a.kind.replace(/_/g, " ")} = ${a.date} on ${r.deal.address}.` };
     },
