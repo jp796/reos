@@ -63,6 +63,11 @@ export interface DealFields {
   cashBuyerDisposition?: boolean;
   twoClosingIntent?: boolean;
   source?: string;
+  /** Explicit deal-type override (from an instruction, e.g. a Telegram
+   *  caption "flip" / "wholesale" / "sub-to"). When a valid strategy, it
+   *  wins over auto-classification. */
+  strategyOverride?: string | null;
+  creativeSubstructureOverride?: string | null;
 }
 
 export interface CreateDealResult {
@@ -177,15 +182,32 @@ export async function createDealFromExtraction(
     hasCommissionExpectation: !!(sellerPct || sellerAmt || buyerPct || buyerAmt),
   });
 
+  // Explicit deal-type instruction (e.g. Telegram caption "flip") wins
+  // over auto-classification.
+  const VALID_STRATEGIES = new Set(["retail", "flip", "wholesale", "rental_brrrr", "creative"]);
+  let strategy = classification.strategy;
+  let representation = classification.representation;
+  let titlePath = classification.titlePath;
+  let creativeSubstructure = classification.creativeSubstructure;
+  if (fields.strategyOverride && VALID_STRATEGIES.has(fields.strategyOverride)) {
+    strategy = fields.strategyOverride as typeof strategy;
+    representation = strategy === "retail" ? "agency" : "principal";
+    titlePath = strategy === "wholesale" ? "assignment" : "takes_title";
+    creativeSubstructure =
+      strategy === "creative"
+        ? ((fields.creativeSubstructureOverride as typeof creativeSubstructure) ?? creativeSubstructure)
+        : null;
+  }
+
   const asset = await db.asset.create({
     data: {
       accountId,
       ownerUserId: actingUserId,
       address: fields.address.slice(0, 240),
-      representation: classification.representation,
-      strategy: classification.strategy,
-      titlePath: classification.titlePath,
-      creativeSubstructure: classification.creativeSubstructure,
+      representation,
+      strategy,
+      titlePath,
+      creativeSubstructure,
     },
   });
 
@@ -284,7 +306,7 @@ export async function createDealFromExtraction(
   }
 
   // Seed stage-1 tasks for investor strategies (wholesale/flip/etc).
-  if (hasStageLifecycle(classification.strategy)) {
+  if (hasStageLifecycle(strategy)) {
     try {
       await applyStrategyTemplate(db, { assetId: asset.id, transactionId: txn.id });
     } catch {
@@ -296,8 +318,8 @@ export async function createDealFromExtraction(
     created: true,
     transactionId: txn.id,
     assetId: asset.id,
-    strategy: classification.strategy,
-    representation: classification.representation,
+    strategy,
+    representation,
     milestonesCreated,
     grossCommission,
   };

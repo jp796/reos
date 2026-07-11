@@ -70,10 +70,31 @@ function fieldsFromExtraction(ex: ContractExtraction): DealFields {
 }
 
 /**
+ * Parse a deal-type instruction from the message caption, e.g. sending a
+ * contract with the caption "flip" or "sub-to". Wins over auto-classify.
+ */
+function parseDealTypeInstruction(
+  caption: string | undefined,
+): { strategy: string; sub?: string; label: string } | null {
+  const c = (caption ?? "").toLowerCase();
+  if (!c.trim()) return null;
+  if (/\bsub[\s-]?2\b|\bsubject[\s-]?to\b/.test(c)) return { strategy: "creative", sub: "subject_to", label: "creative · subject-to" };
+  if (/owner\s?carry|seller\s?financ/.test(c)) return { strategy: "creative", sub: "seller_finance", label: "creative · owner carry" };
+  if (/lease\s?option/.test(c)) return { strategy: "creative", sub: "lease_option", label: "creative · lease option" };
+  if (/\bcreative\b/.test(c)) return { strategy: "creative", label: "creative finance" };
+  if (/wholesale|assign/.test(c)) return { strategy: "wholesale", label: "wholesale" };
+  if (/\bflip\b/.test(c)) return { strategy: "flip", label: "flip" };
+  if (/rental|brrrr|buy.?and.?hold|\bhold\b/.test(c)) return { strategy: "rental_brrrr", label: "rental / BRRRR" };
+  if (/retail|\bagency\b/.test(c)) return { strategy: "retail", label: "retail" };
+  return null;
+}
+
+/**
  * Upload → create a deal. The user sends a contract PDF (document) or
  * photo(s) of one. We download → extract via GPT (text for PDF, vision
  * for image) → map to DealFields → PROPOSE create_deal, held under the
  * pending key for a "yes". Never writes directly: confirm-before-write.
+ * The caption can carry a deal-type instruction ("flip", "sub-to", …).
  */
 async function handleUpload(
   actor: AtlasActor,
@@ -116,6 +137,12 @@ async function handleUpload(
   }
 
   const fields = fieldsFromExtraction(ex);
+  // Deal-type instruction from the caption (e.g. "flip", "sub-to").
+  const dealType = parseDealTypeInstruction(msg.caption);
+  if (dealType) {
+    fields.strategyOverride = dealType.strategy;
+    fields.creativeSubstructureOverride = dealType.sub ?? null;
+  }
   if (!fields.address || !fields.address.trim()) {
     await tg
       .sendMessage(
@@ -150,6 +177,7 @@ async function handleUpload(
   const lines = [
     "*New deal from contract*",
     `📍 ${fields.address}`,
+    dealType ? `Type: ${dealType.label}` : null,
     fields.buyerName ? `Buyer: ${fields.buyerName}` : null,
     fields.sellerName ? `Seller: ${fields.sellerName}` : null,
     fmtMoney(fields.purchasePrice) ? `Price: ${fmtMoney(fields.purchasePrice)}` : null,
