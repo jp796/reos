@@ -9,6 +9,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { DropZone } from "@/app/components/DropZone";
+import { classifyForm } from "@/lib/capabilities";
 import { useToast } from "@/app/ToastProvider";
 
 interface FormRow {
@@ -178,7 +179,31 @@ export function FormsLibrary({
               <li key={f.id} className="rounded-lg border border-border bg-surface p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <div className="font-medium">{f.name}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{f.name}</span>
+                      {(() => {
+                        // Compatibility claim sourced from the canonical
+                        // capability registry (§13 documented source of truth).
+                        const kind = f.isXfa
+                          ? "xfa"
+                          : !f.isFlat
+                            ? "fillable_pdf"
+                            : "flat_pdf";
+                        const c = classifyForm(kind);
+                        return (
+                          <span
+                            className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                              c.atlasFillable
+                                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+                                : "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300"
+                            }`}
+                            title={c.workflow}
+                          >
+                            {c.atlasFillable ? "Atlas-fillable" : "Needs conversion"}
+                          </span>
+                        );
+                      })()}
+                    </div>
                     <div className="text-xs text-text-muted">
                       {f.category ? `${f.category} · ` : ""}
                       {!f.isFlat ? (
