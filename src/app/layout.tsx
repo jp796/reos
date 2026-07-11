@@ -131,6 +131,7 @@ export default async function RootLayout({
       navDeals = rows.map((r) => {
         let group: NavDealGroup;
         if (r.status === "dead") group = "void";
+        else if (r.status === "terminated") group = "terminated";
         else if (r.status === "closed") group = "closed";
         else if (r.side === "sell" && !r.contractDate) group = "active_listing";
         else group = "under_contract";

@@ -72,13 +72,19 @@ interface ShellUser {
   investor?: boolean;
 }
 
-export type NavDealGroup = "active_listing" | "under_contract" | "closed" | "void";
+export type NavDealGroup =
+  | "active_listing"
+  | "under_contract"
+  | "closed"
+  | "terminated"
+  | "void";
 export interface NavDeal { id: string; address: string; group: NavDealGroup }
 
 const DEAL_GROUPS: Array<{ key: NavDealGroup; label: string }> = [
   { key: "active_listing", label: "Active Listing" },
   { key: "under_contract", label: "Under Contract" },
   { key: "closed", label: "Closed" },
+  { key: "terminated", label: "Terminated" },
   { key: "void", label: "Void" },
 ];
 

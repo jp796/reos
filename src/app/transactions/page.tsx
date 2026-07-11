@@ -5,6 +5,7 @@ import { TransactionsToolbar } from "./TransactionsToolbar";
 import { GmailSearchPanel } from "./GmailSearchPanel";
 import { AcceptedContractScanPanel } from "./AcceptedContractScanPanel";
 import { QuickDeadButton } from "./QuickDeadButton";
+import { QuickTerminateButton } from "./QuickTerminateButton";
 import { PendingMatchesPanel } from "./PendingMatchesPanel";
 import { PendingClosingUpdatesPanel } from "./PendingClosingUpdatesPanel";
 import { CalendarSyncButton } from "./CalendarSyncButton";
@@ -70,6 +71,8 @@ function statusBadge(status: string) {
       "bg-accent-100 text-accent-600 ring-accent-200 dark:bg-accent-950/40 dark:text-accent-200 dark:ring-accent-900/40",
     closed:
       "bg-surface-2 text-text-muted ring-border",
+    terminated:
+      "bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-900/40",
     dead: "bg-red-50 text-danger ring-red-200 dark:bg-red-950/40 dark:text-red-300 dark:ring-red-900/40",
   };
   const cls =
@@ -118,8 +121,8 @@ export default async function TransactionsPage({
     filter === "all"
       ? {}
       : filter === "closed"
-        ? { status: { in: ["closed", "dead"] } }
-        : { status: { notIn: ["closed", "dead"] } };
+        ? { status: { in: ["closed", "dead", "terminated"] } }
+        : { status: { notIn: ["closed", "dead", "terminated"] } };
 
   const repWhere = rep === "any" ? {} : { side: rep };
 
@@ -171,10 +174,10 @@ export default async function TransactionsPage({
     }),
     prisma.transaction.count({ where: accountWhere }),
     prisma.transaction.count({
-      where: { ...accountWhere, status: { in: ["closed", "dead"] } },
+      where: { ...accountWhere, status: { in: ["closed", "dead", "terminated"] } },
     }),
     prisma.transaction.count({
-      where: { ...accountWhere, status: { notIn: ["closed", "dead"] } },
+      where: { ...accountWhere, status: { notIn: ["closed", "dead", "terminated"] } },
     }),
     // Rep-side counts, scoped to the currently-active status filter so
     // the numbers reflect what the user is looking at.
@@ -491,12 +494,15 @@ export default async function TransactionsPage({
                       )}
                     </div>
                     <div className="flex flex-wrap items-center gap-1.5">
-                      {txn.status !== "closed" && txn.status !== "dead" && (
-                        <>
-                          <QuickCloseButton transactionId={txn.id} />
-                          <QuickDeadButton transactionId={txn.id} />
-                        </>
-                      )}
+                      {txn.status !== "closed" &&
+                        txn.status !== "dead" &&
+                        txn.status !== "terminated" && (
+                          <>
+                            <QuickCloseButton transactionId={txn.id} />
+                            <QuickTerminateButton transactionId={txn.id} />
+                            <QuickDeadButton transactionId={txn.id} />
+                          </>
+                        )}
                       {txn._count.milestones > 0 && (
                         <CalendarSyncButton
                           transactionId={txn.id}

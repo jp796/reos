@@ -13,6 +13,7 @@ import { TransactionTimeline } from "./TransactionTimeline";
 import { SharePanel } from "./SharePanel";
 import { EditableHeader } from "./EditableHeader";
 import { DeleteTransactionButton } from "./DeleteTransactionButton";
+import { QuickTerminateButton } from "../QuickTerminateButton";
 import { InspectionsPanel } from "./InspectionsPanel";
 import { NotesPanel } from "./NotesPanel";
 import { DocumentLibraryPanel } from "./DocumentLibraryPanel";
@@ -950,6 +951,11 @@ export default async function TransactionDetailPage({
           >
             Summary
           </Link>
+          {txn.status !== "closed" &&
+            txn.status !== "dead" &&
+            txn.status !== "terminated" && (
+              <QuickTerminateButton transactionId={txn.id} />
+            )}
           <DeleteTransactionButton
             transactionId={txn.id}
             propertyAddress={txn.propertyAddress}

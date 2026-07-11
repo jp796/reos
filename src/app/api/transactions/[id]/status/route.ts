@@ -15,7 +15,7 @@ import { requireSession, assertSameAccount } from "@/lib/require-session";
 import { AutomationAuditService } from "@/services/integrations/FollowUpBossService";
 import { parseInputDate } from "@/lib/dates";
 
-const STATUSES = new Set(["active", "pending", "closed", "dead"]);
+const STATUSES = new Set(["active", "pending", "closed", "dead", "terminated"]);
 
 export async function PATCH(
   req: NextRequest,
