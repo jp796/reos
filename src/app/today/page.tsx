@@ -26,6 +26,7 @@ import { requireSession } from "@/lib/require-session";
 import { dealVisibilityWhere } from "@/lib/deal-visibility";
 import { cn } from "@/lib/cn";
 import { isPostCloseNurture, classifyMilestone } from "@/lib/risk";
+import { TodayQuickActions } from "./TodayQuickActions";
 
 export const dynamic = "force-dynamic";
 
@@ -674,6 +675,7 @@ function MilestoneRow({
           {m.transaction.propertyAddress ?? m.transaction.contact.fullName}
           {m.transaction.propertyAddress && <> · {m.transaction.contact.fullName}</>}
         </div>
+        <TodayQuickActions kind="milestone" transactionId={m.transaction.id} itemId={m.id} />
       </div>
       <div className="text-right text-sm">
         {m.dueAt ? (
@@ -751,6 +753,7 @@ function TaskRow({
             </>
           )}
         </div>
+        <TodayQuickActions kind="task" transactionId={t.transaction.id} itemId={t.id} />
       </div>
       <div className="text-right text-sm">
         {t.dueAt ? (
