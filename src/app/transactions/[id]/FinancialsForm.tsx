@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { formatCommissionPct, commissionRatePoints } from "@/lib/commission";
 import { useRouter } from "next/navigation";
 import { MoneyInput } from "@/app/components/MoneyInput";
 
@@ -66,8 +67,11 @@ export function FinancialsForm({
   );
   // Commission % as user enters it — "2.5" means 2.5%, NOT 0.025.
   // Stored in DB as the same human-readable %  (commissionPercent field).
+  // Seed with the CANONICAL points value so a legacy decimal-stored row
+  // (0.025) shows "2.5" in the field — and saving persists points, healing
+  // the row. Never seeds "0.025".
   const [commissionPercent, setCommissionPercent] = useState(
-    initial?.commissionPercent?.toString() ?? "",
+    commissionRatePoints(initial?.commissionPercent)?.toString() ?? "",
   );
   const [grossCommission, setGrossCommission] = useState(
     initial?.grossCommission?.toString() ?? "",
@@ -82,7 +86,7 @@ export function FinancialsForm({
       // "manual" = stored GCI doesn't equal price × pct / 100 ±$1
       Math.abs(
         initial.grossCommission -
-          (initial.salePrice * initial.commissionPercent) / 100,
+          (initial.salePrice * (commissionRatePoints(initial.commissionPercent) ?? 0)) / 100,
       ) > 1
     ),
   );
@@ -271,11 +275,7 @@ export function FinancialsForm({
           <Field label="Sale price" value={fmtMoney(initial?.salePrice)} />
           <Field
             label={commissionLabel(side)}
-            value={
-              initial?.commissionPercent != null
-                ? `${initial.commissionPercent}%`
-                : "—"
-            }
+            value={formatCommissionPct(initial?.commissionPercent)}
           />
           <Field label="GCI" value={fmtMoney(initial?.grossCommission)} />
           <Field

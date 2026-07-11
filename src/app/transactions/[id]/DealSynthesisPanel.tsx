@@ -93,12 +93,19 @@ export function DealSynthesisPanel({
     }
   }
 
+  // Derive the state line from the ACTUAL synthesis state. Never claim
+  // "reconciled" without a real synthesis timestamp (brief §8.1); express
+  // an un-synced deal as an actionable state, not a success claim beside
+  // "never" (brief §8.3). One source of truth for this label = here.
+  const isSynced = !!synthesizedAt;
   const header = (
     <div className="mb-3 flex items-center justify-between gap-3">
       <div>
         <h2 className="text-lg font-medium">Current state</h2>
-        <p className="text-xs text-text-muted">
-          Reconciled across all documents · synced {relTime(synthesizedAt)}
+        <p className={`text-xs ${isSynced ? "text-text-muted" : "text-amber-700 dark:text-amber-400"}`}>
+          {isSynced
+            ? `Reconciled across all documents · synced ${relTime(synthesizedAt)}`
+            : "Not synced yet — click Sync from documents to reconcile the contract + any addenda"}
         </p>
       </div>
       <div className="flex items-center gap-2">

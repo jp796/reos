@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { formatCommissionPct } from "@/lib/commission";
 import { notFound } from "next/navigation";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
@@ -454,11 +455,7 @@ export default async function TransactionDetailPage({
         <Fact label="Sale price" value={fmtMoney(txn.financials?.salePrice)} />
         <Fact
           label="Commission %"
-          value={
-            txn.financials?.commissionPercent != null
-              ? `${txn.financials.commissionPercent}%`
-              : "—"
-          }
+          value={formatCommissionPct(txn.financials?.commissionPercent)}
         />
         <Fact
           label="Gross commission"

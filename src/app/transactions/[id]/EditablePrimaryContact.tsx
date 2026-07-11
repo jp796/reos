@@ -17,6 +17,7 @@
  */
 
 import { useState, useTransition } from "react";
+import { formatCommissionPct } from "@/lib/commission";
 import { useRouter } from "next/navigation";
 import {
   Pencil,
@@ -187,7 +188,7 @@ export function EditablePrimaryContact(props: Props) {
             <span className="inline-flex items-center gap-1 text-text-muted">
               <Percent className="h-3.5 w-3.5" strokeWidth={2} />
               <span className="font-medium text-text">
-                {props.commissionPercent}%
+                {formatCommissionPct(props.commissionPercent)}
               </span>
               {grossStr && <span className="text-text-muted">| {grossStr}</span>}
             </span>
