@@ -14,6 +14,7 @@ import type { Prisma } from "@prisma/client";
 import { requireSession, assertSameAccount } from "@/lib/require-session";
 import { AutomationAuditService } from "@/services/integrations/FollowUpBossService";
 import { parseInputDate } from "@/lib/dates";
+import { logWorkflowEvent } from "@/lib/instrumentation";
 
 const STATUSES = new Set(["active", "pending", "closed", "dead", "terminated"]);
 
@@ -58,6 +59,17 @@ export async function PATCH(
   }
 
   await prisma.transaction.update({ where: { id }, data });
+
+  // Golden-workflow instrumentation (§15) — no PII, best-effort.
+  if (body.status === "closed" || body.status === "terminated") {
+    void logWorkflowEvent(prisma, {
+      accountId: actor.accountId,
+      transactionId: id,
+      event: "transaction_closed",
+      meta: { status: body.status },
+      actorUserId: actor.userId,
+    });
+  }
 
   // Cascade-complete milestones if we just flipped to closed.
   let milestonesAutoCompleted = 0;
