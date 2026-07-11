@@ -15,6 +15,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/require-session";
 import { logError } from "@/lib/log";
+import { backupDocumentToDrive } from "@/services/automation/DriveBackupService";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -75,6 +76,15 @@ export async function POST(
         select: { id: true, fileName: true },
       });
       created.push(doc);
+      // Redundant Google Drive backup — best-effort (never throws). Awaited
+      // so it actually completes before the serverless request freezes.
+      await backupDocumentToDrive(prisma, {
+        transactionId: txn.id,
+        documentId: doc.id,
+        fileName: f.name,
+        mimeType: f.type,
+        bytes,
+      });
     }
   } catch (e) {
     logError(e, {

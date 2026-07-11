@@ -35,6 +35,7 @@ export const DEFAULT_SCOPES: string[] = [
   GOOGLE_SCOPES.GMAIL_MODIFY,
   GOOGLE_SCOPES.GMAIL_SETTINGS_BASIC, // SmartFolder — create Gmail filters
   GOOGLE_SCOPES.GMAIL_SEND, // TxnForwarding — auto-upload docs to Dotloop/Rezen/etc.
+  GOOGLE_SCOPES.DRIVE_FILE, // DriveBackup — redundantly save uploaded docs to a per-deal Drive folder
   GOOGLE_SCOPES.CALENDAR_MODIFY,
   GOOGLE_SCOPES.USER_INFO_EMAIL,
   GOOGLE_SCOPES.USER_INFO_PROFILE,

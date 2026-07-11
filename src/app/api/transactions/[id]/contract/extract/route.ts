@@ -13,6 +13,7 @@ import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { Prisma } from "@prisma/client";
 import { ContractExtractionService } from "@/services/ai/ContractExtractionService";
+import { backupDocumentToDrive } from "@/services/automation/DriveBackupService";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -67,7 +68,7 @@ export async function POST(
   // re-extract it without re-uploading. Done BEFORE the transaction
   // update so a persist failure doesn't silently drop the PDF.
   try {
-    await prisma.document.create({
+    const savedDoc = await prisma.document.create({
       data: {
         transactionId: txn.id,
         category: "contract",
@@ -79,6 +80,16 @@ export async function POST(
         uploadedAt: new Date(),
         sourceDate: new Date(),
       },
+      select: { id: true },
+    });
+    // Redundant Google Drive backup — best-effort (never throws), awaited so
+    // it completes before the serverless request freezes.
+    await backupDocumentToDrive(prisma, {
+      transactionId: txn.id,
+      documentId: savedDoc.id,
+      fileName: file.name || "contract.pdf",
+      mimeType: file.type || "application/pdf",
+      bytes: buffer,
     });
   } catch (err) {
     console.warn(

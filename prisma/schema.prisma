@@ -759,6 +759,9 @@ model Document {
   signatureScanStatus String?   @map("signature_scan_status")
   signatureScanNotes  String?   @map("signature_scan_notes")
   signatureScannedAt  DateTime? @map("signature_scanned_at")
+  /// Google Drive file id of the redundant backup copy (DriveBackupService).
+  /// Null = not yet backed up (or backup disabled / Drive not connected).
+  driveFileId    String?  @map("drive_file_id")
   uploadedAt     DateTime @map("uploaded_at")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
