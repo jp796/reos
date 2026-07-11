@@ -8,6 +8,7 @@
  */
 
 import { useState } from "react";
+import { PLANS, seatLabel, priceLabel } from "@/lib/plans";
 
 type Tier = "solo" | "team" | "brokerage";
 
@@ -20,42 +21,16 @@ interface TierOption {
   best: boolean;
 }
 
-const TIERS: TierOption[] = [
-  {
-    id: "solo",
-    label: "Solo",
-    price: "$97/mo",
-    tagline: "Best for individual agents",
-    features: ["1 user", "Unlimited transactions", "All AI features", "Email support"],
-    best: false,
-  },
-  {
-    id: "team",
-    label: "Team",
-    price: "$297/mo",
-    tagline: "Solo agents & small teams",
-    features: [
-      "Up to 10 users",
-      "Multi-tenant compliance",
-      "Custom checklists",
-      "Priority support",
-    ],
-    best: true,
-  },
-  {
-    id: "brokerage",
-    label: "Brokerage",
-    price: "$997/mo",
-    tagline: "Brokerage white-label",
-    features: [
-      "Unlimited users",
-      "White-label brand kit",
-      "Brokerage admin dashboard",
-      "Onboarding call",
-    ],
-    best: false,
-  },
-];
+// Derived from the canonical plan config so public pricing can never drift
+// from in-app billing (§14). The seat line comes from `seats`, never hardcoded.
+const TIERS: TierOption[] = PLANS.map((p) => ({
+  id: p.id as Tier,
+  label: p.name,
+  price: priceLabel(p),
+  tagline: p.tagline,
+  features: [seatLabel(p), ...p.features],
+  best: !!p.highlighted,
+}));
 
 export function SignupForm({
   initialTier,

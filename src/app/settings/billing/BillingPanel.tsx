@@ -3,48 +3,22 @@
 import { useState } from "react";
 import { Loader2, ExternalLink } from "lucide-react";
 import { useToast } from "@/app/ToastProvider";
+import { PLANS as PLAN_CONFIG, seatLabel } from "@/lib/plans";
 import type { Tier } from "@/lib/stripe";
 
+// Derived from the canonical plan config (§14) — identical source as the
+// public signup page, so seat counts + features can never diverge.
 const PLANS: Array<{
   tier: Exclude<Tier, "free">;
   name: string;
   pitch: string;
   bullets: string[];
-}> = [
-  {
-    tier: "solo",
-    name: "Solo",
-    pitch: "One agent. Every workflow.",
-    bullets: [
-      "Unlimited transactions",
-      "AI contract extraction",
-      "Voice intake + Telegram brief",
-      "Listing photos + social posts",
-    ],
-  },
-  {
-    tier: "team",
-    name: "Team",
-    pitch: "Up to 5 agents under one TC.",
-    bullets: [
-      "Everything in Solo",
-      "Multi-user roles + sharing",
-      "Calendar share-list",
-      "Transaction handoff",
-    ],
-  },
-  {
-    tier: "brokerage",
-    name: "Brokerage",
-    pitch: "Whole brokerage on one workspace.",
-    bullets: [
-      "Everything in Team",
-      "Custom checklist (Vision-parsed)",
-      "Multi-tenant accounts",
-      "Priority support",
-    ],
-  },
-];
+}> = PLAN_CONFIG.map((p) => ({
+  tier: p.id as Exclude<Tier, "free">,
+  name: p.name,
+  pitch: p.tagline,
+  bullets: [seatLabel(p), ...p.features],
+}));
 
 export function BillingPanel({
   tier,
