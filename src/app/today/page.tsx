@@ -25,6 +25,7 @@ import { TelegramService } from "@/services/integrations/TelegramService";
 import { requireSession } from "@/lib/require-session";
 import { dealVisibilityWhere } from "@/lib/deal-visibility";
 import { cn } from "@/lib/cn";
+import { isPostCloseNurture } from "@/lib/risk";
 
 export const dynamic = "force-dynamic";
 
@@ -218,6 +219,12 @@ export default async function TodayPage({
     }),
   ]);
 
+  // Phase 4 (§10 rule 1): post-close nurture (reviews, gifts, anniversaries)
+  // must NOT sit in the active-risk / overdue queue. Split it out so the
+  // harm queue stays scarce and post-close work has its own lane.
+  const activeOverdueTasks = overdueTasks.filter((t) => !isPostCloseNurture(t.title));
+  const postCloseOverdue = overdueTasks.filter((t) => isPostCloseNurture(t.title));
+
   // Score every active transaction once, keep the top 10 by risk score
   const risker = new RiskScoringService();
   const ranked = allActive
@@ -363,17 +370,28 @@ export default async function TodayPage({
       </Section>
 
       {/* Overdue TC tasks — workload-ranked */}
-      <Section title="Overdue tasks" count={overdueTasks.length}>
-        {overdueTasks.length === 0 ? (
+      <Section title="Overdue tasks" count={activeOverdueTasks.length}>
+        {activeOverdueTasks.length === 0 ? (
           <Empty>No overdue tasks.</Empty>
         ) : (
           <ul className="space-y-2">
-            {overdueTasks.map((t) => (
+            {activeOverdueTasks.map((t) => (
               <TaskRow key={t.id} t={t} tone="red" />
             ))}
           </ul>
         )}
       </Section>
+
+      {/* Post-close nurture — separate lane, never part of active risk (§10) */}
+      {postCloseOverdue.length > 0 && (
+        <Section title="Post-close follow-up" count={postCloseOverdue.length}>
+          <ul className="space-y-2">
+            {postCloseOverdue.map((t) => (
+              <TaskRow key={t.id} t={t} tone="amber" />
+            ))}
+          </ul>
+        </Section>
+      )}
 
       {/* Tasks due this week */}
       <Section title="Tasks due this week" count={weekTasks.length}>
