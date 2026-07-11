@@ -35,23 +35,46 @@ import { GlobalSearch } from "./components/GlobalSearch";
 import { Logo } from "./components/Logo";
 import { AccountSwitcher } from "./components/AccountSwitcher";
 
-const NAV = [
-  { href: "/", label: "Home", icon: HomeIcon },
-  { href: "/today", label: "Today", icon: CalendarDays },
-  { href: "/insights", label: "Insights", icon: LayoutDashboard },
-  { href: "/digest", label: "Digest", icon: Newspaper },
-  { href: "/scan", label: "Scan", icon: Radar },
-  { href: "/voice", label: "Voice intake", icon: Mic },
-  { href: "/listings", label: "Listings", icon: Signpost },
-  { href: "/transactions", label: "Transactions", icon: FolderCheck },
-  { href: "/forms", label: "Forms", icon: FileSignature },
-  { href: "/board", label: "Board", icon: KanbanSquare, investorOnly: true },
-  { href: "/production", label: "Production", icon: TrendingUp },
-  { href: "/sources", label: "Sources", icon: Filter },
-  { href: "/marketing", label: "Marketing", icon: Megaphone },
-  { href: "/contacts", label: "Contacts", icon: UsersRound },
-  { href: "/help", label: "Help", icon: HelpCircle },
-  { href: "/settings", label: "Settings", icon: SettingsIcon },
+// Navigation compressed to 6 primary groups (§12). Every prior route is
+// preserved as an item under a group — nothing is removed, just organized
+// by user goal rather than by internal capability.
+type NavItem = { href: string; label: string; icon: typeof HomeIcon; investorOnly?: boolean };
+const NAV_GROUPS: Array<{ label: string | null; items: NavItem[] }> = [
+  { label: null, items: [{ href: "/today", label: "Today", icon: CalendarDays }] },
+  {
+    label: "Deals",
+    items: [
+      { href: "/transactions", label: "Transactions", icon: FolderCheck },
+      { href: "/listings", label: "Listings", icon: Signpost },
+      { href: "/board", label: "Board", icon: KanbanSquare, investorOnly: true },
+    ],
+  },
+  { label: "Contacts", items: [{ href: "/contacts", label: "Contacts", icon: UsersRound }] },
+  {
+    label: "Intelligence",
+    items: [
+      { href: "/insights", label: "Insights", icon: LayoutDashboard },
+      { href: "/production", label: "Production", icon: TrendingUp },
+      { href: "/digest", label: "Digest", icon: Newspaper },
+      { href: "/sources", label: "Sources", icon: Filter },
+    ],
+  },
+  {
+    label: "Automations",
+    items: [
+      { href: "/scan", label: "Scan", icon: Radar },
+      { href: "/voice", label: "Voice intake", icon: Mic },
+      { href: "/forms", label: "Forms", icon: FileSignature },
+      { href: "/marketing", label: "Marketing", icon: Megaphone },
+    ],
+  },
+  {
+    label: "Settings",
+    items: [
+      { href: "/settings", label: "Settings", icon: SettingsIcon },
+      { href: "/help", label: "Help", icon: HelpCircle },
+    ],
+  },
 ];
 
 function greet(now = new Date()): string {
@@ -315,29 +338,40 @@ function SidebarContents({
         )}
       </div>
       <nav className="flex flex-col gap-0.5">
-        {NAV.filter(
-          (item) => !("investorOnly" in item && item.investorOnly) || user?.investor,
-        ).map((item) => {
-          const active =
-            pathname === item.href ||
-            (item.href !== "/" && pathname.startsWith(item.href));
-          const Icon = item.icon;
+        {NAV_GROUPS.map((group, gi) => {
+          const items = group.items.filter(
+            (item) => !item.investorOnly || user?.investor,
+          );
+          if (items.length === 0) return null;
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              title={collapsed ? item.label : undefined}
-              className={cn(
-                "flex items-center rounded-md py-2 text-sm transition-colors",
-                collapsed ? "justify-center px-2" : "gap-2.5 px-2.5",
-                active
-                  ? "bg-brand-50 font-medium text-brand-700"
-                  : "text-text-muted hover:bg-surface-2 hover:text-text",
+            <div key={group.label ?? `g${gi}`} className={cn(gi > 0 && !collapsed && "mt-3")}>
+              {group.label && !collapsed && (
+                <div className="reos-label mb-0.5 px-2.5 opacity-50">{group.label}</div>
               )}
-            >
-              <Icon className="h-4 w-4 shrink-0" strokeWidth={1.8} />
-              {!collapsed && item.label}
-            </Link>
+              {items.map((item) => {
+                const active =
+                  pathname === item.href ||
+                  (item.href !== "/" && pathname.startsWith(item.href));
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    title={collapsed ? item.label : undefined}
+                    className={cn(
+                      "flex items-center rounded-md py-2 text-sm transition-colors",
+                      collapsed ? "justify-center px-2" : "gap-2.5 px-2.5",
+                      active
+                        ? "bg-brand-50 font-medium text-brand-700"
+                        : "text-text-muted hover:bg-surface-2 hover:text-text",
+                    )}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" strokeWidth={1.8} />
+                    {!collapsed && item.label}
+                  </Link>
+                );
+              })}
+            </div>
           );
         })}
       </nav>
