@@ -25,7 +25,7 @@ import { TelegramService } from "@/services/integrations/TelegramService";
 import { requireSession } from "@/lib/require-session";
 import { dealVisibilityWhere } from "@/lib/deal-visibility";
 import { cn } from "@/lib/cn";
-import { isPostCloseNurture } from "@/lib/risk";
+import { isPostCloseNurture, classifyMilestone } from "@/lib/risk";
 
 export const dynamic = "force-dynamic";
 
@@ -247,6 +247,24 @@ export default async function TodayPage({
     .sort((a, b) => b.daysSince - a.daysSince)
     .slice(0, 15);
 
+  // Phase 5 (§11) — "Prevent harm" queue: only the overdue milestones that
+  // are genuine deal threats (contractual / closing / compliance), deduped
+  // to one incident per deal so a single missed timeline doesn't spam the
+  // queue (§10). Post-close / operational milestones never appear here.
+  const harmSeen = new Set<string>();
+  const harmMilestones = overdueMilestones.filter((m) => {
+    const cat = classifyMilestone(m.type, m.label);
+    const isHarm =
+      cat === "contractual_deadline" ||
+      cat === "closing_blocker" ||
+      cat === "compliance_blocker";
+    if (!isHarm) return false;
+    const key = m.transaction.id;
+    if (harmSeen.has(key)) return false; // one incident per deal
+    harmSeen.add(key);
+    return true;
+  });
+
   const activeCount = Number(counts[0]?.active ?? 0);
   const closedCount = Number(counts[0]?.closed ?? 0);
   const contactCount = Number(counts[0]?.total_contacts ?? 0);
@@ -322,7 +340,30 @@ export default async function TodayPage({
         />
       </section>
 
-      {/* At risk */}
+      {/* ── Decision queue (§11): harm first, then today, then waiting ── */}
+
+      {/* 1. Prevent harm — only critical contractual/closing/compliance
+          deadlines, one incident per deal. This is what can cause harm. */}
+      <Section
+        title="🚨 Prevent harm"
+        subtitle="Critical contract, closing + compliance deadlines that are overdue"
+        count={harmMilestones.length}
+      >
+        {harmMilestones.length === 0 ? (
+          <Empty>
+            Nothing critical is overdue. Atlas is watching every active deal&apos;s
+            deadlines, documents, and silence.
+          </Empty>
+        ) : (
+          <ul className="space-y-2">
+            {harmMilestones.map((m) => (
+              <MilestoneRow key={m.id} m={m} tone="red" />
+            ))}
+          </ul>
+        )}
+      </Section>
+
+      {/* At risk (secondary — scored deals overview) */}
       <Section
         title="At risk"
         subtitle="Active transactions scored by the risk engine"
@@ -369,10 +410,14 @@ export default async function TodayPage({
         )}
       </Section>
 
-      {/* Overdue TC tasks — workload-ranked */}
-      <Section title="Overdue tasks" count={activeOverdueTasks.length}>
+      {/* 2. Do today — active overdue TC tasks (post-close excluded, §10). */}
+      <Section
+        title="✅ Do today"
+        subtitle="Tasks to act on now, highest priority first"
+        count={activeOverdueTasks.length}
+      >
         {activeOverdueTasks.length === 0 ? (
-          <Empty>No overdue tasks.</Empty>
+          <Empty>Nothing needs doing today. You&apos;re clear.</Empty>
         ) : (
           <ul className="space-y-2">
             {activeOverdueTasks.map((t) => (
@@ -469,10 +514,10 @@ export default async function TodayPage({
         )}
       </Section>
 
-      {/* Silent deals */}
+      {/* 3. Waiting on others — party silence; blocked on someone else. */}
       <Section
-        title="Silent deals"
-        subtitle="Active transactions with no communication in 7+ days"
+        title="⏳ Waiting on others"
+        subtitle="Active deals with no communication in 7+ days — nudge the other side"
         count={silentDeals.length}
       >
         {silentDeals.length === 0 ? (
