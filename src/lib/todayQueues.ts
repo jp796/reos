@@ -57,6 +57,28 @@ export interface TodayQueues<M, T, S, R> {
   atRisk: R[];
 }
 
+/**
+ * Deal-prioritized rollup for the secondary "Other overdue milestones" list
+ * (REOS_04). A deal already in Prevent harm must not reappear elsewhere, so we
+ * exclude by DEAL id (not milestone id) and report how many OTHER overdue
+ * milestones each harm deal has — rendered as "+N additional issues" inside the
+ * primary harm item. Pure + accessor-driven so the page and tests share it.
+ */
+export function overdueDealRollup<M>(
+  harmMilestones: M[],
+  overdueMilestones: M[],
+  txnId: (m: M) => string,
+): { other: M[]; extraIssuesFor: (m: M) => number } {
+  const counts = new Map<string, number>();
+  for (const m of overdueMilestones) {
+    counts.set(txnId(m), (counts.get(txnId(m)) ?? 0) + 1);
+  }
+  const harmDeals = new Set(harmMilestones.map(txnId));
+  const other = overdueMilestones.filter((m) => !harmDeals.has(txnId(m)));
+  const extraIssuesFor = (m: M) => (counts.get(txnId(m)) ?? 1) - 1;
+  return { other, extraIssuesFor };
+}
+
 export function assignTodayQueues<M, T, S, R>(
   input: TodayQueueInput<M, T, S, R>,
 ): TodayQueues<M, T, S, R> {

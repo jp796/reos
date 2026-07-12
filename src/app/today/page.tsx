@@ -25,7 +25,7 @@ import { TelegramService } from "@/services/integrations/TelegramService";
 import { requireSession } from "@/lib/require-session";
 import { dealVisibilityWhere } from "@/lib/deal-visibility";
 import { cn } from "@/lib/cn";
-import { assignTodayQueues } from "@/lib/todayQueues";
+import { assignTodayQueues, overdueDealRollup } from "@/lib/todayQueues";
 import { TodayQuickActions } from "./TodayQuickActions";
 
 export const dynamic = "force-dynamic";
@@ -269,11 +269,14 @@ export default async function TodayPage({
     },
   });
 
-  // Secondary "Overdue milestones" list excludes the critical ones already
-  // shown in Prevent harm, so the same milestone never appears twice.
-  const harmMilestoneIds = new Set(harmMilestones.map((m) => m.id));
-  const otherOverdueMilestones = overdueMilestones.filter(
-    (m) => !harmMilestoneIds.has(m.id),
+  // Deal-prioritized dedup (REOS_04): a deal already in Prevent harm must not
+  // reappear in ANY other actionable overdue section — excluded by DEAL, with
+  // its extra overdue milestones rolled up into "+N additional issues" on the
+  // primary harm item. Shared pure helper so the behavior is unit-tested.
+  const { other: otherOverdueMilestones, extraIssuesFor } = overdueDealRollup(
+    harmMilestones,
+    overdueMilestones,
+    (m) => m.transaction.id,
   );
 
   const activeCount = Number(counts[0]?.active ?? 0);
@@ -368,7 +371,12 @@ export default async function TodayPage({
         ) : (
           <ul className="space-y-2">
             {harmMilestones.map((m) => (
-              <MilestoneRow key={m.id} m={m} tone="red" />
+              <MilestoneRow
+                key={m.id}
+                m={m}
+                tone="red"
+                extraIssues={extraIssuesFor(m)}
+              />
             ))}
           </ul>
         )}
@@ -650,6 +658,7 @@ function Stat({
 function MilestoneRow({
   m,
   tone,
+  extraIssues = 0,
 }: {
   m: {
     id: string;
@@ -663,6 +672,10 @@ function MilestoneRow({
     };
   };
   tone: "red" | "amber";
+  /** Deal-prioritized rollup: how many OTHER overdue milestones this same
+   *  deal has. Shown as "+N additional issues" so the deal stays in one
+   *  primary attention spot instead of repeating across sections. */
+  extraIssues?: number;
 }) {
   const bg =
     tone === "red"
@@ -687,6 +700,15 @@ function MilestoneRow({
           {m.transaction.propertyAddress ?? m.transaction.contact.fullName}
           {m.transaction.propertyAddress && <> · {m.transaction.contact.fullName}</>}
         </div>
+        {extraIssues > 0 && (
+          <Link
+            href={`/transactions/${m.transaction.id}`}
+            className={`mt-1 inline-block text-xs font-medium underline-offset-2 hover:underline ${subText}`}
+          >
+            +{extraIssues} additional overdue{" "}
+            {extraIssues === 1 ? "issue" : "issues"} on this deal →
+          </Link>
+        )}
         <TodayQuickActions kind="milestone" transactionId={m.transaction.id} itemId={m.id} />
       </div>
       <div className="text-right text-sm">

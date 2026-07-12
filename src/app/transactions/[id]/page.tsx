@@ -3,6 +3,7 @@ import { formatCommissionPct } from "@/lib/commission";
 import { notFound } from "next/navigation";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import { requireSession } from "@/lib/require-session";
 import { CalendarSyncButton } from "../CalendarSyncButton";
 import { FinancialsForm } from "./FinancialsForm";
@@ -350,6 +351,20 @@ export default async function TransactionDetailPage({
     select: { createdAt: true },
     orderBy: { createdAt: "desc" },
   });
+  // Durable legacy evidence for extraction state: is a real contract document
+  // on file? A contract-category doc, or any doc whose read was analyzed
+  // (analysisJson present). Gates the "Contract on file" legacy branch so a
+  // doc-less lead with a stray milestone is never mislabeled as read.
+  const contractDocCount = await prisma.document.count({
+    where: {
+      transactionId: txn.id,
+      OR: [
+        { category: "contract" },
+        { fileName: { contains: "contract", mode: "insensitive" } },
+        { NOT: { analysisJson: { equals: Prisma.DbNull } } },
+      ],
+    },
+  });
   const txnStateInput: TransactionStateInput = {
     contractExtractedAt: txn.contractExtractedAt?.toISOString() ?? null,
     contractAppliedAt: txn.contractAppliedAt?.toISOString() ?? null,
@@ -360,6 +375,7 @@ export default async function TransactionDetailPage({
     aiSummaryUpdatedAt: txn.aiSummaryUpdatedAt?.toISOString() ?? null,
     milestoneCount: txn.milestones.length,
     newestDocAt: newestDoc?.createdAt.toISOString() ?? null,
+    hasContractDocument: contractDocCount > 0,
     status: txn.status,
   };
   const canonicalState = transactionState(txnStateInput);

@@ -112,8 +112,10 @@ export function DealSynthesisPanel({
       <div>
         <h2 className="text-lg font-medium">Current state</h2>
         <p className={`text-xs ${toneClass}`}>
+          {/* Domain-explicit: this is DOCUMENT reconciliation, never the bare
+              word "synced" (which the footer reserves for Gmail). */}
           {reconciliation.label}
-          {reconciliation.since && ` · synced ${relTime(reconciliation.since)}`}
+          {reconciliation.since && ` · ${relTime(reconciliation.since)}`}
           {reconciliation.action && !reconciliation.since && ` — ${reconciliation.action}`}
         </p>
       </div>

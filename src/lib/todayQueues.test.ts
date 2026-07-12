@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { assignTodayQueues } from "./todayQueues";
+import { assignTodayQueues, overdueDealRollup } from "./todayQueues";
 
 // Minimal row shapes — mirror what page.tsx passes, string-keyed for tests.
 interface M { id: string; txn: string; type: string; label: string }
@@ -112,6 +112,63 @@ describe("Today decision queues — one incident, one queue (§11 closure)", () 
   test("scored-risky deal with no actionable signal → informational At risk", () => {
     const q = run({ scoredRisky: [{ txn: "E", score: 30 }] });
     expect(q.atRisk.map((r) => r.txn)).toEqual(["E"]);
+  });
+});
+
+describe("Today deal-prioritized rollup — one deal, three overdue milestones (REOS_04)", () => {
+  // The live-representative case: deal A has THREE overdue contractual
+  // milestones. It must appear in exactly ONE primary spot, not three.
+  const overdue: M[] = [
+    { id: "m1", txn: "A", type: "inspection", label: "Inspection deadline" },
+    { id: "m2", txn: "A", type: "closing", label: "Closing" },
+    { id: "m3", txn: "A", type: "financing_approval", label: "Financing approval" },
+    // A different deal whose overdue milestone is operational (NOT harm-class),
+    // so it belongs in "Other overdue milestones", not Prevent harm.
+    { id: "m4", txn: "B", type: "walkthrough", label: "Final walkthrough" },
+  ];
+
+  test("Prevent harm shows the deal once; its extras roll up to +2", () => {
+    const q = assignTodayQueues({
+      overdueMilestones: overdue,
+      overdueTasks: [],
+      silentDeals: [],
+      scoredRisky: [],
+      accessors,
+    });
+    // Deal A appears ONCE in harm (deduped one-per-deal).
+    expect(q.harm.filter((m) => m.txn === "A")).toHaveLength(1);
+    const rollup = overdueDealRollup(q.harm, overdue, (m) => m.txn);
+    const harmA = q.harm.find((m) => m.txn === "A")!;
+    // Its 2 other overdue milestones surface as "+2 additional issues".
+    expect(rollup.extraIssuesFor(harmA)).toBe(2);
+  });
+
+  test("'Other overdue milestones' excludes EVERY milestone of a harm deal", () => {
+    const q = assignTodayQueues({
+      overdueMilestones: overdue,
+      overdueTasks: [],
+      silentDeals: [],
+      scoredRisky: [],
+      accessors,
+    });
+    const rollup = overdueDealRollup(q.harm, overdue, (m) => m.txn);
+    // None of deal A's three milestones may appear in the secondary list…
+    expect(rollup.other.some((m) => m.txn === "A")).toBe(false);
+    // …but deal B (not in harm) still shows there.
+    expect(rollup.other.map((m) => m.id)).toEqual(["m4"]);
+  });
+
+  test("a deal with a single overdue milestone rolls up to +0 (no false extras)", () => {
+    const single: M[] = [{ id: "x1", txn: "Z", type: "closing", label: "Closing" }];
+    const q = assignTodayQueues({
+      overdueMilestones: single,
+      overdueTasks: [],
+      silentDeals: [],
+      scoredRisky: [],
+      accessors,
+    });
+    const rollup = overdueDealRollup(q.harm, single, (m) => m.txn);
+    expect(rollup.extraIssuesFor(q.harm[0]!)).toBe(0);
   });
 
   test("Prevent harm stays scarce — one incident per deal", () => {
