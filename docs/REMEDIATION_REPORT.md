@@ -50,7 +50,7 @@ All are in place and covered by tests.
 - **`src/lib/commission.ts`** — canonical = percentage-points; `formatCommissionPct`, `commissionRatePoints`, plausibility + inconsistency checks.
 - Wired the 3 display sites (deal Details, primary-contact card, FinancialsForm). Form seeds canonical points so a save self-heals a legacy row.
 - **Data repair:** the 1 legacy decimal row (`cmqwt2kd…`, 1650 North Ridge) `0.025 → 2.5`, consistency-gated, backed up (`was: 0.025`). §16-compliant.
-- **Tests:** `commission.test.ts` (11) — incl. the exact `0.025 → "2.5%"` bug and the $780k/$19,500 consistency case.
+- **Tests:** `commission.test.ts` (11) — incl. the exact `0.025 → "2.5%"` bug and the \$780k/\$19,500 consistency case.
 
 ### Phase 4 — Risk & attention model (§10)
 - **`src/lib/risk.ts`** — categories (contractual / compliance / closing / comms / operational / **post_close_nurture**) + severity by proximity+confidence.
