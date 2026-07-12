@@ -41,12 +41,12 @@ export const metadata = {
       "Transaction Coordinator Software · AI-Driven Real Estate OS · REOS",
   },
   description:
-    "REOS is AI-driven transaction coordinator software for real-estate TCs, agents, and brokerages. Reads contracts in 60 seconds, drafts email replies, audits compliance per brokerage, and posts listings to FB / Instagram / LinkedIn. Free demo, 60-day money-back guarantee.",
+    "REOS is AI-driven transaction coordinator software for real-estate TCs, agents, and brokerages. Reads contracts in 60 seconds, drafts email replies, audits compliance per brokerage, and generates ready-to-post listing captions for FB / Instagram / LinkedIn. Free demo, 60-day money-back guarantee.",
   alternates: { canonical: "https://myrealestateos.com/" },
   openGraph: {
     title: "REOS · AI Transaction Coordinator Software",
     description:
-      "AI-driven TC software for real-estate agents and brokerages. Reads contracts, drafts replies, audits compliance, posts listings.",
+      "AI-driven TC software for real-estate agents and brokerages. Reads contracts, drafts replies, audits compliance, generates ready-to-post listing captions.",
     url: "https://myrealestateos.com/",
     siteName: "REOS",
     type: "website",
@@ -297,7 +297,7 @@ export default async function Landing() {
             {[
               { icon: Clock, kpi: "10×", sub: "deals per TC" },
               { icon: FileCheck, kpi: "60 sec", sub: "AI contract read" },
-              { icon: ShieldCheck, kpi: "Any brokerage", sub: "Rezen / Skyslope / Dotloop" },
+              { icon: ShieldCheck, kpi: "Any brokerage", sub: "Rezen-native · others configurable" },
               { icon: Lock, kpi: "Your Gmail", sub: "no AI branding" },
             ].map((s) => (
               <div
