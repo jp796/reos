@@ -26,6 +26,7 @@ import {
 import { auth } from "@/auth";
 import { Logo } from "./components/Logo";
 import { VSLHero } from "./components/VSLHero";
+import { PLANS, seatLabel, priceLabel } from "@/lib/plans";
 
 export const dynamic = "force-dynamic";
 
@@ -83,44 +84,20 @@ const JSON_LD = {
       applicationCategory: "BusinessApplication",
       operatingSystem: "Web",
       url: "https://myrealestateos.com",
-      offers: [
-        {
-          "@type": "Offer",
-          price: "97",
+      // Prices derive from the canonical PLANS config so the SEO offer
+      // schema can never drift from the visible pricing cards.
+      offers: PLANS.map((plan) => ({
+        "@type": "Offer",
+        price: String(plan.priceMonthly),
+        priceCurrency: "USD",
+        priceSpecification: {
+          "@type": "PriceSpecification",
+          price: String(plan.priceMonthly),
           priceCurrency: "USD",
-          priceSpecification: {
-            "@type": "PriceSpecification",
-            price: "97",
-            priceCurrency: "USD",
-            unitText: "MONTH",
-          },
-          name: "Solo",
+          unitText: "MONTH",
         },
-        {
-          "@type": "Offer",
-          price: "297",
-          priceCurrency: "USD",
-          priceSpecification: {
-            "@type": "PriceSpecification",
-            price: "297",
-            priceCurrency: "USD",
-            unitText: "MONTH",
-          },
-          name: "Team",
-        },
-        {
-          "@type": "Offer",
-          price: "997",
-          priceCurrency: "USD",
-          priceSpecification: {
-            "@type": "PriceSpecification",
-            price: "997",
-            priceCurrency: "USD",
-            unitText: "MONTH",
-          },
-          name: "Brokerage",
-        },
-      ],
+        name: plan.name,
+      })),
       featureList: [
         "AI contract reading (60-second extraction)",
         "Per-customer compliance audit",
@@ -537,108 +514,79 @@ export default async function Landing() {
               Simple pricing. Pay for closings, not seats.
             </h2>
             <p className="mt-3 text-text-muted">
-              Unlimited users. Charge only kicks in when you start a deal.
+              Simple monthly pricing — the charge only kicks in when you start a
+              deal.
             </p>
           </div>
 
+          {/* Plan cards derive name, price, seat count, and features from the
+              canonical PLANS config (src/lib/plans.ts) — the same source the
+              in-app billing panel and server seat enforcement read. The public
+              page can no longer drift (e.g. Team showing "unlimited" when the
+              real limit is 5). */}
           <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-3">
-            {[
-              {
-                name: "Solo",
-                price: "$97",
-                sub: "/month",
-                tag: "Best for individual agents",
-                features: [
-                  "Unlimited deals",
-                  "AI contract reading",
-                  "Telegram brief",
-                  "Rezen prep + bundle download",
-                  "Auto social captions",
-                  "Email + Gmail sync",
-                ],
-              },
-              {
-                name: "Team",
-                price: "$297",
-                sub: "/month",
-                tag: "Solo agents and small teams",
-                features: [
-                  "Everything in Solo",
-                  "Multi-user (unlimited)",
-                  "Per-deal assignment",
-                  "Shared calendar invites",
-                  "Compliance audit logs",
-                  "Priority support",
-                ],
-                highlight: true,
-              },
-              {
-                name: "Brokerage",
-                price: "$997",
-                sub: "/month",
-                tag: "Brokerage white-label",
-                features: [
-                  "Everything in Team",
-                  "Custom checklist + CDA template",
-                  "Brokerage branding (logo, colors)",
-                  "Multi-state contract rules",
-                  "Onboard agents in bulk",
-                  "Dedicated success manager",
-                ],
-              },
-            ].map((tier) => (
-              <div
-                key={tier.name}
-                className={
-                  "rounded-lg border p-5 " +
-                  (tier.highlight
-                    ? "border-brand-500 bg-surface ring-2 ring-brand-500"
-                    : "border-border bg-surface")
-                }
-              >
-                {tier.highlight && (
-                  <div className="mb-3 inline-block rounded-full bg-brand-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
-                    Most popular
+            {PLANS.map((plan) => {
+              const highlight = !!plan.highlighted;
+              return (
+                <div
+                  key={plan.id}
+                  className={
+                    "rounded-lg border p-5 " +
+                    (highlight
+                      ? "border-brand-500 bg-surface ring-2 ring-brand-500"
+                      : "border-border bg-surface")
+                  }
+                >
+                  {highlight && (
+                    <div className="mb-3 inline-block rounded-full bg-brand-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+                      Most popular
+                    </div>
+                  )}
+                  <div className="font-display text-xl font-bold">
+                    {plan.name}
                   </div>
-                )}
-                <div className="font-display text-xl font-bold">
-                  {tier.name}
-                </div>
-                <div className="mt-1 text-xs text-text-muted">{tier.tag}</div>
-                <div className="mt-4 flex items-baseline gap-1">
-                  <span className="font-display text-4xl font-bold tabular-nums">
-                    {tier.price}
-                  </span>
-                  <span className="text-sm text-text-muted">{tier.sub}</span>
-                </div>
-                <ul className="mt-5 space-y-2 text-sm">
-                  {tier.features.map((f) => (
-                    <li key={f} className="flex items-start gap-2">
+                  <div className="mt-1 text-xs text-text-muted">
+                    {plan.tagline}
+                  </div>
+                  <div className="mt-4 flex items-baseline gap-1">
+                    <span className="font-display text-4xl font-bold tabular-nums">
+                      {priceLabel(plan).replace("/mo", "")}
+                    </span>
+                    <span className="text-sm text-text-muted">/month</span>
+                  </div>
+                  <ul className="mt-5 space-y-2 text-sm">
+                    {/* Seat count first — the authoritative, non-drifting line. */}
+                    <li className="flex items-start gap-2">
                       <CheckCircle2
                         className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600"
                         strokeWidth={2}
                       />
-                      <span>{f}</span>
+                      <span className="font-medium">{seatLabel(plan)}</span>
                     </li>
-                  ))}
-                </ul>
-                <Link
-                  href={
-                    signedIn
-                      ? "/today"
-                      : `/signup?tier=${tier.name.toLowerCase()}`
-                  }
-                  className={
-                    "mt-6 block rounded-md px-4 py-2 text-center text-sm font-semibold " +
-                    (tier.highlight
-                      ? "bg-brand-600 text-white hover:bg-brand-500"
-                      : "border border-border bg-surface text-text hover:border-brand-500")
-                  }
-                >
-                  Start {tier.name}
-                </Link>
-              </div>
-            ))}
+                    {plan.features.map((f) => (
+                      <li key={f} className="flex items-start gap-2">
+                        <CheckCircle2
+                          className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600"
+                          strokeWidth={2}
+                        />
+                        <span>{f}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <Link
+                    href={signedIn ? "/today" : `/signup?tier=${plan.id}`}
+                    className={
+                      "mt-6 block rounded-md px-4 py-2 text-center text-sm font-semibold " +
+                      (highlight
+                        ? "bg-brand-600 text-white hover:bg-brand-500"
+                        : "border border-border bg-surface text-text hover:border-brand-500")
+                    }
+                  >
+                    Start {plan.name}
+                  </Link>
+                </div>
+              );
+            })}
           </div>
           <p className="mt-6 text-center text-xs text-text-subtle">
             All prices USD. Cancel anytime. 60-day money-back guarantee.
