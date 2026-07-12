@@ -14,6 +14,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "../../ToastProvider";
 import type { SynthesisSnapshot } from "@/services/core/DocumentSynthesisService";
+import type { DimensionState } from "@/lib/transactionState";
 
 const DATE_LABELS: Array<[string, string]> = [
   ["effectiveDate", "Contract"],
@@ -63,11 +64,13 @@ function relTime(iso: string | null): string {
 export function DealSynthesisPanel({
   transactionId,
   snapshot,
-  synthesizedAt,
+  reconciliation,
 }: {
   transactionId: string;
   snapshot: SynthesisSnapshot | null;
-  synthesizedAt: string | null;
+  /** Canonical reconciliation state (src/lib/transactionState). The ONE
+   *  source for this panel's state line — no independent inference here. */
+  reconciliation: DimensionState;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -93,19 +96,25 @@ export function DealSynthesisPanel({
     }
   }
 
-  // Derive the state line from the ACTUAL synthesis state. Never claim
-  // "reconciled" without a real synthesis timestamp (brief §8.1); express
-  // an un-synced deal as an actionable state, not a success claim beside
-  // "never" (brief §8.3). One source of truth for this label = here.
-  const isSynced = !!synthesizedAt;
+  // The state line comes ENTIRELY from the canonical reconciliation state
+  // (src/lib/transactionState) — this panel never infers "reconciled" or
+  // "synced" on its own, so it can't contradict the header, timeline, or
+  // Today. The label already encodes not-synced / stale / current; we only
+  // append the last-success time when the model says there is one.
+  const toneClass =
+    reconciliation.tone === "ok"
+      ? "text-text-muted"
+      : reconciliation.tone === "danger"
+        ? "text-red-700 dark:text-red-400"
+        : "text-amber-700 dark:text-amber-400";
   const header = (
     <div className="mb-3 flex items-center justify-between gap-3">
       <div>
         <h2 className="text-lg font-medium">Current state</h2>
-        <p className={`text-xs ${isSynced ? "text-text-muted" : "text-amber-700 dark:text-amber-400"}`}>
-          {isSynced
-            ? `Reconciled across all documents · synced ${relTime(synthesizedAt)}`
-            : "Not synced yet — click Sync from documents to reconcile the contract + any addenda"}
+        <p className={`text-xs ${toneClass}`}>
+          {reconciliation.label}
+          {reconciliation.since && ` · synced ${relTime(reconciliation.since)}`}
+          {reconciliation.action && !reconciliation.since && ` — ${reconciliation.action}`}
         </p>
       </div>
       <div className="flex items-center gap-2">

@@ -39,6 +39,7 @@ import { DrawCapitalPanel } from "./DrawCapitalPanel";
 import { EconomicsPanel } from "./EconomicsPanel";
 import { DealTypeControl } from "./DealTypeControl";
 import { readEntitlements } from "@/lib/entitlements";
+import { transactionState, type TransactionStateInput } from "@/lib/transactionState";
 import { isDealVisible, canToggleRestriction } from "@/lib/deal-visibility";
 import { VisibilityToggle } from "./VisibilityToggle";
 import {
@@ -244,6 +245,8 @@ export default async function TransactionDetailPage({
     select: {
       settingsJson: true,
       realApiTokensEncrypted: true,
+      // Drives the canonical comms-sync state (Gmail connected?).
+      googleOauthTokensEncrypted: true,
       // Multi-tenant compliance: each account is linked to a brokerage
       // profile that declares which compliance system its TCs use.
       // The Rezen-specific UI (file naming, submission ZIP bundle)
@@ -338,13 +341,37 @@ export default async function TransactionDetailPage({
     if (r.factors.length > 0) investorRisk = r;
   }
 
+  // Canonical transaction state (src/lib/transactionState) — the ONE
+  // derivation the panels read, so no surface can contradict another
+  // ("reconciled · synced never" is unrepresentable). newestDoc drives the
+  // "new document not yet reconciled" staleness signal.
+  const newestDoc = await prisma.document.findFirst({
+    where: { transactionId: txn.id },
+    select: { createdAt: true },
+    orderBy: { createdAt: "desc" },
+  });
+  const txnStateInput: TransactionStateInput = {
+    contractExtractedAt: txn.contractExtractedAt?.toISOString() ?? null,
+    contractAppliedAt: txn.contractAppliedAt?.toISOString() ?? null,
+    pendingContractJson: txn.pendingContractJson ?? null,
+    synthesizedAt: txn.synthesizedAt?.toISOString() ?? null,
+    lastSyncedAt: txn.lastSyncedAt?.toISOString() ?? null,
+    googleConnected: !!account?.googleOauthTokensEncrypted,
+    aiSummaryUpdatedAt: txn.aiSummaryUpdatedAt?.toISOString() ?? null,
+    milestoneCount: txn.milestones.length,
+    newestDocAt: newestDoc?.createdAt.toISOString() ?? null,
+    status: txn.status,
+  };
+  const canonicalState = transactionState(txnStateInput);
+  const reconciliation = canonicalState.find((d) => d.key === "reconciliation")!;
+
   // ── Tab content (grouped from the former long scroll) ──────────────
   const timelineTab = (
     <div className="space-y-6">
       <DealSynthesisPanel
         transactionId={txn.id}
         snapshot={(txn.synthesisJson as unknown as SynthesisSnapshot) ?? null}
-        synthesizedAt={txn.synthesizedAt?.toISOString() ?? null}
+        reconciliation={reconciliation}
       />
       <TransactionTimeline
         transactionId={txn.id}
