@@ -140,6 +140,35 @@ export async function PATCH(
     data: { ...data, manuallyEditedAt: new Date() },
   });
 
+  // Representation flip buyer↔seller must INVERT the parties, not just
+  // relabel the side — otherwise the buyer keeps showing as the buyer while
+  // the header calls the deal a sell, combining the two sides. Swap every
+  // co_buyer↔co_seller so the whole assignment follows the flip. 3-step via
+  // a temp role to dodge the (transactionId, contactId, role) unique key.
+  if (
+    body.side !== undefined &&
+    txn.side &&
+    updated.side &&
+    txn.side !== updated.side &&
+    (txn.side === "buy" || txn.side === "sell") &&
+    (updated.side === "buy" || updated.side === "sell")
+  ) {
+    await prisma.$transaction([
+      prisma.transactionParticipant.updateMany({
+        where: { transactionId: id, role: "co_buyer" },
+        data: { role: "_swap_tmp" },
+      }),
+      prisma.transactionParticipant.updateMany({
+        where: { transactionId: id, role: "co_seller" },
+        data: { role: "co_buyer" },
+      }),
+      prisma.transactionParticipant.updateMany({
+        where: { transactionId: id, role: "_swap_tmp" },
+        data: { role: "co_seller" },
+      }),
+    ]);
+  }
+
   // Date-shift cascade: when contractDate or closingDate changed,
   // re-derive walkthrough + earnest-money + linked milestones.
   if (body.contractDate !== undefined || body.closingDate !== undefined) {
