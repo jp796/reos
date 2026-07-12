@@ -52,11 +52,62 @@ function toNum(v: unknown): number | null {
   return null;
 }
 
+/**
+ * Resolve which side WE represent from the contract's brokerage block.
+ *
+ * JP's rule: the footer "Prepared by" agent is the buyer's agent, so the
+ * extraction tags the buyer's firm side="buyer" and the listing firm
+ * side="listing". Whichever side OUR brokerage sits on is the side we
+ * represent — that, not "is a buyer named", is the reliable signal.
+ *
+ * Returns "buy" | "sell" only on a confident name match; null otherwise
+ * (caller then falls back to the weaker name-presence inference).
+ */
+function resolveFirmSideFromBrokerages(
+  brokerages: Array<{ name?: string | null; side?: string | null }> | null | undefined,
+  ourName: string | null | undefined,
+): "buy" | "sell" | null {
+  if (!brokerages?.length || !ourName?.trim()) return null;
+  const norm = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/\b(llc|inc|l\.?l\.?c|co|company|realty|group|brokerage|real estate)\b/g, "")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  const target = norm(ourName);
+  if (!target) return null;
+  const targetTokens = target.split(" ").filter((t) => t.length > 2);
+  for (const b of brokerages) {
+    const name = b.name?.trim();
+    const side = b.side?.trim().toLowerCase();
+    if (!name || (side !== "buyer" && side !== "listing")) continue;
+    const cand = norm(name);
+    if (!cand) continue;
+    const hit =
+      cand === target ||
+      cand.includes(target) ||
+      target.includes(cand) ||
+      (targetTokens.length > 0 && targetTokens.every((t) => cand.includes(t)));
+    if (hit) return side === "listing" ? "sell" : "buy";
+  }
+  return null;
+}
+
 interface Body {
   address?: string;
   /** Which side the user represents ("buy" | "sell"); from the wizard
    *  side-picker. When given it wins over inference. */
   side?: string | null;
+  /** The side WE represent, expressed as the contract's firm side
+   *  ("buyer" | "listing"), when a caller has already matched our
+   *  brokerage. Beats name-presence inference; loses to explicit `side`
+   *  and to a server-side brokerage match. */
+  firmSide?: string | null;
+  /** Every brokerage the extraction named, with the side it represents
+   *  (footer-derived: the "Prepared by" firm on the buyer-broker line is
+   *  side="buyer"). The server finds OUR firm in this list to learn the
+   *  side we actually represent (see resolveFirmSideFromBrokerages). */
+  brokerages?: Array<{ name?: string | null; side?: string | null }> | null;
   buyerName?: string | null;
   sellerName?: string | null;
   effectiveDate?: string | null;
@@ -105,7 +156,16 @@ export async function POST(req: NextRequest) {
   // other tenant-owned write route.
   const actor = await requireSession();
   if (actor instanceof NextResponse) return actor;
-  const account = { id: actor.accountId };
+  const account = await prisma.account.findUnique({
+    where: { id: actor.accountId },
+    select: {
+      id: true,
+      brokerageProfile: { select: { name: true, agentEmailDomains: true } },
+    },
+  });
+  if (!account) {
+    return NextResponse.json({ error: "account not found" }, { status: 404 });
+  }
   const actingUserId = actor.userId;
 
   const body = (await req.json().catch(() => null)) as Body | null;
@@ -147,16 +207,34 @@ export async function POST(req: NextRequest) {
   const buyerPct = toNum(body.buyerSideCommissionPct);
   const buyerAmt = toNum(body.buyerSideCommissionAmount);
 
-  // Which side the user represents. The wizard's side-picker wins; only
-  // fall back to inference when it isn't supplied.
+  // Which side the user represents, in priority order:
+  //   1. the wizard's explicit side-picker (a human choice — always wins);
+  //   2. the DRAFTING firm's side from the contract footer/broker block —
+  //      the agent who WROTE the contract represents that side (a buyer's
+  //      OFFER is drafted by the buyer's agent → "buy"). This is the
+  //      footer-agent signal and beats fuzzy name-presence inference;
+  //   3. name-presence fallback (weakest — the source of the old mislabels).
   const explicitSide: "buy" | "sell" | null =
     body.side === "buy" || body.side === "sell" ? body.side : null;
+  // Server-side footer signal: find OUR brokerage in the extracted list.
+  const matchedFirmSide = resolveFirmSideFromBrokerages(
+    body.brokerages,
+    account.brokerageProfile?.name,
+  );
+  // Caller-supplied fallback if it pre-matched our firm (rare).
+  const callerFirmSide: "buy" | "sell" | null =
+    body.firmSide === "buyer" ? "buy" : body.firmSide === "listing" ? "sell" : null;
+  const resolvedSide: "buy" | "sell" =
+    explicitSide ??
+    matchedFirmSide ??
+    callerFirmSide ??
+    (body.buyerName?.trim() ? "buy" : "sell");
 
   // Contact lookup / create — the primary contact is the party the user
   // represents: the SELLER on a sell-side (listing) deal, otherwise the
   // BUYER. Falls back to the other party, then an address placeholder.
   const principalName =
-    (explicitSide === "sell"
+    (resolvedSide === "sell"
       ? body.sellerName?.trim() || body.buyerName?.trim()
       : body.buyerName?.trim() || body.sellerName?.trim()) || null;
   let contact;
@@ -193,8 +271,7 @@ export async function POST(req: NextRequest) {
   // contact match makes that fail and silently flips a buy to a sell
   // (this mislabeled investor purchases: the buyer entity showed as the
   // seller).
-  const side: "buy" | "sell" =
-    explicitSide ?? (body.buyerName?.trim() ? "buy" : "sell");
+  const side: "buy" | "sell" = resolvedSide;
 
   const existing = await prisma.transaction.findFirst({
     where: {

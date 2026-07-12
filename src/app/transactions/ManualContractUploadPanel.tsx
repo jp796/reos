@@ -37,6 +37,9 @@ interface Extraction {
   buyerSideCommissionAmount?: Field<number>;
   compensationOnSeparateRider?: Field<boolean>;
   contractStage?: Field<string>;
+  /** Firms named in the contract; side is footer-derived (buyer|listing).
+   *  The server matches our own brokerage here to learn our true side. */
+  brokerages?: Field<Array<{ name?: string | null; side?: string | null }>>;
   notes?: string | null;
   _path?: string;
 }
@@ -202,6 +205,9 @@ export function ManualContractUploadPanel() {
           titleCompany: form.titleCompany.trim() || null,
           lenderName: form.lenderName.trim() || null,
           contractStage: extraction?.contractStage?.value ?? null,
+          // Footer-derived firm sides — lets the server find our own
+          // brokerage and set the correct representation side.
+          brokerages: extraction?.brokerages?.value ?? null,
         }),
       });
       const data = await res.json();
