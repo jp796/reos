@@ -16,6 +16,7 @@ import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/require-session";
 import { logError } from "@/lib/log";
 import { backupDocumentToDrive } from "@/services/automation/DriveBackupService";
+import { synthesizeDeal } from "@/services/core/DocumentSynthesisService";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -93,6 +94,24 @@ export async function POST(
       accountId: actor.accountId,
     });
     return NextResponse.json({ error: "upload failed" }, { status: 500 });
+  }
+
+  // Fix-forward: analyze the freshly-uploaded docs so their parsed read
+  // (analysisJson) is persisted. This bulk path (wizard / guided intake)
+  // used to store the PDF but drop the read — leaving contracts un-parsed
+  // until someone hit Reconcile. Best-effort + soft-bounded so a slow
+  // model call never hangs the upload: the docs are already saved above,
+  // and synthesizeDeal writes each doc's analysis as it goes, so anything
+  // not finished in time is simply picked up by the deal's Reconcile.
+  if (created.length > 0) {
+    try {
+      await Promise.race([
+        synthesizeDeal(prisma, actor.accountId, txn.id, false).catch(() => null),
+        new Promise((resolve) => setTimeout(resolve, 45_000)),
+      ]);
+    } catch {
+      /* non-fatal — never block the upload on analysis */
+    }
   }
 
   return NextResponse.json({ ok: true, created, count: created.length });

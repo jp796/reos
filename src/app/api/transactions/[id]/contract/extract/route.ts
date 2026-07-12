@@ -14,6 +14,7 @@ import { env } from "@/lib/env";
 import { Prisma } from "@prisma/client";
 import { ContractExtractionService } from "@/services/ai/ContractExtractionService";
 import { backupDocumentToDrive } from "@/services/automation/DriveBackupService";
+import { synthesizeDeal } from "@/services/core/DocumentSynthesisService";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -132,6 +133,22 @@ export async function POST(
       contractExtractedAt: new Date(),
     },
   });
+
+  // Fix-forward: persist each document's parsed read (analysisJson). The
+  // extraction above populates the review panel, but the per-document
+  // analysis used to be dropped on this path — so a re-scan or footer
+  // re-derivation had nothing to read. synthesizeDeal classifies + caches
+  // the deep contract extraction on the doc. Best-effort + soft-bounded so
+  // it never hangs the response (docs are saved; Reconcile finishes any
+  // that don't complete in time).
+  try {
+    await Promise.race([
+      synthesizeDeal(prisma, txn.accountId, txn.id, false).catch(() => null),
+      new Promise((resolve) => setTimeout(resolve, 40_000)),
+    ]);
+  } catch {
+    /* non-fatal */
+  }
 
   return NextResponse.json({ ok: true, extraction: merged });
 }
