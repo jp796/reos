@@ -25,7 +25,7 @@ import { TelegramService } from "@/services/integrations/TelegramService";
 import { requireSession } from "@/lib/require-session";
 import { dealVisibilityWhere } from "@/lib/deal-visibility";
 import { cn } from "@/lib/cn";
-import { isPostCloseNurture, classifyMilestone } from "@/lib/risk";
+import { assignTodayQueues } from "@/lib/todayQueues";
 import { TodayQuickActions } from "./TodayQuickActions";
 
 export const dynamic = "force-dynamic";
@@ -220,13 +220,7 @@ export default async function TodayPage({
     }),
   ]);
 
-  // Phase 4 (§10 rule 1): post-close nurture (reviews, gifts, anniversaries)
-  // must NOT sit in the active-risk / overdue queue. Split it out so the
-  // harm queue stays scarce and post-close work has its own lane.
-  const activeOverdueTasks = overdueTasks.filter((t) => !isPostCloseNurture(t.title));
-  const postCloseOverdue = overdueTasks.filter((t) => isPostCloseNurture(t.title));
-
-  // Score every active transaction once, keep the top 10 by risk score
+  // Score every active transaction once, keep the top 10 by risk score.
   const risker = new RiskScoringService();
   const ranked = allActive
     .map((t) => ({
@@ -237,7 +231,7 @@ export default async function TodayPage({
     .sort((a, b) => b.risk.score - a.risk.score)
     .slice(0, 10);
 
-  // Silent deals: most recent comm > 7 days ago, or no comms at all
+  // Silent deals: most recent comm > 7 days ago, or no comms at all.
   const silentDeals = silentCandidates
     .map((t) => {
       const last = t.communicationEvents[0]?.happenedAt ?? t.createdAt;
@@ -248,23 +242,39 @@ export default async function TodayPage({
     .sort((a, b) => b.daysSince - a.daysSince)
     .slice(0, 15);
 
-  // Phase 5 (§11) — "Prevent harm" queue: only the overdue milestones that
-  // are genuine deal threats (contractual / closing / compliance), deduped
-  // to one incident per deal so a single missed timeline doesn't spam the
-  // queue (§10). Post-close / operational milestones never appear here.
-  const harmSeen = new Set<string>();
-  const harmMilestones = overdueMilestones.filter((m) => {
-    const cat = classifyMilestone(m.type, m.label);
-    const isHarm =
-      cat === "contractual_deadline" ||
-      cat === "closing_blocker" ||
-      cat === "compliance_blocker";
-    if (!isHarm) return false;
-    const key = m.transaction.id;
-    if (harmSeen.has(key)) return false; // one incident per deal
-    harmSeen.add(key);
-    return true;
+  // Decision-queue assignment (§11 closure): each active deal lands in
+  // exactly ONE primary queue by precedence — Prevent harm > Do today >
+  // Waiting on others > informational At-risk — with post-close nurture in
+  // its own lane. This single source guarantees no incident is shown twice
+  // (previously a deal could sit in harm AND at-risk AND waiting at once).
+  const {
+    harm: harmMilestones,
+    doToday: activeOverdueTasks,
+    postClose: postCloseOverdue,
+    waiting,
+    atRisk,
+  } = assignTodayQueues({
+    overdueMilestones,
+    overdueTasks,
+    silentDeals,
+    scoredRisky: ranked,
+    accessors: {
+      milestoneTxn: (m) => m.transaction.id,
+      milestoneType: (m) => m.type,
+      milestoneLabel: (m) => m.label,
+      taskTxn: (t) => t.transaction!.id,
+      taskTitle: (t) => t.title,
+      silentTxn: (s) => s.txn.id,
+      scoredTxn: (r) => r.txn.id,
+    },
   });
+
+  // Secondary "Overdue milestones" list excludes the critical ones already
+  // shown in Prevent harm, so the same milestone never appears twice.
+  const harmMilestoneIds = new Set(harmMilestones.map((m) => m.id));
+  const otherOverdueMilestones = overdueMilestones.filter(
+    (m) => !harmMilestoneIds.has(m.id),
+  );
 
   const activeCount = Number(counts[0]?.active ?? 0);
   const closedCount = Number(counts[0]?.closed ?? 0);
@@ -330,8 +340,8 @@ export default async function TodayPage({
         />
         <Stat
           label="Silent (7d+)"
-          value={silentDeals.length}
-          tone={silentDeals.length > 0 ? "amber" : "neutral"}
+          value={waiting.length}
+          tone={waiting.length > 0 ? "amber" : "neutral"}
         />
         <Stat
           label="Pending review"
@@ -360,53 +370,6 @@ export default async function TodayPage({
             {harmMilestones.map((m) => (
               <MilestoneRow key={m.id} m={m} tone="red" />
             ))}
-          </ul>
-        )}
-      </Section>
-
-      {/* At risk (secondary — scored deals overview) */}
-      <Section
-        title="At risk"
-        subtitle="Active transactions scored by the risk engine"
-        count={ranked.length}
-      >
-        {ranked.length === 0 ? (
-          <Empty>No active transaction is flagged by the risk engine.</Empty>
-        ) : (
-          <ul className="space-y-2">
-            {ranked.map(({ txn, risk }) => {
-              const h = riskHealth(risk.score);
-              return (
-                <li
-                  key={txn.id}
-                  className={`rounded-md border p-3 ${riskHealthTone(h)}`}
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <Link
-                        href={`/transactions/${txn.id}`}
-                        className="font-medium hover:underline"
-                      >
-                        {txn.propertyAddress ?? "No address"}
-                      </Link>
-                      <div className="text-xs opacity-80">
-                        {txn.contact.fullName} · {txn.transactionType}
-                      </div>
-                      <div className="mt-1 text-xs">
-                        {risk.factors[0]?.description ?? "—"}
-                        {risk.factors.length > 1 && (
-                          <span className="opacity-70"> · +{risk.factors.length - 1} more</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-lg font-semibold">{risk.score}</div>
-                      <div className="text-xs opacity-70">{h}</div>
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
           </ul>
         )}
       </Section>
@@ -452,14 +415,15 @@ export default async function TodayPage({
         )}
       </Section>
 
-      {/* Overdue milestones */}
-      <Section title="Overdue milestones" count={overdueMilestones.length}>
-        {overdueMilestones.length === 0 ? (
-          <Empty>Nothing overdue. Good place to be.</Empty>
+      {/* Other overdue milestones — the non-critical ones (the critical
+          contract/closing/compliance deadlines are up in Prevent harm). */}
+      <Section title="Other overdue milestones" count={otherOverdueMilestones.length}>
+        {otherOverdueMilestones.length === 0 ? (
+          <Empty>Nothing else overdue. Good place to be.</Empty>
         ) : (
           <ul className="space-y-2">
-            {overdueMilestones.map((m) => (
-              <MilestoneRow key={m.id} m={m} tone="red" />
+            {otherOverdueMilestones.map((m) => (
+              <MilestoneRow key={m.id} m={m} tone="amber" />
             ))}
           </ul>
         )}
@@ -515,17 +479,18 @@ export default async function TodayPage({
         )}
       </Section>
 
-      {/* 3. Waiting on others — party silence; blocked on someone else. */}
+      {/* 3. Waiting on others — party silence; blocked on someone else.
+          Deals already surfaced in a higher queue are excluded (dedup). */}
       <Section
         title="⏳ Waiting on others"
         subtitle="Active deals with no communication in 7+ days — nudge the other side"
-        count={silentDeals.length}
+        count={waiting.length}
       >
-        {silentDeals.length === 0 ? (
+        {waiting.length === 0 ? (
           <Empty>Nothing stale — every active deal has recent activity.</Empty>
         ) : (
           <ul className="space-y-2">
-            {silentDeals.map(({ txn, daysSince, lastTouch }) => (
+            {waiting.map(({ txn, daysSince, lastTouch }) => (
               <li
                 key={txn.id}
                 className="flex items-center justify-between rounded-md border border-border bg-surface p-3"
@@ -553,6 +518,53 @@ export default async function TodayPage({
           </ul>
         )}
       </Section>
+
+      {/* Informational (lowest precedence): deals the risk engine flags that
+          are NOT already in an actionable queue above. Purely additional
+          context — never a duplicate of harm / do-today / waiting. */}
+      {atRisk.length > 0 && (
+        <Section
+          title="Also worth watching"
+          subtitle="Scored by the risk engine — not yet an overdue deadline, task, or silence"
+          count={atRisk.length}
+        >
+          <ul className="space-y-2">
+            {atRisk.map(({ txn, risk }) => {
+              const h = riskHealth(risk.score);
+              return (
+                <li
+                  key={txn.id}
+                  className={`rounded-md border p-3 ${riskHealthTone(h)}`}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <Link
+                        href={`/transactions/${txn.id}`}
+                        className="font-medium hover:underline"
+                      >
+                        {txn.propertyAddress ?? "No address"}
+                      </Link>
+                      <div className="text-xs opacity-80">
+                        {txn.contact.fullName} · {txn.transactionType}
+                      </div>
+                      <div className="mt-1 text-xs">
+                        {risk.factors[0]?.description ?? "—"}
+                        {risk.factors.length > 1 && (
+                          <span className="opacity-70"> · +{risk.factors.length - 1} more</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg font-semibold">{risk.score}</div>
+                      <div className="text-xs opacity-70">{h}</div>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </Section>
+      )}
     </main>
   );
 }
