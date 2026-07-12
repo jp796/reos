@@ -1,4 +1,6 @@
 import { test, expect, describe } from "bun:test";
+import { readFileSync } from "fs";
+import { join } from "path";
 import {
   transactionState,
   reconciliationState,
@@ -122,6 +124,32 @@ describe("panels cannot contradict each other (§8 closure — cross-panel)", ()
         expect(d.action, `${d.key} must be actionable`).toBeTruthy();
       }
     }
+  });
+});
+
+describe("the transaction page wires every surface to the canonical model", () => {
+  const pageSrc = readFileSync(
+    join(process.cwd(), "src/app/transactions/[id]/page.tsx"),
+    "utf8",
+  );
+
+  test("page derives all five dimensions from transactionState()", () => {
+    expect(pageSrc).toContain('from "@/lib/transactionState"');
+    expect(pageSrc).toContain("transactionState(txnStateInput)");
+    for (const key of ["reconciliation", "ai_brief", "comms", "extraction"]) {
+      expect(pageSrc).toContain(`"${key}"`);
+    }
+  });
+
+  test("each panel receives its canonical dimension (no independent inference)", () => {
+    // Synthesis panel ← reconciliation; AI summary ← aiBrief; header ←
+    // extraction; footer comms line ← commsState.
+    expect(pageSrc).toContain("reconciliation={reconciliation}");
+    expect(pageSrc).toContain("aiBrief={aiBriefState}");
+    expect(pageSrc).toContain("extraction={extractionDim}");
+    expect(pageSrc).toContain("commsState.label");
+    // The old raw comms line ("Last synced {fmtDate(txn.lastSyncedAt)}") is gone.
+    expect(pageSrc).not.toContain("Last synced{\" \"}");
   });
 });
 

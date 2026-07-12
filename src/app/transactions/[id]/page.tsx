@@ -364,6 +364,12 @@ export default async function TransactionDetailPage({
   };
   const canonicalState = transactionState(txnStateInput);
   const reconciliation = canonicalState.find((d) => d.key === "reconciliation")!;
+  const aiBriefState = canonicalState.find((d) => d.key === "ai_brief")!;
+  const commsState = canonicalState.find((d) => d.key === "comms")!;
+  const extractionDim = canonicalState.find((d) => d.key === "extraction")!;
+  // Timeline staleness is surfaced by the reconciliation panel that sits
+  // directly above the timeline (identical newestDoc>synthesizedAt signal),
+  // so we don't render a second, duplicate timeline banner here.
 
   // ── Tab content (grouped from the former long scroll) ──────────────
   const timelineTab = (
@@ -883,6 +889,7 @@ export default async function TransactionDetailPage({
               email: t.email,
               role: t.role,
             }))}
+            extraction={extractionDim}
           />
           <EditablePrimaryContact
             contactId={contact.id}
@@ -1007,6 +1014,7 @@ export default async function TransactionDetailPage({
         transactionId={txn.id}
         initialSummary={txn.aiSummary}
         initialUpdatedAt={txn.aiSummaryUpdatedAt?.toISOString() ?? null}
+        aiBrief={aiBriefState}
       />
 
       <NotesPanel transactionId={txn.id} currentUserId={actor.userId} />
@@ -1028,10 +1036,14 @@ export default async function TransactionDetailPage({
         ]}
       />
 
-      {/* Footer */}
+      {/* Footer — comms-sync state comes from the canonical model so it can
+          surface "Gmail not connected" / "Never synced", not just a date. */}
       <footer className="mt-10 border-t border-border pt-4 text-xs text-text-subtle">
-        Transaction {txn.id} · Created {fmtDate(txn.createdAt)} · Last synced{" "}
-        {fmtDate(txn.lastSyncedAt)}
+        Transaction {txn.id} · Created {fmtDate(txn.createdAt)} ·{" "}
+        <span className={commsState.tone === "danger" ? "text-red-600 dark:text-red-400" : commsState.tone === "warn" ? "text-amber-700 dark:text-amber-500" : undefined}>
+          {commsState.label}
+          {commsState.since && ` ${fmtDate(new Date(commsState.since))}`}
+        </span>
       </footer>
 
       {/* In-app Atlas chat — dockable, deal-scoped */}

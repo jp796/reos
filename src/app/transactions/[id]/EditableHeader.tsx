@@ -7,6 +7,7 @@ import { cn } from "@/lib/cn";
 import { useToast } from "@/app/ToastProvider";
 import { RepresentationToggle } from "./RepresentationToggle";
 import { AssigneePicker } from "./AssigneePicker";
+import type { DimensionState } from "@/lib/transactionState";
 
 interface TeamMember {
   id: string;
@@ -28,6 +29,9 @@ interface Props {
   side: string | null;
   assignedUserId: string | null;
   team: TeamMember[];
+  /** Canonical extraction/review state — surfaced as a small badge so the
+   *  header shows "needs review" / "no contract" from the ONE derivation. */
+  extraction: DimensionState;
 }
 
 function statusBadge(status: string) {
@@ -154,6 +158,18 @@ export function EditableHeader(props: Props) {
           {props.stageName && (
             <span className="text-xs text-text-muted">
               · FUB: {props.stageName}
+            </span>
+          )}
+          {/* Extraction state from the canonical model — only when it needs
+              action (no contract read, or extracted-but-not-reviewed). When
+              the contract is applied there's nothing to nag about. */}
+          {(props.extraction.state === "needs_review" ||
+            props.extraction.state === "not_started") && (
+            <span
+              className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-900/40"
+              title={props.extraction.action ?? undefined}
+            >
+              {props.extraction.label}
             </span>
           )}
           <button

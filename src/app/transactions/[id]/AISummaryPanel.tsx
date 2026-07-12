@@ -2,11 +2,15 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import type { DimensionState } from "@/lib/transactionState";
 
 interface Props {
   transactionId: string;
   initialSummary: string | null;
   initialUpdatedAt: string | null;
+  /** Canonical AI-brief state (src/lib/transactionState) — the one source
+   *  for the freshness label, so this panel can't contradict the others. */
+  aiBrief: DimensionState;
 }
 
 function fmtRelative(iso: string | null) {
@@ -25,6 +29,7 @@ export function AISummaryPanel({
   transactionId,
   initialSummary,
   initialUpdatedAt,
+  aiBrief,
 }: Props) {
   const router = useRouter();
   const [summary, setSummary] = useState<string | null>(initialSummary);
@@ -61,7 +66,16 @@ export function AISummaryPanel({
       <div className="flex items-baseline justify-between">
         <h2 className="text-lg font-medium">AI summary</h2>
         <div className="flex items-center gap-3 text-xs text-text-muted">
-          {summary && <span>updated {fmtRelative(updatedAt)}</span>}
+          {/* Freshness label: a local regenerate stamps updatedAt immediately;
+              otherwise fall back to the canonical aiBrief state so this panel
+              agrees with every other surface. */}
+          {summary ? (
+            <span>updated {fmtRelative(updatedAt ?? aiBrief.since)}</span>
+          ) : (
+            <span className={aiBrief.tone === "warn" ? "text-amber-700 dark:text-amber-400" : undefined}>
+              {aiBrief.label}
+            </span>
+          )}
           <button
             type="button"
             onClick={regenerate}
