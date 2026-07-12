@@ -3,7 +3,13 @@
 > **Product:** REOS — Real Estate Operating System · https://www.myrealestateos.com
 > **Source brief:** REOS_PRODUCT_AUTOPSY_AND_REMEDIATION.md
 > **Date:** 2026-07-11
-> **Status:** Phases 1–10 delivered. 61 tests green, `tsc` clean, deployed across independently-reversible commits with **zero silent data rewrites** (§16).
+> **Status:** Phases 1–10 delivered. Follow-up closure (`REOS_03`) then closed
+> the verified gaps this report had deferred — public pricing/capability drift,
+> Today queue duplication, funnel instrumentation, and canonical state wiring.
+> See **`docs/REOS_03_Closure_Report_v1.1_FINAL_2026-07-11.md`** for the accurate
+> per-item status (5 complete, 1 partial). The "Remaining / deferred" section
+> below (§6) is now largely superseded by that closure. 67 tests green, `tsc`
+> clean, production build clean, **zero silent data rewrites** (§16).
 
 ---
 
