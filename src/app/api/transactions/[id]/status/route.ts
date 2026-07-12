@@ -60,8 +60,13 @@ export async function PATCH(
 
   await prisma.transaction.update({ where: { id }, data });
 
-  // Golden-workflow instrumentation (§15) — no PII, best-effort.
-  if (body.status === "closed" || body.status === "terminated") {
+  // Golden-workflow instrumentation (§15) — no PII, best-effort. Fire ONLY
+  // on the transition INTO a terminal status; re-saving an already-closed
+  // deal must not emit a duplicate funnel event.
+  const enteringTerminal =
+    (body.status === "closed" || body.status === "terminated") &&
+    txn.status !== body.status;
+  if (enteringTerminal) {
     void logWorkflowEvent(prisma, {
       accountId: actor.accountId,
       transactionId: id,

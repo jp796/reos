@@ -17,6 +17,7 @@ import { requireSession } from "@/lib/require-session";
 import { logError } from "@/lib/log";
 import { backupDocumentToDrive } from "@/services/automation/DriveBackupService";
 import { synthesizeDeal } from "@/services/core/DocumentSynthesisService";
+import { logWorkflowEvent } from "@/lib/instrumentation";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -94,6 +95,18 @@ export async function POST(
       accountId: actor.accountId,
     });
     return NextResponse.json({ error: "upload failed" }, { status: 500 });
+  }
+
+  // Funnel: files landed on the deal. One event per upload batch with a
+  // scalar count + origin — never file names or contents.
+  if (created.length > 0) {
+    await logWorkflowEvent(prisma, {
+      accountId: actor.accountId,
+      transactionId: txn.id,
+      event: "attachment_received",
+      actorUserId: actor.userId,
+      meta: { count: created.length, origin },
+    });
   }
 
   // Fix-forward: analyze the freshly-uploaded docs so their parsed read

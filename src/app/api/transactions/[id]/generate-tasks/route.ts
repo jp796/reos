@@ -13,6 +13,7 @@ import { prisma } from "@/lib/db";
 import { requireSession, assertSameAccount } from "@/lib/require-session";
 import { generateDealTasks } from "@/services/core/GenerateDealTasksService";
 import type { GeneratedTask } from "@/services/ai/AiTaskGenerationService";
+import { logWorkflowEvent } from "@/lib/instrumentation";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -43,6 +44,17 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       preGeneratedTasks: body.tasks,
     });
     if (!result) return NextResponse.json({ error: "deal not found" }, { status: 404 });
+    // Funnel: the deal's task plan was activated (retail path).
+    const createdCount = (result as { created?: number }).created;
+    if (createdCount === undefined || createdCount > 0) {
+      await logWorkflowEvent(prisma, {
+        accountId: txn.accountId,
+        transactionId: id,
+        event: "tasks_activated",
+        actorUserId: actor.userId,
+        meta: createdCount === undefined ? { origin: "generate_tasks" } : { tasks: createdCount },
+      });
+    }
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     return NextResponse.json(

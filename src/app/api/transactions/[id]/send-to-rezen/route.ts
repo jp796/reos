@@ -22,6 +22,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/require-session";
+import { logWorkflowEvent } from "@/lib/instrumentation";
 import { getEncryptionService } from "@/lib/encryption";
 import {
   searchChecklist,
@@ -290,6 +291,19 @@ export async function POST(
         rezenLastPushJson: { pushed, skipped, errored, at: new Date().toISOString() },
       },
     });
+
+    // Funnel: the deal's docs were submitted to the brokerage compliance
+    // system — the compliance review is now ready on the Rezen side. Only
+    // when at least one doc actually pushed (a no-op push isn't "ready").
+    if (pushed > 0) {
+      await logWorkflowEvent(prisma, {
+        accountId: actor.accountId,
+        transactionId: id,
+        event: "compliance_review_ready",
+        actorUserId: actor.userId,
+        meta: { pushed, skipped, errored },
+      });
+    }
 
     return NextResponse.json({
       ok: true,

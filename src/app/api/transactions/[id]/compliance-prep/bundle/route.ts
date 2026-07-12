@@ -14,6 +14,7 @@ import { NextResponse } from "next/server";
 import JSZip from "jszip";
 import { prisma } from "@/lib/db";
 import { requireSession, assertSameAccount } from "@/lib/require-session";
+import { logWorkflowEvent } from "@/lib/instrumentation";
 import {
   buildRezenPrepReport,
   loadSlotsForProfile,
@@ -156,6 +157,16 @@ export async function GET(
   }
 
   const buf = await zip.generateAsync({ type: "nodebuffer" });
+
+  // Funnel: the compliance package was exported (bundle downloaded).
+  await logWorkflowEvent(prisma, {
+    accountId: txn.accountId,
+    transactionId: id,
+    event: "compliance_exported",
+    actorUserId: actor.userId,
+    meta: { bytes: buf.length },
+  });
+
   const safeName = (txn.propertyAddress ?? "transaction")
     .replace(/[^a-z0-9 ]/gi, "")
     .trim()

@@ -15,6 +15,7 @@ import { Prisma } from "@prisma/client";
 import { ContractExtractionService } from "@/services/ai/ContractExtractionService";
 import { backupDocumentToDrive } from "@/services/automation/DriveBackupService";
 import { synthesizeDeal } from "@/services/core/DocumentSynthesisService";
+import { logWorkflowEvent } from "@/lib/instrumentation";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -54,16 +55,45 @@ export async function POST(
   const buffer = Buffer.from(await file.arrayBuffer());
   const svc = new ContractExtractionService(env.OPENAI_API_KEY);
 
+  // Funnel: a contract arrived and extraction is starting. `attachment_received`
+  // marks the file; `extraction_started` opens the extraction span. Meta holds
+  // only scalar size/type — never the file's contents.
+  await logWorkflowEvent(prisma, {
+    accountId: txn.accountId,
+    transactionId: txn.id,
+    event: "attachment_received",
+    meta: { sizeBytes: buffer.length, mimeType: file.type || "application/pdf", origin: "contract_upload_panel" },
+  });
+  await logWorkflowEvent(prisma, {
+    accountId: txn.accountId,
+    transactionId: txn.id,
+    event: "extraction_started",
+    meta: { origin: "contract_upload_panel" },
+  });
+
   let extraction;
   try {
     extraction = await svc.extract(buffer);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    // Log the failure with only a short, non-content reason code.
+    await logWorkflowEvent(prisma, {
+      accountId: txn.accountId,
+      transactionId: txn.id,
+      event: "extraction_failed",
+      meta: { reason: msg.slice(0, 80) },
+    });
     return NextResponse.json(
       { error: `extraction failed: ${msg.slice(0, 300)}` },
       { status: 502 },
     );
   }
+  await logWorkflowEvent(prisma, {
+    accountId: txn.accountId,
+    transactionId: txn.id,
+    event: "extraction_completed",
+    meta: { origin: "contract_upload_panel" },
+  });
 
   // Persist the uploaded PDF as a Document so future rescans can
   // re-extract it without re-uploading. Done BEFORE the transaction

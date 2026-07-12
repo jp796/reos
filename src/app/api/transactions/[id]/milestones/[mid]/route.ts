@@ -10,6 +10,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 import { MILESTONE_TYPE_TO_TXN_FIELD } from "@/lib/milestone-fields";
+import { logWorkflowEvent } from "@/lib/instrumentation";
+import { classifyMilestone } from "@/lib/risk";
 
 const STATUSES = new Set(["pending", "completed", "overdue", "cancelled"]);
 const OWNER_ROLES = new Set([
@@ -103,6 +105,35 @@ export async function PATCH(
         where: { id },
         data: { [field]: data.dueAt ?? null } as Prisma.TransactionUpdateInput,
       });
+    }
+  }
+
+  // Funnel: a genuine deal risk was cleared. Fire ONLY on the transition
+  // into completed (was open → now complete) so repeated PATCHes don't
+  // create duplicate funnel events, and only for harm-class milestones
+  // (contractual / closing / compliance) — completing an operational
+  // checklist item isn't "risk resolved".
+  const justCompleted =
+    existing.completedAt === null && data.completedAt instanceof Date;
+  if (justCompleted) {
+    const cat = classifyMilestone(existing.type, existing.label);
+    if (
+      cat === "contractual_deadline" ||
+      cat === "closing_blocker" ||
+      cat === "compliance_blocker"
+    ) {
+      const txn = await prisma.transaction.findUnique({
+        where: { id },
+        select: { accountId: true },
+      });
+      if (txn) {
+        await logWorkflowEvent(prisma, {
+          accountId: txn.accountId,
+          transactionId: id,
+          event: "risk_resolved",
+          meta: { milestoneType: existing.type, category: cat },
+        });
+      }
     }
   }
 

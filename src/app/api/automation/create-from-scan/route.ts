@@ -34,6 +34,7 @@ import { SmartFolderService } from "@/services/automation/SmartFolderService";
 import { classifyDeal } from "@/services/core/DealClassifierService";
 import { applyStrategyTemplate } from "@/services/core/StageEngine";
 import { hasStageLifecycle } from "@/services/core/strategyTemplates";
+import { logWorkflowEvent } from "@/lib/instrumentation";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -359,6 +360,16 @@ export async function POST(req: NextRequest) {
     },
   });
 
+  // Funnel: the reviewed facts were approved and a real deal now exists.
+  // Fires once per creation (this route persists the deal exactly once).
+  await logWorkflowEvent(prisma, {
+    accountId: account.id,
+    transactionId: txn.id,
+    event: "facts_approved",
+    actorUserId: actingUserId,
+    meta: { side, transactionType: side === "sell" ? "seller" : "buyer", stage },
+  });
+
   // Record the OTHER party — the seller on a buy-side deal, the buyer on
   // a sell-side deal — as a co-participant so both roles show on the deal
   // (the primary contact is the party the user represents).
@@ -446,6 +457,17 @@ export async function POST(req: NextRequest) {
     milestonesCreated++;
   }
 
+  // Funnel: the timeline (contractual milestones) was created for this deal.
+  if (milestonesCreated > 0) {
+    await logWorkflowEvent(prisma, {
+      accountId: account.id,
+      transactionId: txn.id,
+      event: "timeline_approved",
+      actorUserId: actingUserId,
+      meta: { milestones: milestonesCreated },
+    });
+  }
+
   // Financials — pick the side-matching commission. If direct $ given,
   // use it; else compute from pct × price.
   const myPct = side === "sell" ? sellerPct : buyerPct;
@@ -497,6 +519,19 @@ export async function POST(req: NextRequest) {
         err instanceof Error ? err.message : err,
       );
     }
+  }
+
+  // Funnel: stage-1 tasks were seeded/activated onto the deal (investor
+  // lifecycle). Retail deals activate tasks via the generate-tasks route,
+  // which emits its own tasks_activated. Only fire when tasks were made.
+  if (stageSeeded && stageSeeded.created > 0) {
+    await logWorkflowEvent(prisma, {
+      accountId: account.id,
+      transactionId: txn.id,
+      event: "tasks_activated",
+      actorUserId: actingUserId,
+      meta: { tasks: stageSeeded.created, stageKey: stageSeeded.stageKey ?? undefined },
+    });
   }
 
   // SmartFolder (Contract = Folder skill).

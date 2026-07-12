@@ -1,5 +1,25 @@
 import { test, expect, describe } from "bun:test";
-import { sanitizeMeta, buildEventRecord, WORKFLOW_EVENTS } from "./instrumentation";
+import type { PrismaClient } from "@prisma/client";
+import {
+  sanitizeMeta,
+  buildEventRecord,
+  logWorkflowEvent,
+  WORKFLOW_EVENTS,
+} from "./instrumentation";
+
+/** A fake Prisma that records what logWorkflowEvent tries to persist. */
+function fakeDb() {
+  const writes: Array<Record<string, unknown>> = [];
+  const db = {
+    automationAuditLog: {
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        writes.push(data);
+        return data;
+      },
+    },
+  } as unknown as PrismaClient;
+  return { db, writes };
+}
 
 describe("no PII / secrets / blobs in analytics (§15)", () => {
   test("forbidden keys are stripped", () => {
@@ -53,5 +73,58 @@ describe("event record", () => {
     expect(WORKFLOW_EVENTS.length).toBe(14);
     expect(WORKFLOW_EVENTS).toContain("transaction_closed");
     expect(WORKFLOW_EVENTS).toContain("first_risk_created");
+  });
+});
+
+describe("event emission (proves the wiring persists a real, scoped record)", () => {
+  test("logWorkflowEvent writes an account-scoped, sanitized audit row", async () => {
+    const { db, writes } = fakeDb();
+    await logWorkflowEvent(db, {
+      accountId: "acct_1",
+      transactionId: "txn_1",
+      event: "facts_approved",
+      actorUserId: "user_1",
+      meta: { side: "sell", token: "SHOULD_NOT_PERSIST" },
+    });
+    expect(writes).toHaveLength(1);
+    const row = writes[0]!;
+    // Account-scoped (§15: events must be account-scoped).
+    expect(row.accountId).toBe("acct_1");
+    expect(row.transactionId).toBe("txn_1");
+    expect(row.ruleName).toBe("golden:facts_approved");
+    expect(row.actorUserId).toBe("user_1");
+    // Secrets never persist even when a caller passes them.
+    const after = row.afterJson as Record<string, unknown>;
+    expect(after.side).toBe("sell");
+    expect(after.token).toBeUndefined();
+  });
+
+  test("account-less funnel entry (intake) persists with a null transaction", async () => {
+    const { db, writes } = fakeDb();
+    await logWorkflowEvent(db, {
+      accountId: "acct_2",
+      event: "intake_started",
+      meta: { files: 2 },
+    });
+    expect(writes[0]!.accountId).toBe("acct_2");
+    expect(writes[0]!.transactionId).toBeNull();
+    expect(writes[0]!.ruleName).toBe("golden:intake_started");
+  });
+
+  test("instrumentation NEVER throws into the caller (db failure is swallowed)", async () => {
+    const db = {
+      automationAuditLog: {
+        create: async () => {
+          throw new Error("db down");
+        },
+      },
+    } as unknown as PrismaClient;
+    // Must resolve, not reject — a broken analytics write can't break a workflow.
+    await expect(
+      logWorkflowEvent(db, {
+        accountId: "a",
+        event: "transaction_closed",
+      }),
+    ).resolves.toBeUndefined();
   });
 });

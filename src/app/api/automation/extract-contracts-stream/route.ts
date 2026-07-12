@@ -18,7 +18,9 @@
 
 import { type NextRequest } from "next/server";
 import { env } from "@/lib/env";
+import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/require-session";
+import { logWorkflowEvent } from "@/lib/instrumentation";
 import {
   ContractExtractionService,
   computeRelativeDeadlines,
@@ -77,6 +79,24 @@ export async function POST(req: NextRequest) {
   const strategy = String(form.get("strategy") ?? "") || null;
   const accountId = actor.accountId;
   const apiKey = env.OPENAI_API_KEY; // narrowed to string by the guard above
+
+  // Funnel entry (upload path): the deal doesn't exist yet, so these are
+  // account-scoped with a null transaction. `intake_started` opens the
+  // funnel; `attachment_received` counts the files (scalars only). The
+  // per-document `extraction_started/completed` events are emitted inside
+  // the stream as each doc is read.
+  await logWorkflowEvent(prisma, {
+    accountId,
+    event: "intake_started",
+    actorUserId: actor.userId,
+    meta: { files: files.length, origin: "live_extraction", ...(strategy ? { strategy } : {}) },
+  });
+  await logWorkflowEvent(prisma, {
+    accountId,
+    event: "attachment_received",
+    actorUserId: actor.userId,
+    meta: { count: files.length, origin: "live_extraction" },
+  });
 
   const svc = new ContractExtractionService(apiKey);
   const encoder = new TextEncoder();
