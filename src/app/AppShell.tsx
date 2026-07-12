@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Home as HomeIcon,
   CalendarDays,
@@ -28,6 +28,7 @@ import {
   X,
   PanelLeftClose,
   PanelLeftOpen,
+  ChevronDown,
 } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import { cn } from "@/lib/cn";
@@ -297,6 +298,51 @@ function SidebarContents({
   collapsed: boolean;
   onToggle?: () => void;
 }) {
+  // Which primary group contains the current route — always kept open so
+  // the active item is reachable without a click.
+  const activeGroupLabel = useMemo(() => {
+    for (const g of NAV_GROUPS) {
+      if (
+        g.label &&
+        g.items.some(
+          (it) =>
+            pathname === it.href ||
+            (it.href !== "/" && pathname.startsWith(it.href)),
+        )
+      ) {
+        return g.label;
+      }
+    }
+    return null;
+  }, [pathname]);
+
+  // Collapsible groups. Default (no stored pref) = only the active group is
+  // open, so the sidebar reads as a clean set of dropdowns. Explicit user
+  // toggles persist across sessions.
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    try {
+      setOpenGroups(JSON.parse(localStorage.getItem("reos_nav_groups") || "{}"));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const isGroupOpen = (label: string) =>
+    label in openGroups ? openGroups[label] : label === activeGroupLabel;
+
+  function toggleGroup(label: string) {
+    setOpenGroups((prev) => {
+      const next = { ...prev, [label]: !(label in prev ? prev[label] : label === activeGroupLabel) };
+      try {
+        localStorage.setItem("reos_nav_groups", JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
+
   return (
     <>
       <div
@@ -343,34 +389,62 @@ function SidebarContents({
             (item) => !item.investorOnly || user?.investor,
           );
           if (items.length === 0) return null;
+
+          const renderItem = (item: NavItem) => {
+            const active =
+              pathname === item.href ||
+              (item.href !== "/" && pathname.startsWith(item.href));
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                title={collapsed ? item.label : undefined}
+                className={cn(
+                  "flex items-center rounded-md text-sm transition-colors",
+                  // Larger tap target on touch; tighter on desktop.
+                  collapsed ? "justify-center px-2 py-2.5" : "gap-2.5 px-2.5 py-2.5 md:py-2",
+                  active
+                    ? "bg-brand-50 font-medium text-brand-700"
+                    : "text-text-muted hover:bg-surface-2 hover:text-text",
+                )}
+              >
+                <Icon className="h-4 w-4 shrink-0" strokeWidth={1.8} />
+                {!collapsed && item.label}
+              </Link>
+            );
+          };
+
+          // Icon-only rail (desktop collapsed) or an unlabeled group (Today):
+          // render items flat, no dropdown header.
+          if (collapsed || !group.label) {
+            return (
+              <div key={group.label ?? `g${gi}`} className={cn(gi > 0 && !collapsed && "mt-1.5")}>
+                {items.map(renderItem)}
+              </div>
+            );
+          }
+
+          // Labeled group → collapsible dropdown.
+          const open = isGroupOpen(group.label);
           return (
-            <div key={group.label ?? `g${gi}`} className={cn(gi > 0 && !collapsed && "mt-3")}>
-              {group.label && !collapsed && (
-                <div className="reos-label mb-0.5 px-2.5 opacity-50">{group.label}</div>
-              )}
-              {items.map((item) => {
-                const active =
-                  pathname === item.href ||
-                  (item.href !== "/" && pathname.startsWith(item.href));
-                const Icon = item.icon;
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    title={collapsed ? item.label : undefined}
-                    className={cn(
-                      "flex items-center rounded-md py-2 text-sm transition-colors",
-                      collapsed ? "justify-center px-2" : "gap-2.5 px-2.5",
-                      active
-                        ? "bg-brand-50 font-medium text-brand-700"
-                        : "text-text-muted hover:bg-surface-2 hover:text-text",
-                    )}
-                  >
-                    <Icon className="h-4 w-4 shrink-0" strokeWidth={1.8} />
-                    {!collapsed && item.label}
-                  </Link>
-                );
-              })}
+            <div key={group.label} className={cn(gi > 0 && "mt-1.5")}>
+              <button
+                type="button"
+                onClick={() => toggleGroup(group.label!)}
+                aria-expanded={open}
+                className="reos-label group flex w-full items-center justify-between rounded-md px-2.5 py-1.5 opacity-60 transition-colors hover:bg-surface-2 hover:opacity-100"
+              >
+                <span>{group.label}</span>
+                <ChevronDown
+                  className={cn(
+                    "h-3.5 w-3.5 transition-transform duration-200",
+                    open ? "" : "-rotate-90",
+                  )}
+                  strokeWidth={2}
+                />
+              </button>
+              {open && <div className="mt-0.5 flex flex-col gap-0.5">{items.map(renderItem)}</div>}
             </div>
           );
         })}
