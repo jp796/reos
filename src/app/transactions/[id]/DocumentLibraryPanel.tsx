@@ -34,6 +34,8 @@ import {
   Upload as UploadIcon,
   FileText,
   HardDrive,
+  Eye,
+  ExternalLink as OpenTabIcon,
   X,
 } from "lucide-react";
 import { useToast } from "../../ToastProvider";
@@ -403,6 +405,14 @@ function DocumentCard({
   const [pending, startTransition] = useTransition();
   const [busy, setBusy] = useState<null | "delete" | "classify" | "category">(null);
   const [localCategory, setLocalCategory] = useState(doc.category ?? "");
+  const [viewing, setViewing] = useState(false);
+
+  // Which files render inline in a modal (no download needed): PDFs and
+  // images. Everything else falls back to open-in-tab / download.
+  const isPdf = doc.mimeType === "application/pdf" || /\.pdf$/i.test(doc.fileName);
+  const isImage = doc.mimeType.startsWith("image/");
+  const viewable = doc.hasRawBytes && (isPdf || isImage);
+  const fileUrl = `/api/transactions/${transactionId}/documents/${doc.id}`;
 
   const flags: Array<{ key: string; label: string; tone: "red" | "green" | "amber" }> = [];
   if (doc.category === "contract" && doc.esignStatus !== "completed") {
@@ -415,17 +425,14 @@ function DocumentCard({
     flags.push({ key: "needs-extract", label: "Needs extraction", tone: "amber" });
   }
 
-  async function downloadDoc() {
+  function downloadDoc() {
     if (!doc.hasRawBytes) {
       toast.error("File bytes not stored for this doc");
       return;
     }
-    // Same-origin GET; browser handles the file download/preview.
-    window.open(
-      `/api/transactions/${transactionId}/documents/${doc.id}`,
-      "_blank",
-      "noopener,noreferrer",
-    );
+    // `?dl=1` makes the route respond with Content-Disposition: attachment
+    // so this truly downloads (viewing inline is the View button's job).
+    window.open(`${fileUrl}?dl=1`, "_blank", "noopener,noreferrer");
   }
 
   async function classifyNow() {
@@ -600,12 +607,25 @@ function DocumentCard({
               ))}
             </select>
 
+            {viewable && (
+              <button
+                type="button"
+                onClick={() => setViewing(true)}
+                disabled={cardLoading}
+                className="inline-flex items-center gap-1 rounded-md border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700 hover:border-brand-400 disabled:opacity-50 dark:bg-brand-950/30"
+                title="View here — no download needed"
+              >
+                <Eye className="h-3 w-3" strokeWidth={2} />
+                View
+              </button>
+            )}
+
             <button
               type="button"
               onClick={downloadDoc}
               disabled={cardLoading || !doc.hasRawBytes}
               className="inline-flex items-center gap-1 rounded-md border border-border bg-surface px-2.5 py-1 text-xs text-text hover:border-brand-500 disabled:opacity-50"
-              title={doc.hasRawBytes ? "Open / download" : "File bytes not stored"}
+              title={doc.hasRawBytes ? "Download the file" : "File bytes not stored"}
             >
               <Download className="h-3 w-3" strokeWidth={2} />
               Download
@@ -652,7 +672,93 @@ function DocumentCard({
           </div>
         </div>
       </div>
+      {viewing && (
+        <DocumentViewer
+          fileName={doc.fileName}
+          url={fileUrl}
+          kind={isPdf ? "pdf" : "image"}
+          onClose={() => setViewing(false)}
+        />
+      )}
     </li>
+  );
+}
+
+/** In-app document viewer — renders the file inline (PDF iframe / image),
+ *  so a user can read it without downloading or leaving the deal. */
+function DocumentViewer({
+  fileName,
+  url,
+  kind,
+  onClose,
+}: {
+  fileName: string;
+  url: string;
+  kind: "pdf" | "image";
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Viewing ${fileName}`}
+      onClick={onClose}
+      className="fixed inset-0 z-[95] flex flex-col bg-black/70 p-4 backdrop-blur-sm sm:p-8"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="mx-auto flex h-full w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl"
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-2.5">
+          <span className="truncate text-sm font-medium text-text">{fileName}</span>
+          <div className="flex items-center gap-1.5">
+            <a
+              href={`${url}?dl=1`}
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-surface px-2.5 py-1 text-xs text-text-muted hover:border-brand-400 hover:text-text"
+              title="Download"
+            >
+              <Download className="h-3 w-3" strokeWidth={2} />
+              Download
+            </a>
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-surface px-2.5 py-1 text-xs text-text-muted hover:border-brand-400 hover:text-text"
+              title="Open in a new tab"
+            >
+              <OpenTabIcon className="h-3 w-3" strokeWidth={2} />
+              New tab
+            </a>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:bg-surface-2 hover:text-text"
+              aria-label="Close viewer"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-auto bg-surface-2/40">
+          {kind === "pdf" ? (
+            <iframe title={fileName} src={url} className="h-full w-full" />
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={url} alt={fileName} className="mx-auto h-auto max-h-full w-auto object-contain" />
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 

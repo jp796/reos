@@ -61,7 +61,7 @@ async function loadOwnedDocument(
 /*  GET — download raw bytes                                      */
 /* ────────────────────────────────────────────────────────────── */
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   ctx: { params: Promise<{ id: string; docId: string }> },
 ) {
   const actor = await requireSession();
@@ -72,6 +72,11 @@ export async function GET(
   if (!doc) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
+
+  // `?dl=1` forces a download; default is inline so the in-app viewer and
+  // new-tab preview render the file instead of downloading it.
+  const disposition =
+    new URL(req.url).searchParams.get("dl") === "1" ? "attachment" : "inline";
 
   // Future: when we migrate to GCS-backed storageUrl, redirect to a
   // signed URL instead of streaming bytes through Cloud Run. For now
@@ -87,7 +92,7 @@ export async function GET(
     status: 200,
     headers: {
       "Content-Type": doc.mimeType || "application/octet-stream",
-      "Content-Disposition": `inline; filename="${doc.fileName.replace(/"/g, "")}"`,
+      "Content-Disposition": `${disposition}; filename="${doc.fileName.replace(/"/g, "")}"`,
       "Content-Length": String(doc.rawBytes.length),
       "Cache-Control": "private, no-store",
     },
