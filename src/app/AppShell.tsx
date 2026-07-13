@@ -346,6 +346,35 @@ function SidebarContents({
     });
   }
 
+  // The status group (Active Listing / Under Contract / Closed / …) holding
+  // the deal currently being viewed — kept open so the active deal is reachable.
+  const activeDealGroupKey = useMemo<NavDealGroup | null>(() => {
+    const id = pathname.match(/^\/transactions\/([^/]+)/)?.[1];
+    if (!id) return null;
+    return navDeals.find((d) => d.id === id)?.group ?? null;
+  }, [pathname, navDeals]);
+
+  // Deal-status groups collapse too. Default (no stored pref): the active
+  // deal's group, else "Under Contract" (the primary working set). Keys
+  // ("under_contract"…) never collide with nav-group labels ("Deals"…), so
+  // they share one persisted openGroups map.
+  const dealGroupDefault = (key: string) =>
+    activeDealGroupKey ? key === activeDealGroupKey : key === "under_contract";
+  const isDealGroupOpen = (key: string) =>
+    key in openGroups ? openGroups[key] : dealGroupDefault(key);
+  function toggleDealGroup(key: string) {
+    setOpenGroups((prev) => {
+      const cur = key in prev ? prev[key] : dealGroupDefault(key);
+      const next = { ...prev, [key]: !cur };
+      try {
+        localStorage.setItem("reos_nav_groups", JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
+
   return (
     <>
       <div
@@ -460,12 +489,28 @@ function SidebarContents({
             const items = navDeals.filter((d) => d.group === g.key);
             if (items.length === 0) return null;
             const shown = items.slice(0, 8);
+            const open = isDealGroupOpen(g.key);
             return (
               <div key={g.key}>
-                <div className="reos-label mb-1 flex items-center justify-between px-2 opacity-60">
-                  <span>{g.label}</span>
+                <button
+                  type="button"
+                  onClick={() => toggleDealGroup(g.key)}
+                  aria-expanded={open}
+                  className="reos-label mb-1 flex w-full items-center justify-between rounded-md px-2 py-1 opacity-60 transition-colors hover:bg-surface-2 hover:opacity-100"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <ChevronDown
+                      className={cn(
+                        "h-3 w-3 transition-transform duration-200",
+                        open ? "" : "-rotate-90",
+                      )}
+                      strokeWidth={2}
+                    />
+                    {g.label}
+                  </span>
                   <span className="tabular-nums">{items.length}</span>
-                </div>
+                </button>
+                {open && (
                 <div className="flex flex-col gap-0.5">
                   {shown.map((d) => {
                     const active = pathname === `/transactions/${d.id}`;
@@ -494,6 +539,7 @@ function SidebarContents({
                     </Link>
                   )}
                 </div>
+                )}
               </div>
             );
           })}
