@@ -16,6 +16,7 @@ import { SharePanel } from "./SharePanel";
 import { EditableHeader } from "./EditableHeader";
 import { DeleteTransactionButton } from "./DeleteTransactionButton";
 import { QuickTerminateButton } from "../QuickTerminateButton";
+import { ResyncButton } from "./ResyncButton";
 import { InspectionsPanel } from "./InspectionsPanel";
 import { NotesPanel } from "./NotesPanel";
 import { DocumentLibraryPanel } from "./DocumentLibraryPanel";
@@ -909,12 +910,16 @@ export default async function TransactionDetailPage({
           />
           <EditablePrimaryContact
             contactId={contact.id}
+            transactionId={txn.id}
             fullName={contact.fullName}
             primaryEmail={contact.primaryEmail}
             primaryPhone={contact.primaryPhone}
             referencedElsewhere={otherUses > 0}
             side={txn.side}
             propertyAddress={txn.propertyAddress}
+            city={txn.city}
+            state={txn.state}
+            zip={txn.zip}
             buyerNames={[
               ...(txn.side === "buy" || txn.side === "both"
                 ? [contact.fullName]
@@ -979,6 +984,7 @@ export default async function TransactionDetailPage({
           />
         </div>
         <div className="flex items-center gap-2">
+          <ResyncButton transactionId={txn.id} />
           {txn.milestones.length > 0 && (
             <CalendarSyncButton
               transactionId={txn.id}

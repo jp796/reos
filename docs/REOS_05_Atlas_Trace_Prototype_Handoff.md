@@ -1,6 +1,6 @@
 # Atlas Trace — Prototype Handoff & Artifacts
 
-> **Version:** 1.0 · **Date:** 2026-07-12 · **Status:** Prototype-first, awaiting approval
+> **Version:** 1.1 · **Date:** 2026-07-12 · **Status:** Direction accepted; production integration not yet authorized
 > **Source brief:** `REOS_05_Atlas_Trace_Design_System_Handoff_v1.0_2026-07-12.md`
 > **Isolated route:** `/prototypes/atlas-trace` (chrome-less, no production wiring)
 > **Rule honored:** no production workflow modified. This is a design review; stop here for approval before any production rollout.
@@ -182,3 +182,43 @@ motion used to disguise latency; no arbitrary progress percentages.
 Per the brief: **prototypes are presented for approval.** Motion, density,
 provenance, accessibility, and the event contract need sign-off before any
 rollout across production screens. Nothing here touches a production workflow.
+
+---
+
+## 9. Review decision and next gate
+
+**Direction accepted:** Atlas Trace is the intended signature interaction
+language for REOS. The source-to-result causality, persistent provenance,
+editorial restraint, and intensity model should be preserved.
+
+**What is not approved by this decision:** a broad production rollout. The
+prototype still uses representative document content and a timer-based runner;
+production must be driven only by real extraction events.
+
+Before wiring the cinematic upload experience, complete and verify this narrow
+event-contract slice:
+
+1. Extend each real `field` event with stable `documentId` and `page` values.
+2. Treat `bbox` as optional; fall back to a page-and-snippet anchor when the
+   extractor cannot provide trustworthy coordinates.
+3. Define the client lifecycle explicitly: `document_started` → `fact_found`
+   → `fact_committed` → `document_completed` → `review_required | complete`.
+4. Add replay protection so reconnects or duplicate SSE messages cannot animate
+   or commit the same fact twice.
+5. Verify pause, reconnect, multi-document attribution, reduced motion, keyboard
+   navigation, low-confidence review, and extraction failure states.
+
+**Next approval artifact:** one live, end-to-end contract upload using the real
+SSE stream on an isolated integration route. It must show the uploaded PDF,
+real source anchors, real extracted facts, and no fabricated progress. Review
+that artifact before replacing the current production upload experience.
+
+### Related landing-page artifact
+
+The marketing film is a narrative demonstration of the accepted interaction
+language, not evidence that production integration is complete:
+
+- `REOS_Atlas_Trace_72s_Cinematic_v1.3_MUSIC.mp4`
+- 72 seconds, 1920×1080, 30 fps
+- Original stereo score with a scan pulse, extraction motif, scene impacts,
+  emotional lift, and resolved closing chord

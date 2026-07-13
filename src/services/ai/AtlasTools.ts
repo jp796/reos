@@ -615,10 +615,10 @@ export const ATLAS_TOOLS: Record<string, ToolDef> = {
   update_deal: {
     tier: "write",
     description:
-      "Manually update a contract field on a deal from chat. field is one of: purchase_price, earnest_amount, title_company, lender. value is the new value (a dollar number for prices/amounts, text for company/lender). For DATES use set_deadline instead.",
+      "Manually update a contract field on a deal from chat. field is one of: address, purchase_price, earnest_amount, title_company, lender. value is the new value (a full property address for 'address'; a dollar number for prices/amounts; text for company/lender). For DATES use set_deadline instead.",
     schema: z.object({
       deal: z.string().min(1),
-      field: z.enum(["purchase_price", "earnest_amount", "title_company", "lender"]),
+      field: z.enum(["address", "purchase_price", "earnest_amount", "title_company", "lender"]),
       value: z.string().min(1),
     }),
     run: async (db, actor, args) => {
@@ -630,6 +630,26 @@ export const ATLAS_TOOLS: Record<string, ToolDef> = {
         return Number.isFinite(n) ? n : null;
       };
       let summary: string;
+      if (a.field === "address") {
+        // Accept "123 Main St, City ST 12345" and split off city/state/zip when
+        // present; otherwise just set the street line. Stamp manuallyEditedAt so
+        // a later re-read never silently reverts this human correction.
+        const raw = a.value.trim();
+        const m = raw.match(/^(.*?),\s*([^,]+?)\s+([A-Za-z]{2})\s*(\d{5})?$/);
+        const data: Record<string, unknown> = { manuallyEditedAt: new Date() };
+        if (m) {
+          data.propertyAddress = m[1]!.trim().slice(0, 240);
+          data.city = m[2]!.trim().slice(0, 80);
+          data.state = m[3]!.trim().toUpperCase();
+          if (m[4]) data.zip = m[4];
+        } else {
+          data.propertyAddress = raw.slice(0, 240);
+        }
+        await db.transaction.update({ where: { id: r.deal.id }, data });
+        summary = `Set address = "${raw}" on ${r.deal.address}.`;
+        await audit(db, actor, { transactionId: r.deal.id, entityType: "transaction", entityId: r.deal.id, action: "update_deal", decision: "applied" });
+        return { ok: true, summary };
+      }
       if (a.field === "purchase_price") {
         const n = num();
         if (n === null) return { ok: false, error: `"${a.value}" isn't a valid amount.`, reason: "invalid" };
@@ -889,8 +909,8 @@ const PARAM_SCHEMAS: Record<string, Record<string, unknown>> = {
     required: ["deal", "field", "value"],
     properties: {
       deal: { type: "string", description: "address or contact name" },
-      field: { type: "string", enum: ["purchase_price", "earnest_amount", "title_company", "lender"] },
-      value: { type: "string", description: "new value — a dollar number for price/amount, text for company/lender" },
+      field: { type: "string", enum: ["address", "purchase_price", "earnest_amount", "title_company", "lender"] },
+      value: { type: "string", description: "new value — a full property address for 'address'; a dollar number for price/amount; text for company/lender" },
     },
   },
   advance_stage: {

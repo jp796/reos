@@ -37,6 +37,9 @@ import { useToast } from "@/app/ToastProvider";
 
 interface Props {
   contactId: string;
+  /** The transaction — needed to edit the property address (a txn field,
+   *  distinct from the contact). */
+  transactionId: string;
   fullName: string;
   primaryEmail: string | null;
   primaryPhone: string | null;
@@ -46,8 +49,11 @@ interface Props {
   /** Which side the transaction represents — drives the "add a
    * natural-person signer" copy when the name looks like a company. */
   side: string | null;
-  /** Property address — rendered as the H1 above party names. */
+  /** Property address — rendered as the H1 above party names. Editable. */
   propertyAddress: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
   /** Buyer-side party names (primary on buy, plus any co_buyers). */
   buyerNames: string[];
   /** Seller-side party names (primary on sell, plus any co_sellers). */
@@ -101,7 +107,56 @@ export function EditablePrimaryContact(props: Props) {
   const [phone, setPhone] = useState(props.primaryPhone ?? "");
   const [err, setErr] = useState<string | null>(null);
 
+  // Address editing — the property address is a TRANSACTION field, distinct
+  // from the contact. Previously the H1 had no address editor at all.
+  const [editingAddress, setEditingAddress] = useState(false);
+  const [addr, setAddr] = useState(props.propertyAddress ?? "");
+  const [city, setCity] = useState(props.city ?? "");
+  const [stateCode, setStateCode] = useState(props.state ?? "");
+  const [zip, setZip] = useState(props.zip ?? "");
+  const [addrErr, setAddrErr] = useState<string | null>(null);
+
   const isCompany = COMPANY_RE.test(props.fullName);
+
+  async function saveAddress() {
+    setAddrErr(null);
+    startTransition(async () => {
+      try {
+        const res = await fetch(`/api/transactions/${props.transactionId}/edit`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            propertyAddress: addr.trim() || null,
+            city: city.trim() || null,
+            state: stateCode.trim() || null,
+            zip: zip.trim() || null,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setAddrErr(data.error ?? res.statusText);
+          toast.error("Save failed", data.error ?? res.statusText);
+          return;
+        }
+        toast.success("Address updated", addr.trim() || "cleared");
+        setEditingAddress(false);
+        router.refresh();
+      } catch (e) {
+        const m = e instanceof Error ? e.message : "save failed";
+        setAddrErr(m);
+        toast.error("Save failed", m);
+      }
+    });
+  }
+
+  function cancelAddress() {
+    setAddr(props.propertyAddress ?? "");
+    setCity(props.city ?? "");
+    setStateCode(props.state ?? "");
+    setZip(props.zip ?? "");
+    setAddrErr(null);
+    setEditingAddress(false);
+  }
 
   async function save() {
     setErr(null);
@@ -157,20 +212,63 @@ export function EditablePrimaryContact(props: Props) {
     return (
       <div className="mt-2">
         {/* Address is the transaction's headline. Names live underneath,
-            split by side when the deal is dual. */}
-        <div className="flex items-start gap-2">
-          <h1 className="font-display text-display-md font-semibold">
-            {props.propertyAddress ?? "No property address yet"}
-          </h1>
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            className="mt-2 rounded p-1 text-text-subtle transition-colors hover:bg-surface-2 hover:text-text"
-            title="Edit primary contact (name / email / phone)"
-          >
-            <Pencil className="h-3.5 w-3.5" strokeWidth={1.8} />
-          </button>
-        </div>
+            split by side when the deal is dual. The pencil here edits the
+            ADDRESS (a transaction field) — the contact editor has its own
+            pencil on the party names below. */}
+        {editingAddress ? (
+          <div className="rounded-md border border-border bg-surface p-3">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-6">
+              <label className="block sm:col-span-6">
+                <span className="reos-label">Property address</span>
+                <input
+                  type="text"
+                  value={addr}
+                  onChange={(e) => setAddr(e.target.value)}
+                  autoFocus
+                  placeholder="1650 North Ridge Dr"
+                  className="mt-1 w-full rounded border border-border bg-surface-2 px-2 py-1.5 text-sm"
+                />
+              </label>
+              <label className="block sm:col-span-3">
+                <span className="reos-label">City</span>
+                <input type="text" value={city} onChange={(e) => setCity(e.target.value)} className="mt-1 w-full rounded border border-border bg-surface-2 px-2 py-1.5 text-sm" />
+              </label>
+              <label className="block sm:col-span-1">
+                <span className="reos-label">State</span>
+                <input type="text" value={stateCode} onChange={(e) => setStateCode(e.target.value)} maxLength={2} className="mt-1 w-full rounded border border-border bg-surface-2 px-2 py-1.5 text-sm uppercase" />
+              </label>
+              <label className="block sm:col-span-2">
+                <span className="reos-label">Zip</span>
+                <input type="text" value={zip} onChange={(e) => setZip(e.target.value)} className="mt-1 w-full rounded border border-border bg-surface-2 px-2 py-1.5 text-sm" />
+              </label>
+            </div>
+            {addrErr && <div className="mt-2 text-xs text-red-600">{addrErr}</div>}
+            <div className="mt-2 flex items-center gap-1.5">
+              <button type="button" onClick={saveAddress} disabled={pending} className="inline-flex items-center gap-1 rounded-md bg-brand-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-brand-500 disabled:opacity-50">
+                <Check className="h-3 w-3" strokeWidth={2} />
+                {pending ? "Saving…" : "Save address"}
+              </button>
+              <button type="button" onClick={cancelAddress} disabled={pending} className="inline-flex items-center gap-1 rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-medium text-text-muted hover:text-text">
+                <X className="h-3 w-3" strokeWidth={2} />
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-start gap-2">
+            <h1 className="font-display text-display-md font-semibold">
+              {props.propertyAddress ?? "No property address yet"}
+            </h1>
+            <button
+              type="button"
+              onClick={() => setEditingAddress(true)}
+              className="mt-2 rounded p-1 text-text-subtle transition-colors hover:bg-surface-2 hover:text-text"
+              title="Edit property address / city / state / zip"
+            >
+              <Pencil className="h-3.5 w-3.5" strokeWidth={1.8} />
+            </button>
+          </div>
+        )}
 
         {/* At-a-glance summary chips — sale price, side, commission. */}
         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
@@ -262,6 +360,17 @@ export function EditablePrimaryContact(props: Props) {
               </span>
             </div>
           )}
+          {/* Contact editor trigger (name / email / phone) — separate from the
+              address pencil on the H1. */}
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="inline-flex items-center gap-1 pt-0.5 text-xs text-text-subtle transition-colors hover:text-text"
+            title="Edit primary contact (name / email / phone)"
+          >
+            <Pencil className="h-3 w-3" strokeWidth={1.8} />
+            Edit contact
+          </button>
         </div>
 
         {isCompany && (

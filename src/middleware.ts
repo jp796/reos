@@ -69,6 +69,15 @@ const SESSION_COOKIES = [
 ];
 
 function isPublic(pathname: string): boolean {
+  // Atlas Trace prototypes contain representative sample data only. Keep them
+  // directly reviewable during local design work without requiring a Google
+  // OAuth callback on every developer machine. Production remains protected.
+  if (
+    process.env.NODE_ENV !== "production" &&
+    (pathname === "/prototypes" || pathname.startsWith("/prototypes/"))
+  ) {
+    return true;
+  }
   if (PUBLIC_EXACT.has(pathname)) return true;
   if (PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
     return true;
