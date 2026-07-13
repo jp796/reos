@@ -268,6 +268,24 @@ export async function synthesizeDeal(
   }
   const bv = (k: string) => (baseline?.[k]?.value ?? null) as string | null;
 
+  // Layer 1 — persist EVERY party + agent the contract named (all sellers,
+  // both sides' agents with email/phone/brokerage), not just the primary +
+  // one co-party. Enrich-only, idempotent, best-effort so it never blocks
+  // synthesis. Runs on every reconcile, so upload/re-sync/backfill all cover it.
+  if (baseline) {
+    try {
+      const { persistPartiesAndAgents } = await import("./PartyAgentPersistenceService");
+      await persistPartiesAndAgents(
+        db,
+        accountId,
+        transactionId,
+        baseline as unknown as import("./PartyAgentPersistenceService").ExtractionLike,
+      );
+    } catch {
+      /* never block synthesis on party/agent persistence */
+    }
+  }
+
   // ── Stage 3a: merge dates (amendments override, newest wins) ──
   const mergedDates: Record<string, string | null> = {
     effectiveDate: bv("effectiveDate"),
