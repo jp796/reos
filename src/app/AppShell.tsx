@@ -170,6 +170,9 @@ export function AppShell({
   if (
     pathname?.startsWith("/share/") ||
     pathname?.startsWith("/demo") ||
+    // REOS_05 Atlas Trace prototypes — isolated, chrome-less, no production
+    // wiring. Rendered standalone for design review.
+    pathname?.startsWith("/prototypes/") ||
     pathname === "/login" ||
     pathname === "/"
   ) {

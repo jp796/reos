@@ -1,0 +1,50 @@
+/* Atlas Trace motion (REOS_05 prototype). Wet-ink movement across an
+   organized file. Fine paths, restrained highlights, short settle. Every
+   animation is disabled under prefers-reduced-motion so provenance persists
+   without motion. */
+
+@keyframes atlas-source-highlight {
+  from { background-color: transparent; }
+  to { background-color: rgb(37 99 235 / 0.14); }
+}
+
+@keyframes atlas-connector-draw {
+  from { stroke-dashoffset: var(--atlas-path-len, 240); }
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes atlas-value-transfer {
+  0% { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  60% { opacity: 1; }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes atlas-destination-settle {
+  0% { box-shadow: 0 0 0 0 rgb(37 99 235 / 0.0); background-color: rgb(37 99 235 / 0.10); }
+  100% { box-shadow: 0 0 0 0 rgb(37 99 235 / 0); background-color: transparent; }
+}
+
+@keyframes atlas-provenance-appear {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.atlas-highlight { animation: atlas-source-highlight 150ms cubic-bezier(0.22,0.61,0.36,1) forwards; }
+.atlas-connector { stroke-dasharray: var(--atlas-path-len, 240); animation: atlas-connector-draw 300ms cubic-bezier(0.22,0.61,0.36,1) forwards; }
+.atlas-transfer { animation: atlas-value-transfer 400ms cubic-bezier(0.22,0.61,0.36,1) both; }
+.atlas-settle { animation: atlas-destination-settle 400ms ease-out forwards; }
+.atlas-provenance { animation: atlas-provenance-appear 150ms ease-out both; }
+
+/* Reduced motion: no scan, no flying values, no draw — just the final,
+   fully-provenanced state, shown immediately. */
+@media (prefers-reduced-motion: reduce) {
+  .atlas-highlight,
+  .atlas-connector,
+  .atlas-transfer,
+  .atlas-settle,
+  .atlas-provenance {
+    animation: none !important;
+  }
+  .atlas-connector { stroke-dashoffset: 0 !important; }
+  .atlas-transfer { opacity: 1 !important; transform: none !important; }
+}
