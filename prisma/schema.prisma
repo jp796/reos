@@ -28,6 +28,11 @@ model Account {
   /// GoHighLevel (LeadConnector) Private Integration token + location, for
   /// pulling motivated-seller contact info onto investment deals. Encrypted.
   ghlApiKeyEncrypted              String?  @map("ghl_api_key_encrypted")
+  /// Telegram Forum supergroup that is this account's team space — one
+  /// Topic per deal. Bound when the owner runs /here in the group (the bot
+  /// must be an admin there with Manage Topics). Null = topics not set up;
+  /// notifications fall back to per-user DMs.
+  telegramForumChatId             String?  @map("telegram_forum_chat_id")
   ghlLocationId                   String?  @map("ghl_location_id")
   followUpBossSystemKeyEncrypted  String?  @map("follow_up_boss_system_key_encrypted")
   googleOauthTokensEncrypted      String?  @map("google_oauth_tokens_encrypted")
@@ -351,6 +356,10 @@ model Transaction {
   /// earnest-money verification workflows.
   earnestMoneyAmount     Float?    @map("earnest_money_amount")
   walkthroughDate        DateTime? @map("walkthrough_date")
+  /// Telegram Forum Topic id (message_thread_id) — this deal's dedicated
+  /// Space inside the account's forum group. Created lazily on the first
+  /// deal notification; replies in the topic thread back to these notes.
+  telegramTopicId        String?   @map("telegram_topic_id")
   lenderName             String?   @map("lender_name")
   /// Lender contact block — the loan officer (lenderName), their company,
   /// phone, and email. Populated from the contract + lender emails, enrich-only.

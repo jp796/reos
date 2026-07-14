@@ -125,14 +125,26 @@ export async function POST(
       }
     }
 
-    // Team chat: @mentions always notify the mentioned teammate directly —
-    // Telegram (instant) + email — so the conversation on the deal replaces
-    // scattered Google Chat. Best-effort; never blocks the post.
+    // Team chat delivery. If this account has a Telegram Space (Forum Topic)
+    // per deal, post the note into that deal's topic — the whole team sees it
+    // in the deal's own channel (Google-Chat-Spaces style). Otherwise fall back
+    // to DMing @mentioned teammates. Best-effort; never blocks the post.
     try {
-      await notifyMentions(actor.accountId, id, body.body, actor);
+      const { postNoteToDealSpace } = await import(
+        "@/services/integrations/DealSpaceService"
+      );
+      const postedToSpace = await postNoteToDealSpace(
+        prisma,
+        id,
+        actor.name ?? actor.email,
+        body.body,
+      );
+      if (!postedToSpace) {
+        await notifyMentions(actor.accountId, id, body.body, actor);
+      }
     } catch (e) {
       logError(e, {
-        route: "POST /api/transactions/[id]/notes#mentions",
+        route: "POST /api/transactions/[id]/notes#deliver",
         accountId: actor.accountId,
         transactionId: id,
       });

@@ -212,6 +212,8 @@ interface TgPhoto {
 interface TgMessage {
   message_id?: number;
   chat: { id: number; type?: string };
+  from?: { id?: number };
+  message_thread_id?: number;
   text?: string;
   caption?: string;
   document?: TgFile;
@@ -221,6 +223,68 @@ interface TgMessage {
 interface TgUpdate {
   message?: TgMessage;
   edited_message?: TgMessage;
+}
+
+/**
+ * Forum-group handling (per-deal Spaces). Two jobs:
+ *   1. `/here` (or `/setspace`) binds this supergroup as the account's deal
+ *      space — the bot then creates one Topic per deal.
+ *   2. A message posted inside a deal's Topic is saved back to that deal's
+ *      notes, so the conversation stays in sync with REOS. Silent (no reply)
+ *      to avoid noise — the message is already visible in the topic.
+ */
+async function handleForumMessage(
+  msg: TgMessage,
+  senderChat: string,
+  rawText: string,
+): Promise<void> {
+  const fromId = msg.from?.id != null ? String(msg.from.id) : null;
+  const actorUser = fromId
+    ? await prisma.user.findFirst({
+        where: { telegramChatId: fromId },
+        select: { id: true, accountId: true },
+      })
+    : null;
+
+  // Bind this group as the account's deal space.
+  if (/^\/(here|setspace)\b/i.test(rawText)) {
+    const groupTg = new TelegramService(senderChat);
+    if (!actorUser?.accountId) {
+      await groupTg
+        .sendMessage(
+          "I don't know who you are yet. DM me and connect via *Settings → Notifications → Connect Telegram*, then run /here in this group.",
+        )
+        .catch(() => {});
+      return;
+    }
+    await prisma.account.update({
+      where: { id: actorUser.accountId },
+      data: { telegramForumChatId: senderChat },
+    });
+    await groupTg
+      .sendMessage(
+        "✅ *This group is now your REOS deal space.* Each deal gets its own Topic — post a note on a deal in REOS to open its topic, and reply in a topic to post straight back to that deal's notes.",
+      )
+      .catch(() => {});
+    return;
+  }
+
+  // A message in a deal's Topic → save it as a note on that deal.
+  const threadId = msg.message_thread_id;
+  if (threadId != null && rawText && !rawText.startsWith("/") && actorUser?.id) {
+    const { dealForTopic } = await import("@/services/integrations/DealSpaceService");
+    const deal = await dealForTopic(prisma, senderChat, threadId);
+    if (deal) {
+      await prisma.transactionNote.create({
+        data: {
+          transactionId: deal.id,
+          authorUserId: actorUser.id,
+          body: rawText.slice(0, 8000),
+          readByJson: [actorUser.id],
+        },
+      });
+    }
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -247,6 +311,19 @@ export async function POST(req: NextRequest) {
   const senderChat = String(msg.chat?.id ?? "");
   const tg = new TelegramService(senderChat);
   const rawText = (msg.text ?? "").trim();
+
+  // 1b. Forum group (per-deal Spaces). Group messages have a supergroup chat
+  //     and, for topic posts, a message_thread_id. Handle binding (/here) and
+  //     topic-reply → note here, then stop (group traffic never hits the DM /
+  //     Atlas-chat flow below).
+  if (msg.chat?.type === "supergroup" || msg.chat?.type === "group") {
+    try {
+      await handleForumMessage(msg, senderChat, rawText);
+    } catch (e) {
+      logError(e, { route: "/api/integrations/telegram/webhook", meta: { kind: "forum" } });
+    }
+    return NextResponse.json({ ok: true });
+  }
 
   // 2a. Account linking. A deep link (t.me/<bot>?start=<code>) arrives
   //     as "/start <code>". Bind this chat to the user who minted the

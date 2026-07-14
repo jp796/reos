@@ -44,6 +44,8 @@ export class TelegramService {
       parseMode?: "MarkdownV2" | "Markdown" | "HTML";
       disablePreview?: boolean;
       chatId?: string | number;
+      /** Post into a Forum Topic (per-deal Space) within a supergroup. */
+      messageThreadId?: string | number;
     } = {},
   ): Promise<number | null> {
     const chatId = opts.chatId ?? this.defaultChatId ?? env.TELEGRAM_CHAT_ID;
@@ -61,6 +63,9 @@ export class TelegramService {
         text,
         parse_mode: opts.parseMode ?? "Markdown",
         disable_web_page_preview: opts.disablePreview ?? true,
+        ...(opts.messageThreadId != null
+          ? { message_thread_id: Number(opts.messageThreadId) }
+          : {}),
       }),
     });
     if (!res.ok) {
@@ -69,6 +74,27 @@ export class TelegramService {
     }
     const j = (await res.json().catch(() => null)) as { result?: { message_id?: number } } | null;
     return j?.result?.message_id ?? null;
+  }
+
+  /**
+   * Create a Forum Topic (a per-deal Space) in a supergroup. The bot must be
+   * an admin there with "Manage Topics". Returns the message_thread_id, or
+   * null if creation failed (e.g. not a forum, missing permission).
+   */
+  async createForumTopic(chatId: string | number, name: string): Promise<number | null> {
+    if (!env.TELEGRAM_BOT_TOKEN) return null;
+    try {
+      const res = await fetch(`${TG_API}/bot${env.TELEGRAM_BOT_TOKEN}/createForumTopic`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId, name: name.slice(0, 128) }),
+      });
+      if (!res.ok) return null;
+      const j = (await res.json()) as { ok: boolean; result?: { message_thread_id?: number } };
+      return j.result?.message_thread_id ?? null;
+    } catch {
+      return null;
+    }
   }
 
   /** The bot's @username (for building t.me deep links). Cached per

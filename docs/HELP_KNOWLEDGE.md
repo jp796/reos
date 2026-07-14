@@ -473,3 +473,25 @@ title commitments, disclosures, addenda, closing docs — onto the deal, not jus
 the contract. It matches emails by **known sender** (the title company / other
 agent, who rarely put the address in the subject) and by address, so their docs
 stop getting dropped. Each attachment is attached exactly once.
+
+## Telegram Spaces per deal (Forum Topics)
+
+Turn Telegram into per-deal Spaces (like Google Chat Spaces) — each deal gets
+its own Topic (thread) inside one team group, instead of everything in a single
+stream.
+
+**One-time setup (yours):**
+1. In Telegram, create a group for your team.
+2. Group settings → turn ON **Topics**.
+3. Add the bot (@REOSAtlasBot) to the group and make it an **admin** with
+   **Manage Topics** permission.
+4. In the group, send **/here** — REOS binds that group as your deal space.
+
+**After that, automatic:**
+- Post a note on a deal in REOS → REOS opens (or reuses) that deal's **Topic**
+  and posts there. The whole team sees it in the deal's own channel.
+- **Reply inside a deal's Topic** → your message is saved straight back to that
+  deal's notes in REOS. Two-way sync.
+- Deals without activity yet get a Topic the first time a note is posted.
+
+When no group is set up, deal @mentions fall back to per-user DMs (unchanged).
