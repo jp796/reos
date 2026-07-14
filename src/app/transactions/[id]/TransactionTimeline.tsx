@@ -3,6 +3,11 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toDateInputValue, fmtLocalDate } from "@/lib/dates";
+import {
+  ProvenanceBadge,
+  extractionFieldForMilestone,
+  provenanceFromExtraction,
+} from "@/components/atlas-trace/ProvenanceBadge";
 
 interface Milestone {
   id: string;
@@ -31,6 +36,9 @@ interface Props {
   initialMilestones: Milestone[];
   effectiveDate: string | null;
   closingDate: string | null;
+  /** Stored contract extraction (Transaction.pendingContractJson) — drives the
+   *  Atlas Trace provenance badge on each extracted date. */
+  extraction?: unknown;
   /**
    * Slot for inline panels (e.g. InspectionsPanel) that should
    * appear INSIDE the Timeline section so they're visually part of
@@ -448,6 +456,11 @@ export function TransactionTimeline(props: Props) {
                         >
                           {toneLabel(tone)}
                         </span>
+                        {(() => {
+                          const key = extractionFieldForMilestone(m.type, m.label);
+                          const prov = key ? provenanceFromExtraction(props.extraction, key) : null;
+                          return prov ? <ProvenanceBadge prov={prov} /> : null;
+                        })()}
                       </div>
                       <div className="mt-0.5 text-xs text-text-muted">
                         Owner {m.ownerRole} · source {m.source}
