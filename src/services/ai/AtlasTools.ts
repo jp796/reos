@@ -354,16 +354,13 @@ export const ATLAS_TOOLS: Record<string, ToolDef> = {
   check_inbox: {
     tier: "read",
     description:
-      "Check the connected Gmail inbox for recent (last 30 days) emails about a deal, by property address. Read-only — surfaces matching threads (subject, sender, date) so you can report what's new.",
+      "Check the connected Gmail for recent (last 30 days) emails about a deal — matched by the deal's known contacts (agent, title, lender, client), its smart folder, AND the address. Read-only. Surfaces matching threads (subject, sender, date).",
     schema: z.object({ deal: z.string().min(1) }),
     run: async (db, actor, args) => {
       const { deal } = args as { deal: string };
       const r = await resolveDeal(db, actor, deal);
       if ("error" in r) return r.error;
       const d = r.deal;
-      if (!d.address) {
-        return { ok: true, summary: `No property address on ${deal} to search the inbox with.` };
-      }
       const gmail = await gmailForAccount(db, actor.accountId);
       if (!gmail) {
         return {
@@ -372,18 +369,62 @@ export const ATLAS_TOOLS: Record<string, ToolDef> = {
             "Gmail isn't connected for this workspace — connect it in Settings → Integrations and I can scan the inbox.",
         };
       }
-      const term = `"${d.address.replace(/["\\]/g, "")}"`;
-      const q = `newer_than:30d (${term})`;
-      let threads;
+
+      // Search by the deal's known people + folder, not just the address —
+      // title/co-op/lender emails almost never spell out the property address.
+      const t = await db.transaction.findUnique({
+        where: { id: d.id },
+        select: {
+          propertyAddress: true,
+          smartFolderLabelId: true,
+          coAgentEmail: true,
+          titleCompanyEmail: true,
+          lenderEmail: true,
+          contact: { select: { primaryEmail: true } },
+          participants: { select: { contact: { select: { primaryEmail: true } } } },
+        },
+      });
+      const knownEmails = [
+        t?.coAgentEmail,
+        t?.titleCompanyEmail,
+        t?.lenderEmail,
+        t?.contact?.primaryEmail ?? null,
+        ...(t?.participants ?? []).map((p) => p.contact?.primaryEmail ?? null),
+      ]
+        .filter((e): e is string => !!e)
+        .slice(0, 10);
+      const street = (t?.propertyAddress ?? d.address ?? "").split(",")[0]?.trim() ?? "";
+      const senderClause = knownEmails.map((e) => `from:${e} OR to:${e}`).join(" OR ");
+      const orParts = [senderClause, street.length >= 4 ? `"${street.replace(/["\\]/g, "")}"` : null].filter(
+        Boolean,
+      );
+      const q = `newer_than:30d${orParts.length ? ` (${orParts.join(" OR ")})` : ""}`;
+
+      let collected: Awaited<ReturnType<typeof gmail.searchThreadsPaged>>["threads"] = [];
       try {
-        ({ threads } = await gmail.searchThreadsPaged({ q, maxTotal: 8 }));
+        const a = await gmail.searchThreadsPaged({ q, maxTotal: 10 });
+        collected = a.threads ?? [];
+        if (t?.smartFolderLabelId) {
+          const b = await gmail.searchThreadsPaged({
+            labelIds: [t.smartFolderLabelId],
+            q: "newer_than:30d",
+            maxTotal: 10,
+          });
+          collected = [...collected, ...(b.threads ?? [])];
+        }
       } catch {
         return { ok: false, error: "Couldn't reach Gmail just now — try again shortly.", reason: "invalid" };
       }
-      if (!threads || threads.length === 0) {
+      const seen = new Set<string>();
+      const threads = collected.filter((th) => {
+        if (!th.id || seen.has(th.id)) return false;
+        seen.add(th.id);
+        return true;
+      });
+      if (threads.length === 0) {
         return {
           ok: true,
-          summary: `No inbox emails in the last 30 days mentioning ${d.address}.`,
+          summary: `No emails in the last 30 days for ${d.address} (searched by the deal's contacts, smart folder, and address).`,
           data: { threads: [] },
         };
       }
