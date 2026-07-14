@@ -9,7 +9,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const MODEL = process.env.OPENAI_CHAT_MODEL ?? "gpt-4o-mini";
+const MODEL = process.env.OPENAI_CHAT_MODEL ?? "gpt-4.1";
 
 const SYSTEM_PROMPT = `You are the REOS Help assistant — a how-to guide for the REOS Transaction OS.
 

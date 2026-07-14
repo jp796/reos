@@ -1,7 +1,7 @@
 /**
  * AtlasChatService
  *
- * Two-way Atlas chat over Telegram. Backed by OpenAI gpt-4o-mini —
+ * Two-way Atlas chat over Telegram. Backed by OpenAI gpt-4.1 —
  * uses the existing OPENAI_API_KEY (no new account), and at single-
  * user volume costs ~5¢/month.
  *
@@ -22,7 +22,7 @@ import {
 } from "./AtlasTools";
 import { toDateInputValue } from "@/lib/dates";
 
-const MODEL = process.env.OPENAI_CHAT_MODEL ?? "gpt-4o-mini";
+const MODEL = process.env.OPENAI_CHAT_MODEL ?? "gpt-4.1";
 
 /** The REOS help knowledge base, so Atlas can answer how-to questions too.
  *  Cached per process; same source the /help assistant uses. */
