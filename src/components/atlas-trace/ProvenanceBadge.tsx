@@ -43,7 +43,9 @@ export function ConfidenceMarker({ confidence }: { confidence: number }) {
 export function ProvenanceBadge({ prov }: { prov: FieldProvenance }) {
   const [open, setOpen] = useState(false);
   const snippet = prov.snippet?.trim();
-  if (!snippet && prov.confidence == null) return null;
+  // Nothing worth showing: no source clause AND no real confidence (0 = the
+  // model didn't actually anchor this field — a "0%" marker would mislead).
+  if (!snippet && !prov.confidence) return null;
   const source = prov.source ?? "text";
   const label = prov.page != null ? `Page ${prov.page}` : "Source";
 
@@ -115,7 +117,7 @@ export function provenanceFromExtraction(
   const rec = f as { snippet?: unknown; confidence?: unknown; source?: unknown };
   const snippet = typeof rec.snippet === "string" ? rec.snippet : null;
   const confidence = typeof rec.confidence === "number" ? rec.confidence : null;
-  if (!snippet && confidence == null) return null;
+  if (!snippet?.trim() && !confidence) return null;
   const source =
     rec.source === "vision" || rec.source === "computed" || rec.source === "text"
       ? (rec.source as "text" | "vision" | "computed")
