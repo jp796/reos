@@ -437,7 +437,7 @@ clears — canceling holding costs early is worse than a missing checklist.
 
 The **Notes** section on each deal is your team message center — post a note to
 message the team. Type **@name** (or tap a "Notify" chip) to ping a specific
-teammate instantly on **Telegram + email**. They can **reply right in Telegram**
+teammate instantly on **Telegram + email**. You can **@mention yourself** too — it pings your own Telegram (a handy "it sent" confirmation and a way to push a note to your phone to act on later). They can **reply right in Telegram**
 to that ping and it posts straight back to the deal's notes, then re-notifies
 the team — a real thread that lives on the deal. Reply again to keep it going.
 You can also text the bot `note on <deal>: <message>`.

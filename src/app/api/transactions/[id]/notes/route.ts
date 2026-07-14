@@ -170,9 +170,11 @@ async function notifyMentions(
 
   // Union of home users + accepted membership invites, so @mentions reach
   // teammates whose home account differs (invited members like Heather/Sheri).
-  const team = (await resolveAccountTeam(prisma, accountId)).filter(
-    (u) => u.id !== actor.userId,
-  );
+  // The actor is INCLUDED so you can @mention yourself — posting a note with
+  // your own name pings your Telegram + email (an "it sent" confirmation and a
+  // push-to-act channel). Mentions are always explicit token matches, so this
+  // never notifies anyone who wasn't named.
+  const team = await resolveAccountTeam(prisma, accountId);
   if (team.length === 0) return;
 
   const lower = noteBody.toLowerCase();
