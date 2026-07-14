@@ -1060,6 +1060,7 @@ export default async function TransactionDetailPage({
           coAgentPhone: txn.coAgentPhone,
           coAgentEmail: txn.coAgentEmail,
           coAgentLicense: txn.coAgentLicense,
+          coAgentSource: txn.coAgentSource,
           titleCompanyName: txn.titleCompanyName,
           titleCompanyContact: txn.titleCompanyContact,
           titleCompanyPhone: txn.titleCompanyPhone,

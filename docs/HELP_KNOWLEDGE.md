@@ -458,6 +458,8 @@ closer, phone, and email. These auto-fill from the contract AND from title /
 co-op agent emails (enrich-only — a human edit is never overwritten). Click
 **Edit** to correct anything.
 
+**Other agent on buy-side deals:** the listing agent usually isn't in a buyer's offer contract, so REOS AI-reads the other agent's **email signature** (name / brokerage / phone / license) from the deal's threads and fills the co-op agent flagged **"⚠ read from email — verify"**. Click Edit to confirm and the flag clears.
+
 The block also carries the **Lender** (loan officer, company, phone, email). All
 three contacts (co-op agent, title, lender) auto-fill from the contract and
 relevant emails.

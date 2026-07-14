@@ -109,7 +109,11 @@ export async function PATCH(
     data.transactionType = body.transactionType;
   }
   // Co-op agent + title company contact fields (user corrections override auto-fill).
-  if (body.coAgentName !== undefined) data.coAgentName = clip(body.coAgentName, 160);
+  if (body.coAgentName !== undefined) {
+    data.coAgentName = clip(body.coAgentName, 160);
+    // A human touched the co-op agent → it's confirmed; drop the "verify" flag.
+    data.coAgentSource = "manual";
+  }
   if (body.coAgentBrokerage !== undefined) data.coAgentBrokerage = clip(body.coAgentBrokerage, 160);
   if (body.coAgentPhone !== undefined) data.coAgentPhone = clip(body.coAgentPhone, 40);
   if (body.coAgentEmail !== undefined) data.coAgentEmail = clip(body.coAgentEmail, 160);

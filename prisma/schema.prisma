@@ -383,6 +383,10 @@ model Transaction {
   coAgentPhone           String?   @map("co_agent_phone")
   coAgentEmail           String?   @map("co_agent_email")
   coAgentLicense         String?   @map("co_agent_license")
+  /// Where the co-op agent came from: "contract" | "email_signature" | "manual".
+  /// "email_signature" = AI-read from the other agent's email; the UI shows a
+  /// "verify" badge until a human confirms (which flips it to "manual").
+  coAgentSource          String?   @map("co_agent_source")
   /// Seller intel pulled from GHL (motivation, condition, timeline, all
   /// phones/emails, lead tier). Rendered by the Seller Intel panel.
   sellerIntelJson        Json?     @map("seller_intel_json")

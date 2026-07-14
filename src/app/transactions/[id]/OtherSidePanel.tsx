@@ -26,6 +26,7 @@ export interface OtherSideData {
   lenderCompany: string | null;
   lenderPhone: string | null;
   lenderEmail: string | null;
+  coAgentSource: string | null;
 }
 
 const FIELDS: Array<{ key: keyof OtherSideData; label: string; group: "agent" | "title" | "lender" }> = [
@@ -156,6 +157,7 @@ export function OtherSidePanel({
               .join(" · ")}
             phone={data.coAgentPhone}
             email={data.coAgentEmail}
+            unverified={data.coAgentSource === "email_signature"}
           />
           <ContactCard
             icon={<Landmark className="h-4 w-4" />}
@@ -186,6 +188,7 @@ function ContactCard({
   sub,
   phone,
   email,
+  unverified,
 }: {
   icon: React.ReactNode;
   title: string;
@@ -193,6 +196,7 @@ function ContactCard({
   sub: string | null;
   phone: string | null;
   email: string | null;
+  unverified?: boolean;
 }) {
   if (!name && !sub && !phone && !email) {
     return (
@@ -203,8 +207,13 @@ function ContactCard({
     );
   }
   return (
-    <div className="rounded-md border border-border p-3">
+    <div className={`rounded-md border p-3 ${unverified ? "border-amber-300 bg-amber-50/40 dark:border-amber-900/40 dark:bg-amber-950/20" : "border-border"}`}>
       <div className="reos-label flex items-center gap-1.5 text-text-subtle">{icon} {title}</div>
+      {unverified && (
+        <div className="mt-1 text-[11px] font-medium text-amber-700 dark:text-amber-400">
+          ⚠ Read from email — verify &amp; Edit to confirm
+        </div>
+      )}
       {name && <div className="mt-1 font-medium text-text">{name}</div>}
       {sub && <div className="text-xs text-text-muted">{sub}</div>}
       <div className="mt-1.5 space-y-0.5 text-sm">

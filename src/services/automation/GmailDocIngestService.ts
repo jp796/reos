@@ -214,5 +214,15 @@ export async function ingestDealDocs(
     });
   }
 
+  // Buy-side deals rarely name the listing agent in the contract — AI-read the
+  // other agent from their email signature when the co-op agent is still blank.
+  try {
+    const { captureCoAgentFromEmails } = await import("./CoAgentEmailCapture");
+    const co = await captureCoAgentFromEmails(db, gmail, accountId, txn.id);
+    if (co) result.fieldsEnriched++;
+  } catch {
+    /* best-effort — never block ingest on the co-agent capture */
+  }
+
   return result;
 }
