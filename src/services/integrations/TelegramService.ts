@@ -36,6 +36,8 @@ export class TelegramService {
    * morning brief) but accepts an explicit `chatId` so we can reply to
    * a specific linked user's private chat. Throws on non-2xx so the
    * caller can audit. Markdown by default — readable on phone. */
+  /** Send a message. Returns the Telegram message_id on success (used to
+   *  thread replies back to a deal) or null if the id couldn't be read. */
   async sendMessage(
     text: string,
     opts: {
@@ -43,7 +45,7 @@ export class TelegramService {
       disablePreview?: boolean;
       chatId?: string | number;
     } = {},
-  ): Promise<void> {
+  ): Promise<number | null> {
     const chatId = opts.chatId ?? this.defaultChatId ?? env.TELEGRAM_CHAT_ID;
     if (!env.TELEGRAM_BOT_TOKEN || !chatId) {
       throw new Error(
@@ -65,6 +67,8 @@ export class TelegramService {
       const body = await res.text().catch(() => "");
       throw new Error(`Telegram ${res.status}: ${body.slice(0, 300)}`);
     }
+    const j = (await res.json().catch(() => null)) as { result?: { message_id?: number } } | null;
+    return j?.result?.message_id ?? null;
   }
 
   /** The bot's @username (for building t.me deep links). Cached per

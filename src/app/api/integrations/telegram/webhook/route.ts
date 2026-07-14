@@ -30,6 +30,8 @@ import {
 } from "@/services/ai/ContractExtractionService";
 import type { DealFields } from "@/services/core/createDealFromExtraction";
 import { TelegramService } from "@/services/integrations/TelegramService";
+import { notifyTeammatesOfNote } from "@/services/integrations/TransactionNoteComms";
+import { resolveAccountTeam } from "@/services/automation/TaskReminderService";
 import { logError } from "@/lib/log";
 
 type PendingKey = {
@@ -214,6 +216,7 @@ interface TgMessage {
   caption?: string;
   document?: TgFile;
   photo?: TgPhoto[];
+  reply_to_message?: { message_id?: number };
 }
 interface TgUpdate {
   message?: TgMessage;
@@ -327,6 +330,68 @@ export async function POST(req: NextRequest) {
     accountId: actorUser.accountId,
     role: actorUser.role || "owner",
   };
+
+  // Deal-note reply: if this message REPLIES to a note ping we sent, post the
+  // reply straight back to that deal's notes and re-notify the team — this is
+  // what makes a Telegram ping round-trip into the right transaction.
+  if (msg.reply_to_message?.message_id != null && rawText) {
+    const thread = await prisma.telegramNoteThread.findFirst({
+      where: { chatId: senderChat, messageId: String(msg.reply_to_message.message_id) },
+    });
+    if (thread) {
+      try {
+        const txn = await prisma.transaction.findUnique({
+          where: { id: thread.transactionId },
+          select: { propertyAddress: true },
+        });
+        if (!txn) {
+          await tg.sendMessage("That deal isn't available anymore.").catch(() => {});
+          return NextResponse.json({ ok: true });
+        }
+        await prisma.transactionNote.create({
+          data: {
+            transactionId: thread.transactionId,
+            authorUserId: actor.userId,
+            body: rawText,
+            readByJson: [actor.userId],
+          },
+        });
+        const author = await prisma.user.findUnique({
+          where: { id: actor.userId },
+          select: { name: true, email: true },
+        });
+        const team = (await resolveAccountTeam(prisma, thread.accountId)).filter(
+          (u) => u.id !== actor.userId,
+        );
+        await notifyTeammatesOfNote(prisma, {
+          accountId: thread.accountId,
+          transactionId: thread.transactionId,
+          property: txn.propertyAddress ?? "a deal",
+          body: rawText,
+          fromName: author?.name ?? "A teammate",
+          fromEmail: author?.email ?? "",
+          recipients: team.map((u) => ({
+            id: u.id,
+            email: u.email,
+            telegramChatId: u.telegramChatId,
+          })),
+        });
+        await tg
+          .sendMessage(`✅ Posted to *${txn.propertyAddress ?? "the deal"}* — team notified. Reply again to keep the thread going.`)
+          .catch(() => {});
+      } catch (e) {
+        logError(e, {
+          route: "/api/integrations/telegram/webhook",
+          meta: { kind: "note-reply", chat: senderChat },
+        });
+        await tg
+          .sendMessage("Couldn't post that to the deal — try again, or add it in REOS.")
+          .catch(() => {});
+      }
+      return NextResponse.json({ ok: true });
+    }
+    // No matching thread → fall through to normal Atlas chat below.
+  }
 
   const pendingKey = {
     accountId_userId_channel: {

@@ -1555,6 +1555,24 @@ model FlipAnalysis {
   @@map("flip_analyses")
 }
 
+/// Maps an outbound Telegram notification (a deal ping) to its transaction, so
+/// when a teammate REPLIES to that message the webhook can post their reply
+/// back as a note on the correct deal. Ephemeral: keyed on (chatId, messageId)
+/// which Telegram guarantees unique per chat. Standalone (no FKs) — orphaned
+/// rows after a deal is deleted are harmless and simply never match a reply.
+model TelegramNoteThread {
+  id            String   @id @default(cuid())
+  accountId     String   @map("account_id")
+  transactionId String   @map("transaction_id")
+  chatId        String   @map("chat_id")
+  messageId     String   @map("message_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@unique([chatId, messageId])
+  @@index([transactionId])
+  @@map("telegram_note_threads")
+}
+
 /// Browser-issued Web Push subscription. One row per (user, device).
 /// Endpoint is unique — re-subscribing from the same browser yields
 /// the same endpoint, so we upsert on it.

@@ -14,8 +14,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/require-session";
 import { logError } from "@/lib/log";
-import { TelegramService } from "@/services/integrations/TelegramService";
 import { sendAccountGmail } from "@/services/integrations/GmailSendService";
+import { notifyTeammatesOfNote } from "@/services/integrations/TransactionNoteComms";
 import { resolveAccountTeam } from "@/services/automation/TaskReminderService";
 
 export const runtime = "nodejs";
@@ -194,33 +194,23 @@ async function notifyMentions(
     select: { propertyAddress: true },
   });
   const property = txn?.propertyAddress ?? "a deal";
-  const fromName = actor.name ?? actor.email;
-  const dealUrl = `https://www.myrealestateos.com/transactions/${transactionId}`;
-  const text = `${fromName} mentioned you on ${property}:\n\n${noteBody}\n\n${dealUrl}`;
 
-  // Telegram — instant, per-user. Best-effort per recipient.
-  if (TelegramService.isConfigured()) {
-    const tg = new TelegramService();
-    await Promise.all(
-      mentioned
-        .filter((u) => u.telegramChatId)
-        .map((u) =>
-          tg.sendMessage(text, { chatId: u.telegramChatId! }).catch(() => {}),
-        ),
-    );
-  }
-
-  // Email — to the mentioned teammates, via the account's connected Gmail.
-  const emails = mentioned.map((u) => u.email).filter(Boolean);
-  if (emails.length > 0) {
-    await sendGmailFromActor(
-      accountId,
-      actor,
-      emails,
-      `You were mentioned: ${property}`,
-      text,
-    ).catch(() => {});
-  }
+  // Fan out via the shared notifier so each Telegram ping records a reply
+  // thread — a mentioned teammate can reply right in Telegram and it posts
+  // straight back to this deal's notes.
+  await notifyTeammatesOfNote(prisma, {
+    accountId,
+    transactionId,
+    property,
+    body: noteBody,
+    fromName: actor.name ?? actor.email,
+    fromEmail: actor.email,
+    recipients: mentioned.map((u) => ({
+      id: u.id,
+      email: u.email,
+      telegramChatId: u.telegramChatId,
+    })),
+  });
 }
 
 /** Sends a transactional email to the onboarding share-list when a
