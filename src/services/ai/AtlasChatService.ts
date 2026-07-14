@@ -10,6 +10,8 @@
  * for a short reply.
  */
 
+import fs from "node:fs";
+import path from "node:path";
 import type { PrismaClient } from "@prisma/client";
 import {
   openAiToolSpecs,
@@ -21,6 +23,19 @@ import {
 import { toDateInputValue } from "@/lib/dates";
 
 const MODEL = process.env.OPENAI_CHAT_MODEL ?? "gpt-4o-mini";
+
+/** The REOS help knowledge base, so Atlas can answer how-to questions too.
+ *  Cached per process; same source the /help assistant uses. */
+let cachedHelp: string | null = null;
+function loadHelpKnowledge(): string {
+  if (cachedHelp !== null) return cachedHelp;
+  try {
+    cachedHelp = fs.readFileSync(path.resolve(process.cwd(), "docs/HELP_KNOWLEDGE.md"), "utf8").slice(0, 14000);
+  } catch {
+    cachedHelp = "(help knowledge base not bundled)";
+  }
+  return cachedHelp;
+}
 
 const SYSTEM = `You are Atlas, the user's real-estate transaction chief of staff inside REOS.
 You're being asked questions over Telegram by the user (an agent or coordinator).
@@ -41,6 +56,9 @@ Reply rules:
   trying.
 - No pleasantries. No "I hope this helps". No "let me know if".
 - Telegram Markdown: *bold*, _italic_, \`mono\`. Use sparingly. Plain text is fine.
+- HOW-TO / product questions ("how does the pipeline work?", "how do I invite a
+  teammate?", "how do Telegram replies get onto a deal?") — answer from the HELP
+  KNOWLEDGE block. If it's not covered there, say so; don't invent features.
 
 ACTIONS — you can DO things, not just answer:
 - Tools: find_deal (look up), add_task, complete_task, set_deadline, advance_stage,
@@ -287,6 +305,7 @@ export async function askAtlas(
       role: "system",
       content: `CONTEXT (account: ${ctx.account.businessName}):\n${JSON.stringify(ctx)}`,
     },
+    { role: "system", content: `HELP KNOWLEDGE (for how-to questions):\n${loadHelpKnowledge()}` },
     { role: "user", content: userText.slice(0, 2000) },
   ];
 

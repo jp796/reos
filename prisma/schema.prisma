@@ -353,6 +353,22 @@ model Transaction {
   walkthroughDate        DateTime? @map("walkthrough_date")
   lenderName             String?   @map("lender_name")
   titleCompanyName       String?   @map("title_company_name")
+  /// Title company contact block — the closer/escrow officer, their phone
+  /// and email. Populated dynamically from the contract AND from inbound
+  /// title-company emails (sender + signature), so REOS is a real system of
+  /// record instead of dropping this info. Enrich-only, never clobbered.
+  titleCompanyContact    String?   @map("title_company_contact")
+  titleCompanyPhone      String?   @map("title_company_phone")
+  titleCompanyEmail      String?   @map("title_company_email")
+  /// Co-op (other-side) agent — the agent on the opposite side of our
+  /// representation. Structured flat fields so the other brokerage's contact
+  /// info is at-a-glance and queryable, updated from the contract + their
+  /// emails. Enrich-only.
+  coAgentName            String?   @map("co_agent_name")
+  coAgentBrokerage       String?   @map("co_agent_brokerage")
+  coAgentPhone           String?   @map("co_agent_phone")
+  coAgentEmail           String?   @map("co_agent_email")
+  coAgentLicense         String?   @map("co_agent_license")
   /// Seller intel pulled from GHL (motivation, condition, timeline, all
   /// phones/emails, lead tier). Rendered by the Seller Intel panel.
   sellerIntelJson        Json?     @map("seller_intel_json")
@@ -746,6 +762,10 @@ model Document {
   /// this to GCS blob storage once total corpus >~500MB.
   rawBytes       Bytes?   @map("raw_bytes")
   source         String   @default("upload") // upload, gmail_attachment, fub_attachment
+  /// Stable de-dup key for auto-ingested docs, e.g. "gmail:<messageId>:<attachmentId>".
+  /// Lets the Gmail doc-ingest attach every attachment on a deal's threads
+  /// exactly once, even across repeated scans. Null for manual uploads.
+  sourceRef      String?  @unique @map("source_ref")
   extractedText  String?  @map("extracted_text")
   /// Cached DocumentSynthesisService analysis (docType, contingency
   /// updates, field changes). Lets a re-synthesis reuse the AI read

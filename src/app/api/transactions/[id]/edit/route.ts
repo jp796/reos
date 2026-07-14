@@ -39,6 +39,23 @@ interface Body {
   excludeFromProduction?: boolean;
   /** Rezen transaction UUID pasted from the Bolt URL. null clears. */
   rezenTransactionId?: string | null;
+  /** Co-op (other-side) agent + title company contact — the system-of-record
+   *  fields, user-editable so a wrong auto-fill can be corrected. */
+  coAgentName?: string | null;
+  coAgentBrokerage?: string | null;
+  coAgentPhone?: string | null;
+  coAgentEmail?: string | null;
+  coAgentLicense?: string | null;
+  titleCompanyName?: string | null;
+  titleCompanyContact?: string | null;
+  titleCompanyPhone?: string | null;
+  titleCompanyEmail?: string | null;
+}
+
+/** Trim a free-text field to null-or-capped-string. */
+function clip(v: string | null | undefined, max: number): string | null {
+  const t = v?.trim();
+  return t && t.length > 0 ? t.slice(0, max) : null;
 }
 
 export async function PATCH(
@@ -87,6 +104,16 @@ export async function PATCH(
     }
     data.transactionType = body.transactionType;
   }
+  // Co-op agent + title company contact fields (user corrections override auto-fill).
+  if (body.coAgentName !== undefined) data.coAgentName = clip(body.coAgentName, 160);
+  if (body.coAgentBrokerage !== undefined) data.coAgentBrokerage = clip(body.coAgentBrokerage, 160);
+  if (body.coAgentPhone !== undefined) data.coAgentPhone = clip(body.coAgentPhone, 40);
+  if (body.coAgentEmail !== undefined) data.coAgentEmail = clip(body.coAgentEmail, 160);
+  if (body.coAgentLicense !== undefined) data.coAgentLicense = clip(body.coAgentLicense, 60);
+  if (body.titleCompanyName !== undefined) data.titleCompanyName = clip(body.titleCompanyName, 160);
+  if (body.titleCompanyContact !== undefined) data.titleCompanyContact = clip(body.titleCompanyContact, 160);
+  if (body.titleCompanyPhone !== undefined) data.titleCompanyPhone = clip(body.titleCompanyPhone, 40);
+  if (body.titleCompanyEmail !== undefined) data.titleCompanyEmail = clip(body.titleCompanyEmail, 160);
   if (body.primaryContactId !== undefined) {
     const contact = await prisma.contact.findUnique({
       where: { id: body.primaryContactId },

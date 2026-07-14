@@ -24,6 +24,7 @@ import { DocumentLibraryPanel } from "./DocumentLibraryPanel";
 import { DealSynthesisPanel } from "./DealSynthesisPanel";
 import type { SynthesisSnapshot } from "@/services/core/DocumentSynthesisService";
 import { EditablePrimaryContact } from "./EditablePrimaryContact";
+import { OtherSidePanel } from "./OtherSidePanel";
 import { TaskPanel } from "./TaskPanel";
 import { CompliancePanel } from "./CompliancePanel";
 import { MissingItemsAlert } from "./MissingItemsAlert";
@@ -1050,6 +1051,21 @@ export default async function TransactionDetailPage({
           intel={(txn.sellerIntelJson as unknown as SellerIntelType) ?? null}
         />
       )}
+
+      <OtherSidePanel
+        transactionId={txn.id}
+        data={{
+          coAgentName: txn.coAgentName,
+          coAgentBrokerage: txn.coAgentBrokerage,
+          coAgentPhone: txn.coAgentPhone,
+          coAgentEmail: txn.coAgentEmail,
+          coAgentLicense: txn.coAgentLicense,
+          titleCompanyName: txn.titleCompanyName,
+          titleCompanyContact: txn.titleCompanyContact,
+          titleCompanyPhone: txn.titleCompanyPhone,
+          titleCompanyEmail: txn.titleCompanyEmail,
+        }}
+      />
 
       <NotesPanel
         transactionId={txn.id}

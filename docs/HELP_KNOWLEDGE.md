@@ -386,3 +386,81 @@ Atlas is scoped to that deal: ask questions (answered immediately) or tell it to
 do things (add task, set deadline, move stage, add note) — writes are proposed
 and require **Confirm** before they apply. Same brain as the Telegram bot.
 (Endpoint: POST /api/transactions/:id/atlas.)
+
+## $ Pipeline (`/pipeline`)
+
+The expected-income dashboard — a live version of the "$ Pipeline" spreadsheet.
+Every income line across the business with contracted-vs-guess totals and a
+per-business rollup (EPS = investing, RE Agent = brokerage).
+
+- **Auto lines** come straight from your deals: brokerage commissions (net ??
+  gross ?? sale price × rate) AND investor proceeds — flip *projected profit*
+  and wholesale *assignment fee* pulled from each investor deal's economics the
+  moment it exists as a transaction. Badged "from deal."
+- **Manual lines** — click **Add income line** for off-system deals, wholesale
+  fees, flip proceeds, or projections. Linking a manual line to a deal hides its
+  auto line so income is never double-counted.
+- Rentals/creative deals are excluded from auto lines (ongoing cash flow, not a
+  one-time proceeds event) — add them by hand if you want them tracked.
+- Totals: total pipeline, contracted (firm), projected (guess), per business.
+  Filter by business or status.
+
+## Flip Calculator (`/flip-calculator`)
+
+A native port of the flip-evaluation spreadsheet. Analyze ANY address across
+four exit strategies, recalculating live as you type:
+- **Fix & Flip** — comps → ARV ($/sqft avg × square feet), total expenses,
+  max offer for $50k profit, max offer at 70% LTV, break-even, splits.
+- **Wholetail** — same with a $30k profit target.
+- **DSCR Rental** — 3-year total profit, monthly cash flow, depreciation,
+  appreciation, principal paydown, cash-on-cash return.
+- **Owner Finance** — 3-year payday with the buyer's mortgage and payoff profit.
+Add up to 5 comps; the rehab estimator is $20/$35/$50 per sqft. **Save analysis**
+attaches a run to a deal; open `/flip-calculator?deal=<id>` to prefill.
+
+## Task reminders (Telegram + email)
+
+Open tasks with a due date get reminders at 3 days / 1 day / today / overdue.
+Each teammate with Telegram linked gets an instant DM; the whole team gets one
+email via the account's connected Gmail. Idempotent — no double-pings. Runs in
+the morning tick. (Add tasks on a deal's Tasks tab.)
+
+## Investor wind-down checklist
+
+When an investor/wholesale deal flips to **Pending** *after* its inspection
+deadline, REOS auto-creates the holding-cost cancellation checklist: stop the
+holding payment, cancel utilities, cancel insurance (effective at closing), and
+cancel recurring monthly bills. Idempotent. It only fires after inspection
+clears — canceling holding costs early is worse than a missing checklist.
+
+## Team chat + Telegram replies
+
+The **Notes** section on each deal is your team message center — post a note to
+message the team. Type **@name** (or tap a "Notify" chip) to ping a specific
+teammate instantly on **Telegram + email**. They can **reply right in Telegram**
+to that ping and it posts straight back to the deal's notes, then re-notifies
+the team — a real thread that lives on the deal. Reply again to keep it going.
+You can also text the bot `note on <deal>: <message>`.
+
+## Manage Users (`/settings/team`)
+
+Your team page. The top list shows members with role dropdowns (owner can change
+anyone's role). The **Collaborators** section has an "Invite an admin, TC, or
+agent" form — enter their email, pick a role (Admin / Coordinator / Agent), and
+Invite. They get access on their next Google sign-in and can connect their own
+Telegram at Settings → Notifications.
+
+## Other side & title (co-op agent + title company)
+
+Each deal shows an **Other side & title** block: the co-op (other-side) agent's
+name, brokerage, phone, email, and license, plus the title company's name,
+closer, phone, and email. These auto-fill from the contract AND from title /
+co-op agent emails (enrich-only — a human edit is never overwritten). Click
+**Edit** to correct anything.
+
+**Reliable Gmail auto-attach:** on **Re-sync from sources** (and automatically in
+the morning tick), REOS marries every attachment on a deal's email threads —
+title commitments, disclosures, addenda, closing docs — onto the deal, not just
+the contract. It matches emails by **known sender** (the title company / other
+agent, who rarely put the address in the subject) and by address, so their docs
+stop getting dropped. Each attachment is attached exactly once.

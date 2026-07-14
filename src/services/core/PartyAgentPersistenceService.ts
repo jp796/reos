@@ -45,6 +45,7 @@ export interface ExtractionLike {
       license?: string | null;
     }>
   >;
+  titleCompanyName?: MaybeField<string>;
 }
 
 export interface PersistResult {
@@ -130,6 +131,28 @@ export async function persistPartiesAndAgents(
       .join(" · ") || null;
     const added = await upsertAgent(db, accountId, txn.id, name, role, clean(a?.email), clean(a?.phone), notes, result);
     if (added) result.agentsAdded++;
+  }
+
+  // Write the co-op (other-side) agent + title company onto the deal's flat
+  // fields — structured, at-a-glance, and queryable — instead of leaving that
+  // info stranded in participant notes. Enrich-only; best-effort.
+  try {
+    const { enrichFlatDealContacts } = await import(
+      "@/services/core/DealContactEnrichmentService"
+    );
+    await enrichFlatDealContacts(db, txn.id, {
+      agents: agents.map((a) => ({
+        name: clean(a?.name),
+        role: a?.role ?? null,
+        email: clean(a?.email),
+        phone: clean(a?.phone),
+        brokerage: clean(a?.brokerage),
+        license: clean(a?.license),
+      })),
+      titleCompanyName: unwrap(ex.titleCompanyName) ?? null,
+    });
+  } catch {
+    /* never block party persistence on flat-field enrichment */
   }
 
   return result;

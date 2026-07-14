@@ -136,6 +136,21 @@ async function pullGmail(accountId: string, txnId: string): Promise<StepResult> 
   const audit = new AutomationAuditService(prisma);
   const svc = new SmartFolderService({ db: prisma, auth: gAuth, gmail, audit });
   const result = await svc.rebackfill(txnId);
+
+  // Marry every attachment on the deal's threads (title docs, addenda,
+  // disclosures — not just the contract) onto the deal, and enrich its
+  // title/co-op fields from the senders. Best-effort.
+  let ingestNote = "";
+  try {
+    const { ingestDealDocs } = await import("@/services/automation/GmailDocIngestService");
+    const ing = await ingestDealDocs(prisma, gmail, accountId, txnId);
+    if (ing.attached > 0 || ing.fieldsEnriched > 0) {
+      ingestNote = ` Attached ${ing.attached} new doc(s)${ing.fieldsEnriched ? `, filled ${ing.fieldsEnriched} contact field(s)` : ""}.`;
+    }
+  } catch (e) {
+    void e; // never block the sync on doc ingest
+  }
+
   if (!result.ok) {
     const why =
       result.reason === "no_property_address"
@@ -145,9 +160,17 @@ async function pullGmail(accountId: string, txnId: string): Promise<StepResult> 
           : (result.reason ?? "unknown");
     return { ok: false, summary: `Gmail sync skipped — ${why}.` };
   }
+  // If we attached new docs, re-read them so their info lands on the deal.
+  if (ingestNote) {
+    try {
+      await synthesizeDeal(prisma, accountId, txnId, false);
+    } catch {
+      /* non-blocking */
+    }
+  }
+
   const n = result.newlyLabeled ?? 0;
-  return {
-    ok: true,
-    summary: n > 0 ? `Pulled ${n} email thread(s) into the deal folder.` : "Deal folder already current — no new threads.",
-  };
+  const base =
+    n > 0 ? `Pulled ${n} email thread(s) into the deal folder.` : "Deal folder already current — no new threads.";
+  return { ok: true, summary: `${base}${ingestNote}` };
 }

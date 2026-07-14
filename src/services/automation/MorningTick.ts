@@ -716,6 +716,62 @@ export async function runMorningTick(
     logError(e, { route: "MorningTick.taskReminders" });
   }
 
+  /* ============================================================
+   * Step 4.6 — Auto-attach docs. Marry every new attachment on each
+   * active deal's threads (title docs, addenda, disclosures from the
+   * title company + other agent) onto the deal, and enrich its
+   * title/co-op fields. This is the "Gmail auto-attach" that stops
+   * important docs from being discarded. Bounded + best-effort.
+   * ============================================================ */
+  try {
+    const acct = await db.account.findFirst({
+      where: { googleOauthTokensEncrypted: { not: null } },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, googleOauthTokensEncrypted: true },
+    });
+    if (
+      acct?.googleOauthTokensEncrypted &&
+      env.GOOGLE_CLIENT_ID &&
+      env.GOOGLE_CLIENT_SECRET &&
+      env.GOOGLE_REDIRECT_URI
+    ) {
+      const oauth = new GoogleOAuthService(
+        {
+          clientId: env.GOOGLE_CLIENT_ID,
+          clientSecret: env.GOOGLE_CLIENT_SECRET,
+          redirectUri: env.GOOGLE_REDIRECT_URI,
+          scopes: DEFAULT_SCOPES,
+        },
+        db,
+        getEncryptionService(),
+      );
+      const gAuth = await oauth.createAuthenticatedClient(acct.id);
+      const gmail = new GmailService(
+        acct.id,
+        gAuth,
+        { labelPrefix: "REOS/", autoOrganizeThreads: false, extractAttachments: false, batchSize: 10, rateLimitDelayMs: 100 },
+        db,
+        new EmailTransactionMatchingService(),
+      );
+      const { ingestDealDocs } = await import("./GmailDocIngestService");
+      const deals = await db.transaction.findMany({
+        where: { accountId: acct.id, isDemo: false, status: { in: ["active", "listing", "pending"] } },
+        orderBy: { updatedAt: "desc" },
+        take: 25,
+        select: { id: true },
+      });
+      for (const d of deals) {
+        try {
+          await ingestDealDocs(db, gmail, acct.id, d.id);
+        } catch {
+          /* one deal failing never blocks the rest */
+        }
+      }
+    }
+  } catch (e) {
+    logError(e, { route: "MorningTick.docIngest" });
+  }
+
   return {
     startedAt: startedAt.toISOString(),
     finishedAt: new Date().toISOString(),
