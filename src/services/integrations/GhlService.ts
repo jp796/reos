@@ -7,7 +7,7 @@
  * here — we search the seller lead and read their contact + custom fields.
  */
 
-const BASE = "https://services.leadconnector.com";
+const BASE = "https://services.leadconnectorhq.com";
 const VERSION = "2021-07-28";
 
 /** Custom-field IDs from this GHL location (see get_custom_fields). */
