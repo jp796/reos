@@ -177,6 +177,20 @@
     text-transform: uppercase;
     color: rgb(var(--text-muted));
   }
+  .reos-input {
+    width: 100%;
+    background: rgb(var(--surface));
+    border: 1px solid rgb(var(--border));
+    border-radius: var(--radius-md);
+    padding: 0.5rem 0.625rem;
+    font-size: 0.875rem;
+    color: rgb(var(--text));
+  }
+  .reos-input:focus {
+    outline: none;
+    border-color: rgb(var(--brand-500));
+    box-shadow: 0 0 0 3px rgb(var(--brand-500) / 0.15);
+  }
   .reos-link {
     color: rgb(var(--text-muted));
     transition: color 120ms;

@@ -14,6 +14,7 @@ import {
   FileSignature,
   KanbanSquare,
   TrendingUp,
+  DollarSign,
   Filter,
   Megaphone,
   Mic,
@@ -55,6 +56,7 @@ const NAV_GROUPS: Array<{ label: string | null; items: NavItem[] }> = [
     label: "Intelligence",
     items: [
       { href: "/insights", label: "Insights", icon: LayoutDashboard },
+      { href: "/pipeline", label: "$ Pipeline", icon: DollarSign },
       { href: "/production", label: "Production", icon: TrendingUp },
       { href: "/digest", label: "Digest", icon: Newspaper },
       { href: "/sources", label: "Sources", icon: Filter },

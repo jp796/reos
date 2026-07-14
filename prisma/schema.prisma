@@ -86,6 +86,7 @@ model Account {
   projects                  Project[]
   drawSchedules             DrawSchedule[]
   capitalStackEntries       CapitalStackEntry[]
+  pipelineIncomeItems       PipelineIncomeItem[]
   sourceChannels            SourceChannel[]
   marketingSpends           MarketingSpend[]
   calendarEvents            CalendarEvent[]
@@ -1495,6 +1496,39 @@ model TransactionFinancials {
   transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
 
   @@map("transaction_financials")
+}
+
+/// A manually-entered expected-income line for the $ Pipeline dashboard.
+/// The dashboard merges these with auto-derived lines from live deals
+/// (commission from TransactionFinancials), so JP can track off-system
+/// deals, wholesale fees, flip proceeds, and "guesses" the way the
+/// original "$ Pipeline" spreadsheet tab did. A row may optionally link
+/// to a REOS transaction — when it does, the auto line for that deal is
+/// suppressed so income is never double-counted.
+model PipelineIncomeItem {
+  id             String    @id @default(cuid())
+  accountId      String    @map("account_id")
+  /// "EPS" (investing entity) | "RE Agent" (brokerage side) | freeform.
+  business       String    @default("EPS")
+  property       String
+  /// Wholesale | Flip Sale | Client Purchase | Client Sale
+  /// | Rental Portfolio Sale | Other.
+  disposition    String    @default("Other")
+  expectedIncome Float     @map("expected_income")
+  expectedDate   DateTime? @map("expected_date")
+  /// "contracted" (under contract / firm) | "guess" (projected).
+  status         String    @default("guess")
+  note           String?
+  /// Optional link to the deal this income comes from; suppresses the
+  /// auto line for that transaction to avoid double-counting.
+  transactionId  String?   @map("transaction_id")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+  @@map("pipeline_income_items")
 }
 
 /// Browser-issued Web Push subscription. One row per (user, device).
