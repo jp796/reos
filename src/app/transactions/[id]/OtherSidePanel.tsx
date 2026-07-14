@@ -9,7 +9,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Handshake, Landmark, Phone, Mail, Pencil, Check, X } from "lucide-react";
+import { Handshake, Landmark, Banknote, Phone, Mail, Pencil, Check, X } from "lucide-react";
 import { useToast } from "@/app/ToastProvider";
 
 export interface OtherSideData {
@@ -22,9 +22,13 @@ export interface OtherSideData {
   titleCompanyContact: string | null;
   titleCompanyPhone: string | null;
   titleCompanyEmail: string | null;
+  lenderName: string | null;
+  lenderCompany: string | null;
+  lenderPhone: string | null;
+  lenderEmail: string | null;
 }
 
-const FIELDS: Array<{ key: keyof OtherSideData; label: string; group: "agent" | "title" }> = [
+const FIELDS: Array<{ key: keyof OtherSideData; label: string; group: "agent" | "title" | "lender" }> = [
   { key: "coAgentName", label: "Agent name", group: "agent" },
   { key: "coAgentBrokerage", label: "Brokerage", group: "agent" },
   { key: "coAgentPhone", label: "Phone", group: "agent" },
@@ -34,7 +38,17 @@ const FIELDS: Array<{ key: keyof OtherSideData; label: string; group: "agent" | 
   { key: "titleCompanyContact", label: "Closer / contact", group: "title" },
   { key: "titleCompanyPhone", label: "Phone", group: "title" },
   { key: "titleCompanyEmail", label: "Email", group: "title" },
+  { key: "lenderName", label: "Loan officer", group: "lender" },
+  { key: "lenderCompany", label: "Company", group: "lender" },
+  { key: "lenderPhone", label: "Phone", group: "lender" },
+  { key: "lenderEmail", label: "Email", group: "lender" },
 ];
+
+const GROUP_LABEL: Record<"agent" | "title" | "lender", string> = {
+  agent: "Co-op agent · ",
+  title: "Title · ",
+  lender: "Lender · ",
+};
 
 export function OtherSidePanel({
   transactionId,
@@ -76,7 +90,7 @@ export function OtherSidePanel({
       <div className="mb-3 flex items-center justify-between">
         <h2 className="flex items-center gap-2 font-display text-base font-semibold">
           <Handshake className="h-4 w-4 text-text-muted" strokeWidth={1.8} />
-          Other side &amp; title
+          Other side, title &amp; lender
         </h2>
         {!editing ? (
           <button
@@ -115,7 +129,7 @@ export function OtherSidePanel({
           {FIELDS.map((f) => (
             <label key={f.key} className="block">
               <span className="reos-label mb-1 block text-text-subtle">
-                {f.group === "agent" ? "Co-op agent · " : "Title · "}
+                {GROUP_LABEL[f.group]}
                 {f.label}
               </span>
               <input
@@ -132,7 +146,7 @@ export function OtherSidePanel({
           emails on <span className="font-medium">Re-sync from sources</span> — or click Edit to add it.
         </p>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <ContactCard
             icon={<Handshake className="h-4 w-4" />}
             title="Co-op agent (other side)"
@@ -150,6 +164,14 @@ export function OtherSidePanel({
             sub={data.titleCompanyContact}
             phone={data.titleCompanyPhone}
             email={data.titleCompanyEmail}
+          />
+          <ContactCard
+            icon={<Banknote className="h-4 w-4" />}
+            title="Lender"
+            name={data.lenderName ?? data.lenderCompany}
+            sub={data.lenderName ? data.lenderCompany : null}
+            phone={data.lenderPhone}
+            email={data.lenderEmail}
           />
         </div>
       )}

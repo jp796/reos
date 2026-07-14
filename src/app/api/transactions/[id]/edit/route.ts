@@ -50,6 +50,10 @@ interface Body {
   titleCompanyContact?: string | null;
   titleCompanyPhone?: string | null;
   titleCompanyEmail?: string | null;
+  lenderName?: string | null;
+  lenderCompany?: string | null;
+  lenderPhone?: string | null;
+  lenderEmail?: string | null;
 }
 
 /** Trim a free-text field to null-or-capped-string. */
@@ -114,6 +118,10 @@ export async function PATCH(
   if (body.titleCompanyContact !== undefined) data.titleCompanyContact = clip(body.titleCompanyContact, 160);
   if (body.titleCompanyPhone !== undefined) data.titleCompanyPhone = clip(body.titleCompanyPhone, 40);
   if (body.titleCompanyEmail !== undefined) data.titleCompanyEmail = clip(body.titleCompanyEmail, 160);
+  if (body.lenderName !== undefined) data.lenderName = clip(body.lenderName, 160);
+  if (body.lenderCompany !== undefined) data.lenderCompany = clip(body.lenderCompany, 160);
+  if (body.lenderPhone !== undefined) data.lenderPhone = clip(body.lenderPhone, 40);
+  if (body.lenderEmail !== undefined) data.lenderEmail = clip(body.lenderEmail, 160);
   if (body.primaryContactId !== undefined) {
     const contact = await prisma.contact.findUnique({
       where: { id: body.primaryContactId },

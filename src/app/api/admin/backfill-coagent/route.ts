@@ -13,6 +13,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/require-session";
 import { ourSide } from "@/services/core/DealContactEnrichmentService";
+import { rememberContact } from "@/services/core/KnownContactService";
 
 export const runtime = "nodejs";
 
@@ -83,6 +84,15 @@ export async function POST(req: NextRequest) {
     await prisma.transaction.update({ where: { id: d.id }, data });
     updated++;
     if (samples.length < 8) samples.push(`${p.contact.fullName}${brokerage ? ` (${brokerage})` : ""}`);
+
+    // Role-tag the co-op agent into the account contact directory so past
+    // deals make REOS smarter (Vendors + recall on future deals).
+    await rememberContact(prisma, actor.accountId, {
+      name: p.contact.fullName,
+      email: p.contact.primaryEmail,
+      phone: p.contact.primaryPhone,
+      role: side === "buy" ? "listing_agent" : "buyer_agent",
+    }).catch(() => {});
   }
 
   return NextResponse.json({ ok: true, scanned: deals.length, updated, samples });

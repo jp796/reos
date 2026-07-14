@@ -1064,6 +1064,10 @@ export default async function TransactionDetailPage({
           titleCompanyContact: txn.titleCompanyContact,
           titleCompanyPhone: txn.titleCompanyPhone,
           titleCompanyEmail: txn.titleCompanyEmail,
+          lenderName: txn.lenderName,
+          lenderCompany: txn.lenderCompany,
+          lenderPhone: txn.lenderPhone,
+          lenderEmail: txn.lenderEmail,
         }}
       />
 

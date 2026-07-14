@@ -450,13 +450,22 @@ agent" form — enter their email, pick a role (Admin / Coordinator / Agent), an
 Invite. They get access on their next Google sign-in and can connect their own
 Telegram at Settings → Notifications.
 
-## Other side & title (co-op agent + title company)
+## Other side, title & lender (deal contacts)
 
 Each deal shows an **Other side & title** block: the co-op (other-side) agent's
 name, brokerage, phone, email, and license, plus the title company's name,
 closer, phone, and email. These auto-fill from the contract AND from title /
 co-op agent emails (enrich-only — a human edit is never overwritten). Click
 **Edit** to correct anything.
+
+The block also carries the **Lender** (loan officer, company, phone, email). All
+three contacts (co-op agent, title, lender) auto-fill from the contract and
+relevant emails.
+
+**REOS remembers contacts.** Every lender, title company, and agent it sees is
+saved as a role-tagged entry in your account directory (Settings → Vendors) and
+*recalled* on future deals — so once REOS knows someone, it reuses their info
+instead of re-reading it. Gets smarter as you go.
 
 **Reliable Gmail auto-attach:** on **Re-sync from sources** (and automatically in
 the morning tick), REOS marries every attachment on a deal's email threads —

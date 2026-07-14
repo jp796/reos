@@ -352,6 +352,11 @@ model Transaction {
   earnestMoneyAmount     Float?    @map("earnest_money_amount")
   walkthroughDate        DateTime? @map("walkthrough_date")
   lenderName             String?   @map("lender_name")
+  /// Lender contact block — the loan officer (lenderName), their company,
+  /// phone, and email. Populated from the contract + lender emails, enrich-only.
+  lenderCompany          String?   @map("lender_company")
+  lenderPhone            String?   @map("lender_phone")
+  lenderEmail            String?   @map("lender_email")
   titleCompanyName       String?   @map("title_company_name")
   /// Title company contact block — the closer/escrow officer, their phone
   /// and email. Populated dynamically from the contract AND from inbound

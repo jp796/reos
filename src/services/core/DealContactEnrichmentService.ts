@@ -59,6 +59,11 @@ export interface EnrichInput {
   titleCompanyContact?: string | null;
   titleCompanyPhone?: string | null;
   titleCompanyEmail?: string | null;
+  /** Lender contact — loan officer name + their company / phone / email. */
+  lenderName?: string | null;
+  lenderCompany?: string | null;
+  lenderPhone?: string | null;
+  lenderEmail?: string | null;
 }
 
 /** Which flat columns to set, given the deal's current values (enrich-only). */
@@ -73,6 +78,10 @@ export function computeContactPatch(
     titleCompanyContact: string | null;
     titleCompanyPhone: string | null;
     titleCompanyEmail: string | null;
+    lenderName: string | null;
+    lenderCompany: string | null;
+    lenderPhone: string | null;
+    lenderEmail: string | null;
   },
   side: DealSide | null,
   input: EnrichInput,
@@ -97,6 +106,11 @@ export function computeContactPatch(
   fill("titleCompanyPhone", input.titleCompanyPhone ?? null);
   fill("titleCompanyEmail", input.titleCompanyEmail ?? null);
 
+  fill("lenderName", input.lenderName ?? null);
+  fill("lenderCompany", input.lenderCompany ?? null);
+  fill("lenderPhone", input.lenderPhone ?? null);
+  fill("lenderEmail", input.lenderEmail ?? null);
+
   return patch;
 }
 
@@ -112,6 +126,7 @@ export async function enrichFlatDealContacts(
   const txn = await db.transaction.findUnique({
     where: { id: transactionId },
     select: {
+      accountId: true,
       side: true,
       transactionType: true,
       coAgentName: true,
@@ -123,14 +138,79 @@ export async function enrichFlatDealContacts(
       titleCompanyContact: true,
       titleCompanyPhone: true,
       titleCompanyEmail: true,
+      lenderName: true,
+      lenderCompany: true,
+      lenderPhone: true,
+      lenderEmail: true,
     },
   });
   if (!txn) return 0;
 
-  const patch = computeContactPatch(txn, ourSide(txn), input);
-  const keys = Object.keys(patch);
-  if (keys.length === 0) return 0;
+  const side = ourSide(txn);
+  const co = pickCoAgent(input.agents, side);
 
-  await db.transaction.update({ where: { id: transactionId }, data: patch });
+  // RECALL — fill gaps from what REOS already knows (fewer re-extractions).
+  // If we have a name but no email/phone, borrow them from the directory.
+  const { recallContact } = await import("@/services/core/KnownContactService");
+  const enriched: EnrichInput = { ...input };
+  if (co?.name && (!co.email || !co.phone)) {
+    const r = await recallContact(db, txn.accountId, { name: co.name, email: co.email });
+    if (r) {
+      co.email = co.email ?? r.email;
+      co.phone = co.phone ?? r.phone;
+    }
+  }
+  if (enriched.lenderName && (!enriched.lenderEmail || !enriched.lenderPhone)) {
+    const r = await recallContact(db, txn.accountId, { name: enriched.lenderName, email: enriched.lenderEmail });
+    if (r) {
+      enriched.lenderEmail = enriched.lenderEmail ?? r.email;
+      enriched.lenderPhone = enriched.lenderPhone ?? r.phone;
+    }
+  }
+
+  const patch = computeContactPatch(txn, side, enriched);
+  const keys = Object.keys(patch);
+
+  if (keys.length > 0) {
+    await db.transaction.update({ where: { id: transactionId }, data: patch });
+  }
+
+  // REMEMBER — role-tag every contact we now know into the account directory,
+  // so it feeds Vendors and can be recalled on future deals. Best-effort.
+  try {
+    const { rememberContact } = await import("@/services/core/KnownContactService");
+    const acct = txn.accountId;
+    if (co?.name) {
+      await rememberContact(db, acct, {
+        name: co.name,
+        email: co.email ?? patch.coAgentEmail ?? txn.coAgentEmail,
+        phone: co.phone ?? patch.coAgentPhone ?? txn.coAgentPhone,
+        role: side === "buy" ? "listing_agent" : "buyer_agent",
+      });
+    }
+    const titleName = patch.titleCompanyName ?? txn.titleCompanyName;
+    const titleEmail = patch.titleCompanyEmail ?? txn.titleCompanyEmail;
+    if (titleName || titleEmail) {
+      await rememberContact(db, acct, {
+        name: patch.titleCompanyContact ?? txn.titleCompanyContact ?? titleName,
+        email: titleEmail,
+        phone: patch.titleCompanyPhone ?? txn.titleCompanyPhone,
+        role: "title_co",
+      });
+    }
+    const lenderName = patch.lenderName ?? txn.lenderName;
+    const lenderEmail = patch.lenderEmail ?? txn.lenderEmail;
+    if (lenderName || lenderEmail) {
+      await rememberContact(db, acct, {
+        name: lenderName ?? patch.lenderCompany ?? txn.lenderCompany,
+        email: lenderEmail,
+        phone: patch.lenderPhone ?? txn.lenderPhone,
+        role: "lender",
+      });
+    }
+  } catch {
+    /* directory memory is best-effort — never block the deal update */
+  }
+
   return keys.length;
 }

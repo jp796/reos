@@ -46,6 +46,7 @@ export interface ExtractionLike {
     }>
   >;
   titleCompanyName?: MaybeField<string>;
+  lenderName?: MaybeField<string>;
 }
 
 export interface PersistResult {
@@ -150,6 +151,7 @@ export async function persistPartiesAndAgents(
         license: clean(a?.license),
       })),
       titleCompanyName: unwrap(ex.titleCompanyName) ?? null,
+      lenderName: unwrap(ex.lenderName) ?? null,
     });
   } catch {
     /* never block party persistence on flat-field enrichment */
