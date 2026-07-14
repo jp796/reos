@@ -413,6 +413,23 @@ const SCHEMA_HINT = `{
 export class ContractExtractionService {
   constructor(private readonly openaiApiKey: string) {}
 
+  /** Layer 2 — account-specific rules learned from past corrections, injected
+   *  into the system prompt for this run. Set via setLearnedRules(). */
+  private learnedRules: string[] = [];
+  setLearnedRules(rules: string[]): this {
+    this.learnedRules = rules.slice(0, 20);
+    return this;
+  }
+  /** SYSTEM_PROMPT with any learned rules appended (a compact block). */
+  private systemPrompt(): string {
+    if (this.learnedRules.length === 0) return SYSTEM_PROMPT;
+    return (
+      SYSTEM_PROMPT +
+      "\n\nLEARNED CORRECTIONS (from this account's past fixes — follow exactly):\n" +
+      this.learnedRules.map((r) => `- ${r}`).join("\n")
+    );
+  }
+
   /**
    * Main entry point. Tries text extraction first; if the text layer
    * looks "thin" (i.e. filled form values weren't baked in — the
@@ -604,7 +621,7 @@ export class ContractExtractionService {
         max_tokens: 8000,
         stream: true,
         messages: [
-          { role: "system", content: SYSTEM_PROMPT },
+          { role: "system", content: this.systemPrompt() },
           {
             role: "user",
             content: [
@@ -697,7 +714,7 @@ ${SCHEMA_HINT}`,
         response_format: { type: "json_object" },
         max_tokens: 8000,
         messages: [
-          { role: "system", content: SYSTEM_PROMPT },
+          { role: "system", content: this.systemPrompt() },
           {
             role: "user",
             content: [
@@ -763,7 +780,7 @@ ${SCHEMA_HINT}`,
         response_format: { type: "json_object" },
         max_tokens: 8000,
         messages: [
-          { role: "system", content: SYSTEM_PROMPT },
+          { role: "system", content: this.systemPrompt() },
           {
             role: "user",
             content: [
@@ -818,7 +835,7 @@ ${SCHEMA_HINT}`;
         response_format: { type: "json_object" },
         max_tokens: 8000,
         messages: [
-          { role: "system", content: SYSTEM_PROMPT },
+          { role: "system", content: this.systemPrompt() },
           { role: "user", content: userMsg },
         ],
       }),

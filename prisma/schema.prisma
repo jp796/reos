@@ -1691,3 +1691,37 @@ model EsignEvent {
   @@index([esignRequestId, occurredAt])
   @@map("esign_events")
 }
+
+/// Layer 2 — Atlas learns from corrections. Each row is a field-level
+/// extraction correction (what Atlas produced vs what a human set) grouped
+/// by state + doc type. When the SAME correction recurs (weight >= threshold)
+/// it is promoted to an ACTIVE rule whose `ruleText` is injected into future
+/// extraction prompts for that state/docType. Token-efficient: only the
+/// relevant, promoted rules are ever sent to the model — never the raw log.
+model ExtractionLearning {
+  id        String   @id @default(cuid())
+  accountId String   @map("account_id")
+  /// US state the pattern applies to (e.g. "WY"); null = any state.
+  state     String?
+  docType   String   @default("purchase_contract") @map("doc_type")
+  /// The field / entity the correction is about (e.g. "sellers", "side",
+  /// "closingDate", "listing_agent").
+  field     String
+  /// "correction" = raw signal; "rule" = promoted, injectable guidance.
+  kind      String   @default("correction")
+  /// Short, normalized sample of the miss (never full document content).
+  extracted String?
+  corrected String?
+  /// Generalized guidance injected into the extraction prompt (rules only).
+  ruleText  String?  @map("rule_text")
+  /// How many corrections support this pattern.
+  weight    Int      @default(1)
+  /// Active rules are injected; corrections below threshold are not.
+  active    Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([accountId, state, docType, field])
+  @@index([accountId, active])
+  @@map("extraction_learnings")
+}

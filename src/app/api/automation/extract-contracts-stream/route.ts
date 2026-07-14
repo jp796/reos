@@ -98,7 +98,11 @@ export async function POST(req: NextRequest) {
     meta: { count: files.length, origin: "live_extraction" },
   });
 
-  const svc = new ContractExtractionService(apiKey);
+  // Layer 2 — the deal doesn't exist yet (no state known), so inject every
+  // active learned rule for the account.
+  const { getActiveRules } = await import("@/services/core/ExtractionLearningService");
+  const learnedRules = await getActiveRules(prisma, { accountId, state: null, anyState: true });
+  const svc = new ContractExtractionService(apiKey).setLearnedRules(learnedRules);
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream<Uint8Array>({

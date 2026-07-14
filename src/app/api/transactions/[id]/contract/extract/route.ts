@@ -16,6 +16,7 @@ import { ContractExtractionService } from "@/services/ai/ContractExtractionServi
 import { backupDocumentToDrive } from "@/services/automation/DriveBackupService";
 import { synthesizeDeal } from "@/services/core/DocumentSynthesisService";
 import { logWorkflowEvent } from "@/lib/instrumentation";
+import { getActiveRules } from "@/services/core/ExtractionLearningService";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -53,7 +54,13 @@ export async function POST(
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  const svc = new ContractExtractionService(env.OPENAI_API_KEY);
+  // Layer 2 — inject this account's learned corrections for this state so the
+  // read gets smarter with use (e.g. "extract EVERY seller on WY contracts").
+  const learnedRules = await getActiveRules(prisma, {
+    accountId: txn.accountId,
+    state: txn.state,
+  });
+  const svc = new ContractExtractionService(env.OPENAI_API_KEY).setLearnedRules(learnedRules);
 
   // Funnel: a contract arrived and extraction is starting. `attachment_received`
   // marks the file; `extraction_started` opens the extraction span. Meta holds

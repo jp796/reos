@@ -19,6 +19,7 @@ import { requireSession, assertSameAccount } from "@/lib/require-session";
 import { AutomationAuditService } from "@/services/integrations/FollowUpBossService";
 import { recomputeOnDateShift } from "@/services/core/MilestoneRecomputeService";
 import { parseInputDate } from "@/lib/dates";
+import { recordCorrection } from "@/services/core/ExtractionLearningService";
 
 const VALID_SIDES = new Set(["buy", "sell", "both"]);
 const VALID_TYPES = new Set(["buyer", "seller", "investor", "wholesale", "other"]);
@@ -190,6 +191,28 @@ export async function PATCH(
     } catch {
       // recompute failure should not block the primary edit
     }
+  }
+
+  // Layer 2 — learn from this correction. A human changing the side/type on a
+  // deal that has a contract is a labeled extraction correction; if the same
+  // fix recurs for a state it promotes to a rule injected into future reads.
+  if (body.side !== undefined && txn.side && updated.side && txn.side !== updated.side) {
+    void recordCorrection(prisma, {
+      accountId: actor.accountId,
+      state: updated.state ?? txn.state,
+      field: "side",
+      extracted: txn.side,
+      corrected: updated.side,
+    });
+  }
+  if (body.transactionType !== undefined && txn.transactionType !== updated.transactionType) {
+    void recordCorrection(prisma, {
+      accountId: actor.accountId,
+      state: updated.state ?? txn.state,
+      field: "side",
+      extracted: txn.transactionType,
+      corrected: updated.transactionType,
+    });
   }
 
   // Audit: who edited what
