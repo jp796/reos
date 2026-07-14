@@ -43,7 +43,7 @@ export type ExtractStreamEvent =
 import { renderPdfForVision } from "./PdfRender";
 import { addBusinessDays, addCalendarDays } from "@/lib/business-days";
 
-const MODEL = process.env.OPENAI_EXTRACTION_MODEL ?? "gpt-4.1";
+const MODEL = process.env.OPENAI_EXTRACTION_MODEL ?? "gpt-4.1-mini";
 const VISION_MODEL = "gpt-4o"; // vision requires full 4o, not mini
 const MAX_TEXT_CHARS = 24_000; // contracts are usually 10-20 pages / ~20k chars
 const MAX_VISION_PAGES = 12; // cap image uploads per contract to hold cost down

@@ -13,7 +13,7 @@ on Cloud Run, Neon Postgres, Next.js App Router.
 - **Prod URL:** https://www.myrealestateos.com
 - **Deploy:** GitHub push → Cloud Run (automatic via WIF). Revision currently serving: `reos-00145-sf9`
 - **DB:** Neon Postgres. Prisma ORM. Migrations run in cloudbuild. Verify columns landed after deploy.
-- **AI extraction:** GPT-4.1 (text) + GPT-4o (vision fallback). See `ContractExtractionService.ts`.
+- **AI extraction:** GPT-4.1-mini (text) + GPT-4o (vision fallback). See `ContractExtractionService.ts`.
 - **Rezen (Real):** Brokerage compliance system. Will Carter Team uses it. API token stored encrypted in `account.realApiTokensEncrypted`.
 
 ## Stack rules (non-negotiable)

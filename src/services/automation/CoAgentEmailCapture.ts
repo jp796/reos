@@ -14,7 +14,7 @@ import type { PrismaClient } from "@prisma/client";
 import type { gmail_v1 } from "googleapis";
 import type { GmailService } from "@/services/integrations/GmailService";
 
-const MODEL = process.env.OPENAI_EXTRACTION_MODEL ?? "gpt-4.1";
+const MODEL = process.env.OPENAI_EXTRACTION_MODEL ?? "gpt-4.1-mini";
 
 function header(msg: gmail_v1.Schema$Message, name: string): string {
   return msg.payload?.headers?.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value ?? "";

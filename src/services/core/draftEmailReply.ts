@@ -95,7 +95,7 @@ export async function draftReplyForDeal(
   return { draftId: res.data.id ?? null, subject: safeSubject, to: draft.replyTo };
 }
 
-const COMPOSE_MODEL = process.env.OPENAI_CHAT_MODEL ?? "gpt-4.1";
+const COMPOSE_MODEL = process.env.OPENAI_CHAT_MODEL ?? "gpt-4.1-mini";
 
 /**
  * draftNewEmailForDeal — compose a BRAND-NEW email (not a reply) for a
