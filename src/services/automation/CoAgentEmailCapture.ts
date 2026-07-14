@@ -318,5 +318,49 @@ export async function captureCoAgentFromEmails(
       return result;
     }
   }
+
+  // Deterministic fallback: the AI can waver on a thin signature. If a candidate
+  // is clearly a real-estate brokerage domain and passed every exclusion
+  // (not us / client / title / lender / automated), take them as the other agent
+  // — name from the From line, brokerage from the domain — flagged for verify.
+  const brokerage = g.candidates.find(
+    ([email]) =>
+      REALTY_DOMAIN.test(domainOf(email)) &&
+      !g.excludeEmails.has(email) &&
+      !g.ourDomains.has(domainOf(email)),
+  );
+  if (brokerage) {
+    const [email, info] = brokerage;
+    const result: CoAgentResult = {
+      name: info.name,
+      brokerage: brokerageFromDomain(domainOf(email)),
+      phone: null,
+      email,
+      license: null,
+    };
+    await db.transaction.update({
+      where: { id: g.txnId },
+      data: {
+        coAgentName: result.name,
+        coAgentBrokerage: result.brokerage,
+        coAgentEmail: result.email,
+        coAgentSource: "email_signature",
+      },
+    });
+    return result;
+  }
   return null;
+}
+
+/** Real-estate brokerage email domains — a strong "this is an agent" signal. */
+const REALTY_DOMAIN = /(homes|realty|realestate|properties|realtor|brokerage|remax|kw\.com|kwcommand|century21|coldwell|exprealty|sothebys|compass\.com)/i;
+
+/** "cheyennehomes.com" → "Cheyenne Homes" for a readable brokerage fallback. */
+function brokerageFromDomain(domain: string): string | null {
+  const base = domain.replace(/\.(com|net|org|co|us|realty)$/i, "").replace(/[.-]/g, " ").trim();
+  if (!base) return null;
+  return base
+    .split(/\s+/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
 }
