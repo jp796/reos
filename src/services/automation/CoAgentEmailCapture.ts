@@ -108,16 +108,61 @@ Set isAgent=false if this is clearly a title company, lender, inspector, the cli
   }
 }
 
-/**
- * Fill the co-op agent on a deal from its emails when it's missing. Returns the
- * captured agent (already written, flagged for verification) or null.
- */
-export async function captureCoAgentFromEmails(
+export interface CoAgentDiagnostics {
+  coAgentAlreadySet: boolean;
+  threadsScanned: number;
+  excludedEmails: string[];
+  ourDomains: string[];
+  candidates: Array<{ email: string; name: string | null; count: number }>;
+  verdicts: Array<{ email: string; isAgent: boolean; result: CoAgentResult | null }>;
+}
+
+/** Dry-run the co-agent capture and report what it saw — for debugging why a
+ *  deal's other agent did or didn't get pulled. Writes nothing. */
+export async function diagnoseCoAgentFromEmails(
   db: PrismaClient,
   gmail: GmailService,
   accountId: string,
   transactionId: string,
-): Promise<CoAgentResult | null> {
+): Promise<CoAgentDiagnostics> {
+  const g = await gatherCandidates(db, gmail, accountId, transactionId);
+  const out: CoAgentDiagnostics = {
+    coAgentAlreadySet: g.coAgentAlreadySet,
+    threadsScanned: g.threadsScanned,
+    excludedEmails: [...g.excludeEmails],
+    ourDomains: [...g.ourDomains],
+    candidates: g.candidates.map(([email, i]) => ({ email, name: i.name, count: i.count })),
+    verdicts: [],
+  };
+  for (const [email, info] of g.candidates) {
+    const result = await readSignature({
+      fromName: info.name,
+      fromEmail: email,
+      subject: header(info.msg, "subject"),
+      body: bodyText(info.msg),
+    });
+    out.verdicts.push({ email, isAgent: !!result, result });
+  }
+  return out;
+}
+
+interface Gathered {
+  txnId: string | null;
+  coAgentAlreadySet: boolean;
+  threadsScanned: number;
+  excludeEmails: Set<string>;
+  ourDomains: Set<string>;
+  candidates: Array<[string, { count: number; msg: gmail_v1.Schema$Message; name: string | null }]>;
+}
+
+/** Shared candidate-gathering used by both capture + diagnose. */
+async function gatherCandidates(
+  db: PrismaClient,
+  gmail: GmailService,
+  accountId: string,
+  transactionId: string,
+): Promise<Gathered> {
+  const empty: Gathered = { txnId: null, coAgentAlreadySet: false, threadsScanned: 0, excludeEmails: new Set(), ourDomains: new Set(), candidates: [] };
   const txn = await db.transaction.findFirst({
     where: { id: transactionId, accountId },
     select: {
@@ -137,9 +182,8 @@ export async function captureCoAgentFromEmails(
       },
     },
   });
-  if (!txn || txn.coAgentName) return null; // only when missing
+  if (!txn) return empty;
 
-  // Everyone we should NOT treat as the other agent.
   const excludeEmails = new Set<string>(
     [
       txn.contact?.primaryEmail ?? null,
@@ -153,7 +197,6 @@ export async function captureCoAgentFromEmails(
   );
   const ourDomains = new Set((txn.account.brokerageProfile?.agentEmailDomains ?? []).map((d) => d.toLowerCase()));
 
-  // Gather this deal's threads (folder + address search).
   const street = txn.propertyAddress?.split(",")[0]?.trim() ?? null;
   const threads: gmail_v1.Schema$Thread[] = [];
   try {
@@ -164,10 +207,9 @@ export async function captureCoAgentFromEmails(
       threads.push(...(await gmail.searchThreadsPaged({ q: `"${street}" newer_than:180d`, maxTotal: 20 })).threads);
     }
   } catch {
-    return null;
+    /* return what we have */
   }
 
-  // Rank external senders by frequency; skip excluded people + our domains.
   const freq = new Map<string, { count: number; msg: gmail_v1.Schema$Message; name: string | null }>();
   for (const t of threads) {
     for (const msg of t.messages ?? []) {
@@ -179,10 +221,32 @@ export async function captureCoAgentFromEmails(
     }
   }
   const candidates = [...freq.entries()].sort((a, b) => b[1].count - a[1].count).slice(0, 3);
-  if (candidates.length === 0) return null;
+  return {
+    txnId: txn.id,
+    coAgentAlreadySet: !!txn.coAgentName,
+    threadsScanned: threads.length,
+    excludeEmails,
+    ourDomains,
+    candidates,
+  };
+}
+
+/**
+ * Fill the co-op agent on a deal from its emails when it's missing. Returns the
+ * captured agent (already written, flagged for verification) or null.
+ */
+export async function captureCoAgentFromEmails(
+  db: PrismaClient,
+  gmail: GmailService,
+  accountId: string,
+  transactionId: string,
+): Promise<CoAgentResult | null> {
+  const g = await gatherCandidates(db, gmail, accountId, transactionId);
+  if (!g.txnId || g.coAgentAlreadySet) return null; // only when missing
+  if (g.candidates.length === 0) return null;
 
   // AI-read the top candidates' signatures until one is confirmed an agent.
-  for (const [email, info] of candidates) {
+  for (const [email, info] of g.candidates) {
     const result = await readSignature({
       fromName: info.name,
       fromEmail: email,
@@ -191,7 +255,7 @@ export async function captureCoAgentFromEmails(
     });
     if (result) {
       await db.transaction.update({
-        where: { id: txn.id },
+        where: { id: g.txnId },
         data: {
           coAgentName: result.name,
           coAgentBrokerage: result.brokerage,
