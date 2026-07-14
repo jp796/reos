@@ -24,6 +24,8 @@ export function TelegramConnectPanel() {
   const [status, setStatus] = useState<Status | null>(null);
   const [busy, setBusy] = useState(false);
   const [waiting, setWaiting] = useState(false);
+  const [deepLink, setDeepLink] = useState<string | null>(null);
+  const [code, setCode] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(async () => {
@@ -55,7 +57,15 @@ export function TelegramConnectPanel() {
       const res = await fetch("/api/integrations/telegram/link", { method: "POST" });
       const data = await res.json();
       if (!res.ok || !data.deepLink) throw new Error(data.error ?? "couldn't start");
-      window.open(data.deepLink, "_blank", "noopener");
+      setDeepLink(data.deepLink);
+      setCode(data.code ?? null);
+      // Best-effort auto-open; blocked by popup blockers on mobile/after await,
+      // so the tappable link + code below are the reliable path.
+      try {
+        window.open(data.deepLink, "_blank", "noopener");
+      } catch {
+        /* fall back to the rendered link */
+      }
       setWaiting(true);
       // Poll until the webhook binds the chat.
       if (pollRef.current) clearInterval(pollRef.current);
@@ -138,11 +148,29 @@ export function TelegramConnectPanel() {
             Connect Telegram
           </button>
         )}
-        {waiting && !status.linked && (
-          <p className="mt-2 text-xs text-text-muted">
-            Opened Telegram in a new tab — tap <b>Start</b> in the chat. This card
-            updates automatically once you&rsquo;re linked.
-          </p>
+        {deepLink && !status.linked && (
+          <div className="mt-3 space-y-2 rounded-md border border-border bg-surface-2 p-3">
+            <a
+              href={deepLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-500"
+            >
+              <Send className="h-3.5 w-3.5" /> Open Telegram &amp; tap Start
+            </a>
+            <p className="text-xs text-text-muted">
+              If that doesn&rsquo;t open Telegram, message{" "}
+              <b>@REOSAtlasBot</b> and send:{" "}
+              {code ? (
+                <code className="rounded bg-surface px-1.5 py-0.5">/start {code}</code>
+              ) : (
+                <code className="rounded bg-surface px-1.5 py-0.5">/start</code>
+              )}
+            </p>
+            <p className="text-[11px] text-text-subtle">
+              This card flips to <b>Connected</b> automatically once you tap Start.
+            </p>
+          </div>
         )}
       </div>
     </div>
