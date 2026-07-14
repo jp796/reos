@@ -23,6 +23,9 @@ RUN npx prisma generate
 # Copy the source and build the standalone bundle
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
+# Give Node's heap headroom on the 8GB build machine — Next build's peak
+# memory grew with the app and intermittently OOM'd at the default cap.
+ENV NODE_OPTIONS=--max-old-space-size=6144
 RUN npm run build
 
 # ---- Runner ----
