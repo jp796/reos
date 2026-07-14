@@ -93,6 +93,52 @@ export function buildReminderMessage(tasks: DueTask[]): string {
   return lines.join("\n");
 }
 
+export interface TeamMember {
+  id: string;
+  name: string | null;
+  email: string;
+  telegramChatId: string | null;
+  role: string;
+}
+
+/**
+ * Everyone who should get deal notifications for an account: the account's
+ * home users PLUS anyone linked through an accepted, non-revoked membership
+ * invite. Membership-invited teammates own a *different* home account, so a
+ * plain `user.accountId == X` query would silently miss them — this union is
+ * what guarantees invited teammates (e.g. Heather, Sheri) actually get pinged.
+ */
+export async function resolveAccountTeam(
+  db: PrismaClient,
+  accountId: string,
+): Promise<TeamMember[]> {
+  const [homeUsers, memberships] = await Promise.all([
+    db.user.findMany({
+      where: { accountId },
+      select: { id: true, name: true, email: true, telegramChatId: true, role: true },
+    }),
+    db.accountMembership.findMany({
+      where: { accountId, revokedAt: null, acceptedAt: { not: null }, userId: { not: null } },
+      select: {
+        role: true,
+        user: {
+          select: { id: true, name: true, email: true, telegramChatId: true, role: true },
+        },
+      },
+    }),
+  ]);
+
+  const byId = new Map<string, TeamMember>();
+  for (const u of homeUsers) byId.set(u.id, u);
+  for (const m of memberships) {
+    if (m.user && !byId.has(m.user.id)) {
+      // Membership role reflects their access on THIS account; keep it.
+      byId.set(m.user.id, { ...m.user, role: m.role });
+    }
+  }
+  return [...byId.values()];
+}
+
 export interface TaskReminderResult {
   accountsNotified: number;
   tasksReminded: number;
@@ -162,10 +208,7 @@ export async function runTaskReminders(
     const order: Record<ReminderWindow, number> = { overdue: 0, d0: 1, d1: 2, d3: 3 };
     tasks.sort((a, b) => order[a.window] - order[b.window]);
 
-    const team = await db.user.findMany({
-      where: { accountId },
-      select: { name: true, email: true, telegramChatId: true, role: true },
-    });
+    const team = await resolveAccountTeam(db, accountId);
     if (team.length === 0) continue;
 
     const message = buildReminderMessage(tasks);

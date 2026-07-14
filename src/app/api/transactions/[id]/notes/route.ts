@@ -16,6 +16,7 @@ import { requireSession } from "@/lib/require-session";
 import { logError } from "@/lib/log";
 import { TelegramService } from "@/services/integrations/TelegramService";
 import { sendAccountGmail } from "@/services/integrations/GmailSendService";
+import { resolveAccountTeam } from "@/services/automation/TaskReminderService";
 
 export const runtime = "nodejs";
 
@@ -167,10 +168,11 @@ async function notifyMentions(
   // No @ at all → nothing to do (keeps the common case free).
   if (!noteBody.includes("@")) return;
 
-  const team = await prisma.user.findMany({
-    where: { accountId, id: { not: actor.userId } },
-    select: { id: true, name: true, email: true, telegramChatId: true },
-  });
+  // Union of home users + accepted membership invites, so @mentions reach
+  // teammates whose home account differs (invited members like Heather/Sheri).
+  const team = (await resolveAccountTeam(prisma, accountId)).filter(
+    (u) => u.id !== actor.userId,
+  );
   if (team.length === 0) return;
 
   const lower = noteBody.toLowerCase();
