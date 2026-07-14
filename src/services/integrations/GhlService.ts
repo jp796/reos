@@ -123,31 +123,36 @@ export class GhlService {
     return null;
   }
 
-  /** A candidate whose property custom field matches the deal address, if any. */
+  /** A candidate whose property custom field matches the deal address, if any.
+   *  Compares on street number + zip so it survives "Street/St",
+   *  "Wyoming/WY", and word-order differences. */
   private propertyMatch(candidates: GhlContact[], address: string | null): GhlContact | null {
     if (!address) return null;
-    const key = normAddr(address);
-    if (!key) return null;
+    const deal = addrKey(address);
+    if (!deal.streetNum) return null;
     return (
       candidates.find((c) => {
-        const cfAddr = normAddr(cfVal(c, CF.propertyAddress) ?? "");
-        const cfUid = normAddr(cfVal(c, CF.propertyUniqueId) ?? "");
-        return (
-          (cfAddr && (cfAddr.includes(key) || key.includes(cfAddr))) ||
-          (cfUid && (cfUid.includes(key) || key.includes(cfUid)))
-        );
+        for (const raw of [cfVal(c, CF.propertyAddress), cfVal(c, CF.propertyUniqueId)]) {
+          if (!raw) continue;
+          const g = addrKey(raw);
+          if (g.streetNum && g.streetNum === deal.streetNum) {
+            // Street numbers match; require zip agreement when both have one.
+            if (!deal.zip || !g.zip || deal.zip === g.zip) return true;
+          }
+        }
+        return false;
       }) ?? null
     );
   }
 }
 
-function normAddr(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/[.,#]/g, " ")
-    .replace(/\b(street|st|road|rd|drive|dr|avenue|ave|lane|ln|court|ct|way|blvd|boulevard)\b/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+/** Pull the street number (first 1–6 digit token) + a 5-digit zip from an
+ *  address, tolerant of punctuation and formatting. */
+function addrKey(s: string): { streetNum: string | null; zip: string | null } {
+  const nums = s.match(/\d{1,6}/g) ?? [];
+  const zip = nums.find((n) => n.length === 5) ?? null;
+  const streetNum = nums.find((n) => n !== zip) ?? nums[0] ?? null;
+  return { streetNum: streetNum ?? null, zip };
 }
 
 function cfVal(c: GhlContact, id: string): string | null {
