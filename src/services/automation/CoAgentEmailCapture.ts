@@ -27,6 +27,10 @@ function parseFrom(from: string): { name: string | null; email: string | null } 
 }
 const domainOf = (email: string) => email.split("@")[1]?.toLowerCase() ?? "";
 
+/** Automated / no-reply senders (e-sign services, mailers) — never an agent,
+ *  and their bodies carry OTHER people's signatures, causing false positives. */
+const AUTOMATED = /(no-?reply|do-?not-?reply|notifications?@|mailer|bounce|mailgun|esign|docusign|dotloop|hellosign|skyslope|@.*\.esignonline)/i;
+
 /** Strip HTML to readable text so signatures in HTML-only emails are legible. */
 function stripHtml(html: string): string {
   return html
@@ -102,7 +106,11 @@ ${input.body.slice(-1500)}
 
 Return STRICT JSON:
 {"isAgent": true|false, "name": "...|null", "brokerage": "...|null", "phone": "...|null", "email": "...|null", "license": "...|null"}
-Set isAgent=false if this is clearly a title company, lender, inspector, the client, or you can't tell. Only pull fields present in the signature; use null otherwise. Prefer a direct/cell phone.`;
+Rules:
+- isAgent=true when the sender is (or clearly signs as) a real-estate agent/Realtor/broker — including when their email domain or signature is a brokerage (e.g. "…homes.com", "…realty.com", "…properties.com", a named brokerage). Coordinating a purchase/sale, sending disclosures, or scheduling on behalf of a party is agent behavior.
+- isAgent=false ONLY if this is clearly a title/escrow company, a lender/loan officer, an inspector/vendor, or the buyer/seller client themselves.
+- name: the person's name (from the From line or signature). brokerage: their firm/brokerage name from the signature (NOT just the email domain) when stated, else the domain.
+- Only pull fields present; use null otherwise. Prefer a direct/cell phone.`;
 
   try {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -239,6 +247,7 @@ async function gatherCandidates(
     for (const msg of t.messages ?? []) {
       const from = parseFrom(header(msg, "from"));
       if (!from.email || excludeEmails.has(from.email) || ourDomains.has(domainOf(from.email))) continue;
+      if (AUTOMATED.test(from.email)) continue; // e-sign/mailer services aren't agents
       const len = bodyText(msg).length;
       const cur = freq.get(from.email);
       if (cur) {
@@ -286,6 +295,14 @@ export async function captureCoAgentFromEmails(
       subject: header(info.msg, "subject"),
       body: bodyText(info.msg),
     });
+    // Reject anything that resolves back to us / a known non-agent — the OTHER
+    // agent is never our team, our domain, the client, title, or the lender.
+    if (result) {
+      const rEmail = (result.email ?? "").toLowerCase();
+      if (rEmail && (g.excludeEmails.has(rEmail) || g.ourDomains.has(domainOf(rEmail)))) {
+        continue;
+      }
+    }
     if (result) {
       await db.transaction.update({
         where: { id: g.txnId },
