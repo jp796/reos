@@ -14,6 +14,7 @@ import { GoogleConnectionPanel } from "./GoogleConnectionPanel";
 import { RezenConnectionPanel } from "./RezenConnectionPanel";
 import { MetaConnectionPanel } from "./MetaConnectionPanel";
 import { LinkedInConnectionPanel } from "./LinkedInConnectionPanel";
+import { GhlConnectionPanel } from "./GhlConnectionPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,12 @@ export default async function IntegrationsSettingsPage() {
 
   const account = await prisma.account.findUnique({
     where: { id: actor.accountId },
-    select: { settingsJson: true, googleOauthTokensEncrypted: true },
+    select: {
+      settingsJson: true,
+      googleOauthTokensEncrypted: true,
+      ghlApiKeyEncrypted: true,
+      ghlLocationId: true,
+    },
   });
   const settings = (account?.settingsJson ?? {}) as Record<string, unknown>;
   const hasGoogleBlob = !!account?.googleOauthTokensEncrypted;
@@ -60,6 +66,10 @@ export default async function IntegrationsSettingsPage() {
         <MetaConnectionPanel />
         <LinkedInConnectionPanel />
         <RezenConnectionPanel />
+        <GhlConnectionPanel
+          connected={!!account?.ghlApiKeyEncrypted}
+          locationId={account?.ghlLocationId ?? null}
+        />
         <IntegrationsForm
           activePhotoProvider={
             (settings.listingPhotoProvider as string) ?? "manual_upload"

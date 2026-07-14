@@ -25,6 +25,10 @@ model Account {
   businessName                    String   @map("business_name")
   ownerUserId                     String   @map("owner_user_id")
   followUpBossApiKeyEncrypted     String?  @map("follow_up_boss_api_key_encrypted")
+  /// GoHighLevel (LeadConnector) Private Integration token + location, for
+  /// pulling motivated-seller contact info onto investment deals. Encrypted.
+  ghlApiKeyEncrypted              String?  @map("ghl_api_key_encrypted")
+  ghlLocationId                   String?  @map("ghl_location_id")
   followUpBossSystemKeyEncrypted  String?  @map("follow_up_boss_system_key_encrypted")
   googleOauthTokensEncrypted      String?  @map("google_oauth_tokens_encrypted")
   /// Meta (Facebook + Instagram) OAuth payload — encrypted JSON
@@ -347,6 +351,9 @@ model Transaction {
   walkthroughDate        DateTime? @map("walkthrough_date")
   lenderName             String?   @map("lender_name")
   titleCompanyName       String?   @map("title_company_name")
+  /// Seller intel pulled from GHL (motivation, condition, timeline, all
+  /// phones/emails, lead tier). Rendered by the Seller Intel panel.
+  sellerIntelJson        Json?     @map("seller_intel_json")
   attorneyName           String?   @map("attorney_name")
   notesSummary           String?   @map("notes_summary")
   riskScore              Float     @default(0) @map("risk_score")

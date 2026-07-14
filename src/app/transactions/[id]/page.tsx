@@ -19,6 +19,7 @@ import { QuickTerminateButton } from "../QuickTerminateButton";
 import { ResyncButton } from "./ResyncButton";
 import { InspectionsPanel } from "./InspectionsPanel";
 import { NotesPanel } from "./NotesPanel";
+import { SellerIntelPanel, type SellerIntel as SellerIntelType } from "./SellerIntelPanel";
 import { DocumentLibraryPanel } from "./DocumentLibraryPanel";
 import { DealSynthesisPanel } from "./DealSynthesisPanel";
 import type { SynthesisSnapshot } from "@/services/core/DocumentSynthesisService";
@@ -1038,6 +1039,17 @@ export default async function TransactionDetailPage({
         initialUpdatedAt={txn.aiSummaryUpdatedAt?.toISOString() ?? null}
         aiBrief={aiBriefState}
       />
+
+      {/* Seller intel from GHL — investment deals only (investor / wholesale
+          / principal-represented), where a motivated-seller lead exists. */}
+      {(txn.transactionType === "investor" ||
+        txn.transactionType === "wholesale" ||
+        txn.asset?.representation === "principal") && (
+        <SellerIntelPanel
+          transactionId={txn.id}
+          intel={(txn.sellerIntelJson as unknown as SellerIntelType) ?? null}
+        />
+      )}
 
       <NotesPanel
         transactionId={txn.id}
