@@ -17,6 +17,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import { buildDatesProvenance } from "@/services/core/extractionProvenance";
 import {
   addBusinessDays,
   defaultWalkthroughForState,
@@ -194,6 +195,10 @@ export async function POST(
   if (sellerSignedAt) data.sellerSignedAt = sellerSignedAt;
 
   data.contractAppliedAt = new Date();
+  // Persist Atlas Trace provenance from the extraction BEFORE clearing the
+  // transient pending JSON, so the timeline badge survives the apply.
+  const prov = buildDatesProvenance(ext);
+  if (prov) data.datesProvenanceJson = prov;
   data.pendingContractJson = Prisma.DbNull;
 
   await prisma.transaction.update({ where: { id: txn.id }, data });

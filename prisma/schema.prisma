@@ -441,6 +441,10 @@ model Transaction {
   // Contract extraction: pending review + last applied timestamp
   pendingContractJson    Json?     @map("pending_contract_json")
   contractExtractedAt    DateTime? @map("contract_extracted_at")
+  /// Atlas Trace provenance: per date-field { snippet, confidence, source },
+  /// persisted from the extraction so the timeline can show a clickable
+  /// "where did this come from" badge long after pendingContractJson is cleared.
+  datesProvenanceJson    Json?     @map("dates_provenance_json")
   contractAppliedAt      DateTime? @map("contract_applied_at")
   /// Snapshot of the last DocumentSynthesisService run — merged
   /// timeline dates, contingency statuses, and what changed — so the

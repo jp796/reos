@@ -16,6 +16,7 @@ import {
   computeRelativeDeadlines,
 } from "@/services/ai/ContractExtractionService";
 import { env } from "@/lib/env";
+import { buildDatesProvenance } from "@/services/core/extractionProvenance";
 
 export interface RescanResult {
   noContract: boolean;
@@ -101,6 +102,12 @@ export async function rescanDeal(
     update[tf as string] = kind === "date" ? toDate(raw) : String(raw);
     datesFilled.push(String(tf));
   }
+  // Persist Atlas Trace provenance (per-date snippet + confidence) from this
+  // fresh read — survives after pendingContractJson is cleared, so the timeline
+  // badge works on every deal that's been re-synced.
+  const prov = buildDatesProvenance(ex);
+  if (prov) update.datesProvenanceJson = prov;
+
   if (Object.keys(update).length > 0) {
     await db.transaction.update({ where: { id: transactionId }, data: update });
   }
