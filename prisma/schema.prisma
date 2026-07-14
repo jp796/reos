@@ -87,6 +87,7 @@ model Account {
   drawSchedules             DrawSchedule[]
   capitalStackEntries       CapitalStackEntry[]
   pipelineIncomeItems       PipelineIncomeItem[]
+  flipAnalyses              FlipAnalysis[]
   sourceChannels            SourceChannel[]
   marketingSpends           MarketingSpend[]
   calendarEvents            CalendarEvent[]
@@ -447,6 +448,7 @@ model Transaction {
   automationAuditLogs AutomationAuditLog[]
   attributions        TransactionAttribution[]
   financials          TransactionFinancials?
+  flipAnalyses        FlipAnalysis[]
   forwardedDocuments  ForwardedDocument[]
   invoiceEntries      InvoiceEntry[]
   participants        TransactionParticipant[]
@@ -1529,6 +1531,28 @@ model PipelineIncomeItem {
 
   @@index([accountId])
   @@map("pipeline_income_items")
+}
+
+/// A saved Flip Evaluation Calculator run. The full input set is stored as
+/// JSON (inputsJson) so the analysis re-opens exactly as computed; outputs are
+/// recomputed from inputs by FlipCalcModel (never persisted stale). Optionally
+/// linked to a transaction so a deal carries its underwriting.
+model FlipAnalysis {
+  id            String   @id @default(cuid())
+  accountId     String   @map("account_id")
+  transactionId String?  @map("transaction_id")
+  label         String
+  inputsJson    Json     @map("inputs_json")
+  createdByUserId String? @map("created_by_user_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  account     Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  transaction Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  @@index([accountId])
+  @@index([transactionId])
+  @@map("flip_analyses")
 }
 
 /// Browser-issued Web Push subscription. One row per (user, device).

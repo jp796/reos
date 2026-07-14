@@ -15,6 +15,7 @@ import {
   KanbanSquare,
   TrendingUp,
   DollarSign,
+  Calculator,
   Filter,
   Megaphone,
   Mic,
@@ -66,6 +67,7 @@ const NAV_GROUPS: Array<{ label: string | null; items: NavItem[] }> = [
     label: "Automations",
     items: [
       { href: "/scan", label: "Scan", icon: Radar },
+      { href: "/flip-calculator", label: "Flip Calculator", icon: Calculator, investorOnly: true },
       { href: "/voice", label: "Voice intake", icon: Mic },
       { href: "/forms", label: "Forms", icon: FileSignature },
       { href: "/marketing", label: "Marketing", icon: Megaphone },
