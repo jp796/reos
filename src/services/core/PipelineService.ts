@@ -13,6 +13,8 @@
  */
 
 import type { PrismaClient } from "@prisma/client";
+import { economicsFromBag, headlineMetric } from "@/services/core/DealEconomicsService";
+import type { Strategy } from "@/services/core/DealClassifierService";
 
 export type IncomeStatus = "contracted" | "guess";
 export type IncomeSource = "auto" | "manual";
@@ -89,6 +91,29 @@ export function computeAutoIncome(fin: {
   return null;
 }
 
+/**
+ * Investor proceeds for a principal (investor) deal, straight from the asset's
+ * strategy economics — the same source the Production rollup uses. Only flip
+ * (projected profit) and wholesale (assignment fee) produce a lump-sum proceeds
+ * line; rentals/creative are ongoing cash flow, not a pipeline event, so they
+ * return null (JP can add those by hand). Returns null when there's no
+ * computable headline.
+ */
+export function investorIncomeFromAsset(
+  asset: { representation: string | null; strategy: string | null; economicsJson: unknown } | null,
+): { income: number; disposition: string } | null {
+  if (!asset || asset.representation !== "principal") return null;
+  const strat = asset.strategy;
+  if (strat !== "flip" && strat !== "wholesale") return null;
+  const econ = economicsFromBag(
+    strat as Strategy,
+    (asset.economicsJson as Record<string, unknown> | null) ?? null,
+  );
+  const income = headlineMetric(econ).value;
+  if (income == null || income === 0) return null;
+  return { income, disposition: strat === "flip" ? "Flip Sale" : "Wholesale" };
+}
+
 /** Roll up rows into the dashboard totals. */
 export function computeTotals(rows: PipelineRow[]): PipelineTotals {
   let grandTotal = 0;
@@ -144,6 +169,9 @@ export async function getPipeline(
             commissionPercent: true,
           },
         },
+        asset: {
+          select: { representation: true, strategy: true, economicsJson: true },
+        },
       },
     }),
   ]);
@@ -169,6 +197,28 @@ export async function getPipeline(
   const autoRows: PipelineRow[] = [];
   for (const d of deals) {
     if (covered.has(d.id)) continue; // a manual line overrides this deal
+
+    // Investor (principal) deals: proceeds come from the asset's strategy
+    // economics — flip profit / wholesale assignment fee. Checked first so an
+    // investor deal that also happens to carry commission fields still books
+    // as EPS proceeds, not brokerage commission.
+    const investor = investorIncomeFromAsset(d.asset);
+    if (investor) {
+      autoRows.push({
+        id: `auto:${d.id}`,
+        source: "auto",
+        business: "EPS",
+        property: d.propertyAddress ?? "(no address)",
+        disposition: investor.disposition,
+        expectedIncome: investor.income,
+        expectedDate: d.closingDate?.toISOString() ?? null,
+        status: statusForDeal(d.status),
+        note: null,
+        transactionId: d.id,
+      });
+      continue;
+    }
+
     const income = computeAutoIncome(d.financials);
     if (income == null) continue;
     autoRows.push({

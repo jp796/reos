@@ -5,6 +5,7 @@ import {
   statusForDeal,
   computeAutoIncome,
   computeTotals,
+  investorIncomeFromAsset,
   type PipelineRow,
 } from "./PipelineService";
 
@@ -46,6 +47,35 @@ describe("auto income from financials", () => {
     expect(computeAutoIncome({})).toBeNull();
     expect(computeAutoIncome({ salePrice: 400000 })).toBeNull(); // no rate
     expect(computeAutoIncome({ netCommission: 0, grossCommission: 0 })).toBeNull();
+  });
+});
+
+describe("investor proceeds from asset economics", () => {
+  test("flip → projected profit as EPS Flip Sale", () => {
+    const r = investorIncomeFromAsset({
+      representation: "principal",
+      strategy: "flip",
+      economicsJson: { purchasePrice: 100000, rehabBudget: 40000, salePrice: 220000, sellingCosts: 15000 },
+    });
+    // profit = 220000 - 15000 - (100000+40000) = 65000
+    expect(r).toEqual({ income: 65000, disposition: "Flip Sale" });
+  });
+
+  test("wholesale → assignment fee as EPS Wholesale", () => {
+    const r = investorIncomeFromAsset({
+      representation: "principal",
+      strategy: "wholesale",
+      economicsJson: { assignmentFee: 20000 },
+    });
+    expect(r).toEqual({ income: 20000, disposition: "Wholesale" });
+  });
+
+  test("rental / creative / non-principal / zero → null (no lump-sum proceeds)", () => {
+    expect(investorIncomeFromAsset({ representation: "principal", strategy: "rental_brrrr", economicsJson: { monthlyRent: 1800 } })).toBeNull();
+    expect(investorIncomeFromAsset({ representation: "principal", strategy: "creative", economicsJson: {} })).toBeNull();
+    expect(investorIncomeFromAsset({ representation: "client", strategy: "flip", economicsJson: { salePrice: 200000, purchasePrice: 100000 } })).toBeNull();
+    expect(investorIncomeFromAsset({ representation: "principal", strategy: "wholesale", economicsJson: { assignmentFee: 0 } })).toBeNull();
+    expect(investorIncomeFromAsset(null)).toBeNull();
   });
 });
 
