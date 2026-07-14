@@ -24,9 +24,24 @@ export async function POST(req: NextRequest) {
   if (actor instanceof NextResponse) return actor;
   if (actor.role !== "owner") return NextResponse.json({ error: "owner only" }, { status: 403 });
 
-  const body = (await req.json().catch(() => null)) as { transactionId?: string; write?: boolean } | null;
+  const body = (await req.json().catch(() => null)) as { transactionId?: string; write?: boolean; field?: string } | null;
   const transactionId = body?.transactionId;
   const write = body?.write === true;
+
+  // Debug read: has the deal's Atlas Trace provenance persisted? (no Gmail needed)
+  if (body?.field === "provenance" && transactionId) {
+    const t = await prisma.transaction.findUnique({
+      where: { id: transactionId },
+      select: { datesProvenanceJson: true, pendingContractJson: true, contractAppliedAt: true },
+    });
+    if (!t) return NextResponse.json({ error: "not found" }, { status: 404 });
+    return NextResponse.json({
+      ok: true,
+      datesProvenanceJson: t.datesProvenanceJson ?? null,
+      hasPending: !!t.pendingContractJson,
+      appliedAt: t.contractAppliedAt,
+    });
+  }
   if (!transactionId) return NextResponse.json({ error: "transactionId required" }, { status: 400 });
 
   const txn = await prisma.transaction.findUnique({
