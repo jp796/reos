@@ -239,12 +239,35 @@ async function handleForumMessage(
   rawText: string,
 ): Promise<void> {
   const fromId = msg.from?.id != null ? String(msg.from.id) : null;
-  const actorUser = fromId
+  let actorUser = fromId
     ? await prisma.user.findFirst({
         where: { telegramChatId: fromId },
         select: { id: true, accountId: true },
       })
     : null;
+
+  // Legacy fallback: a private chat's id equals the user's Telegram id, so an
+  // owner who linked via the shared env chat (TELEGRAM_CHAT_ID) is recognized
+  // in a group by matching from.id — no need to re-link personally first.
+  if (!actorUser && fromId) {
+    const envChat = (env.TELEGRAM_CHAT_ID ?? "").trim();
+    if (envChat && envChat !== "unset" && fromId === envChat) {
+      const allowedEmails = (process.env.AUTH_ALLOWED_EMAILS ?? "")
+        .split(",")
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean);
+      for (const email of allowedEmails) {
+        const u = await prisma.user.findFirst({
+          where: { email },
+          select: { id: true, accountId: true },
+        });
+        if (u?.accountId) {
+          actorUser = u;
+          break;
+        }
+      }
+    }
+  }
 
   // Bind this group as the account's deal space.
   if (/^\/(here|setspace)\b/i.test(rawText)) {
