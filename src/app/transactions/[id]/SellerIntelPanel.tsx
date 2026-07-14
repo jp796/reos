@@ -24,6 +24,7 @@ export interface SellerIntel {
   timelineToSell: string | null;
   leadTier: string | null;
   pulledAt: string;
+  matchedProperty?: boolean;
 }
 
 export function SellerIntelPanel({
@@ -94,6 +95,13 @@ export function SellerIntelPanel({
         </p>
       ) : (
         <div className="space-y-3 text-sm">
+          {intel.matchedProperty === false && (
+            <div className="rounded-md border border-amber-200 bg-amber-50/60 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300">
+              ⚠ Matched by <b>seller name only</b> — the GHL lead&apos;s property
+              {intel.propertyAddress ? ` (${intel.propertyAddress})` : ""} doesn&apos;t
+              match this deal. Verify this is the right seller before you call.
+            </div>
+          )}
           {intel.name && <div className="font-medium text-text">{intel.name}</div>}
 
           <div className="grid gap-3 sm:grid-cols-2">

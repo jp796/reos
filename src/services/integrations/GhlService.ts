@@ -56,6 +56,9 @@ export interface SellerIntel {
   timelineToSell: string | null;
   leadTier: string | null;
   pulledAt: string;
+  /** true = the GHL contact's property matched THIS deal (confident); false =
+   *  matched by seller name only, property differs → the UI flags it to verify. */
+  matchedProperty: boolean;
 }
 
 export class GhlService {
@@ -110,24 +113,31 @@ export class GhlService {
     const candidates = [...seen.values()];
     if (candidates.length === 0) return null;
 
-    const best = this.bestMatch(candidates, input.propertyAddress ?? null);
-    return best ? mapSellerIntel(best) : null;
+    const propMatch = this.propertyMatch(candidates, input.propertyAddress ?? null);
+    if (propMatch) return mapSellerIntel(propMatch, true);
+
+    // No property confirmation. Attaching among MULTIPLE same-name leads would
+    // guess wrong, so skip. A single candidate is the only person by that name
+    // — attach, but flag it name-only so the UI tells the user to verify.
+    if (candidates.length === 1) return mapSellerIntel(candidates[0]!, false);
+    return null;
   }
 
-  /** Prefer a candidate whose property custom field matches the deal address;
-   *  else the first. Keeps a wrong lead from attaching to the deal. */
-  private bestMatch(candidates: GhlContact[], address: string | null): GhlContact | null {
-    if (!address) return candidates[0] ?? null;
+  /** A candidate whose property custom field matches the deal address, if any. */
+  private propertyMatch(candidates: GhlContact[], address: string | null): GhlContact | null {
+    if (!address) return null;
     const key = normAddr(address);
-    const matched = candidates.find((c) => {
-      const cfAddr = normAddr(cfVal(c, CF.propertyAddress) ?? "");
-      const cfUid = normAddr(cfVal(c, CF.propertyUniqueId) ?? "");
-      return (
-        (cfAddr && (cfAddr.includes(key) || key.includes(cfAddr))) ||
-        (cfUid && (cfUid.includes(key) || key.includes(cfUid)))
-      );
-    });
-    return matched ?? candidates[0] ?? null;
+    if (!key) return null;
+    return (
+      candidates.find((c) => {
+        const cfAddr = normAddr(cfVal(c, CF.propertyAddress) ?? "");
+        const cfUid = normAddr(cfVal(c, CF.propertyUniqueId) ?? "");
+        return (
+          (cfAddr && (cfAddr.includes(key) || key.includes(cfAddr))) ||
+          (cfUid && (cfUid.includes(key) || key.includes(cfUid)))
+        );
+      }) ?? null
+    );
   }
 }
 
@@ -146,7 +156,7 @@ function cfVal(c: GhlContact, id: string): string | null {
   return typeof v === "string" && v.trim() ? v.trim() : null;
 }
 
-export function mapSellerIntel(c: GhlContact): SellerIntel {
+export function mapSellerIntel(c: GhlContact, matchedProperty = false): SellerIntel {
   const phones = uniq([
     c.phone ?? null,
     cfVal(c, CF.phone2),
@@ -171,6 +181,7 @@ export function mapSellerIntel(c: GhlContact): SellerIntel {
     propertyCondition: cfVal(c, CF.propertyCondition),
     timelineToSell: cfVal(c, CF.timelineToSell),
     leadTier: cfVal(c, CF.leadTier),
+    matchedProperty,
     // pulledAt stamped by the caller (Date is injected there to stay testable).
     pulledAt: "",
   };
