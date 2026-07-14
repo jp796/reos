@@ -111,10 +111,13 @@ export function NotesPanel({
     [rows],
   );
 
-  const mentionable = useMemo(
-    () => team.filter((t) => t.id !== currentUserId),
-    [team, currentUserId],
-  );
+  const mentionable = useMemo(() => {
+    // Teammates first, then a "@Me" chip so you can ping your own Telegram
+    // (an "it sent" confirmation + push-to-act).
+    const others = team.filter((t) => t.id !== currentUserId);
+    const self = team.find((t) => t.id === currentUserId);
+    return self ? [...others, self] : others;
+  }, [team, currentUserId]);
 
   /** Insert @FirstName at the cursor (or end) so posting notifies them. */
   function insertMention(u: { name: string | null; email: string }) {
@@ -238,10 +241,16 @@ export function NotesPanel({
                 key={u.id}
                 type="button"
                 onClick={() => insertMention(u)}
-                title={`Notify ${u.name ?? u.email} (Telegram + email)`}
+                title={
+                  u.id === currentUserId
+                    ? "Ping yourself on Telegram + email (an 'it sent' confirmation)"
+                    : `Notify ${u.name ?? u.email} (Telegram + email)`
+                }
                 className="rounded-full border border-border bg-surface px-2 py-0.5 text-[11px] font-medium text-brand-700 transition-colors hover:border-brand-400 hover:bg-brand-50 dark:hover:bg-brand-950/30"
               >
-                @{u.name?.split(/\s+/)[0] ?? u.email.split("@")[0]}
+                {u.id === currentUserId
+                  ? "@Me"
+                  : `@${u.name?.split(/\s+/)[0] ?? u.email.split("@")[0]}`}
               </button>
             ))}
           </div>
