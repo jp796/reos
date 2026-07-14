@@ -14,7 +14,7 @@ import { requireSession, assertSameAccount } from "@/lib/require-session";
 import { getEncryptionService } from "@/lib/encryption";
 import { GoogleOAuthService, DEFAULT_SCOPES } from "@/services/integrations/GoogleOAuthService";
 import { GmailService, EmailTransactionMatchingService } from "@/services/integrations/GmailService";
-import { diagnoseCoAgentFromEmails } from "@/services/automation/CoAgentEmailCapture";
+import { diagnoseCoAgentFromEmails, captureCoAgentFromEmails } from "@/services/automation/CoAgentEmailCapture";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -24,8 +24,9 @@ export async function POST(req: NextRequest) {
   if (actor instanceof NextResponse) return actor;
   if (actor.role !== "owner") return NextResponse.json({ error: "owner only" }, { status: 403 });
 
-  const body = (await req.json().catch(() => null)) as { transactionId?: string } | null;
+  const body = (await req.json().catch(() => null)) as { transactionId?: string; write?: boolean } | null;
   const transactionId = body?.transactionId;
+  const write = body?.write === true;
   if (!transactionId) return NextResponse.json({ error: "transactionId required" }, { status: 400 });
 
   const txn = await prisma.transaction.findUnique({
@@ -61,6 +62,10 @@ export async function POST(req: NextRequest) {
     new EmailTransactionMatchingService(),
   );
 
+  if (write) {
+    const captured = await captureCoAgentFromEmails(prisma, gmail, actor.accountId, transactionId);
+    return NextResponse.json({ ok: true, mode: "write", captured });
+  }
   const diag = await diagnoseCoAgentFromEmails(prisma, gmail, actor.accountId, transactionId);
   return NextResponse.json({ ok: true, ...diag });
 }
