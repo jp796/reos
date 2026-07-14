@@ -16,6 +16,7 @@ import {
   CreditCard,
   Bell,
   Shield,
+  Lock,
   ListChecks,
   FileText,
 } from "lucide-react";
@@ -27,9 +28,11 @@ interface Section {
   title: string;
   desc: string;
   icon: typeof Users;
+  /** Owner-only page (server-enforced). Shown grayed + locked to non-owners. */
+  ownerOnly?: boolean;
 }
 
-// Personal & workspace tools — available to any signed-in member.
+// Personal & workspace tools — available to any signed-in member (unless flagged).
 const PERSONAL: Section[] = [
   { href: "/settings/notifications", title: "Notifications", desc: "Web Push + the morning brief and deadline alerts", icon: Bell },
   { href: "/settings/templates", title: "Email templates", desc: "Canned messages with mail-merge variables", icon: Mail },
@@ -37,38 +40,64 @@ const PERSONAL: Section[] = [
   { href: "/settings/compliance-templates", title: "Compliance templates", desc: "Reusable + AI-generated document checklists per deal", icon: Shield },
   { href: "/settings/vendors", title: "Vendors", desc: "Title, lenders, inspectors — ranked by past deals", icon: Briefcase },
   { href: "/settings/intake", title: "Lead intake", desc: "Public form submissions — promote qualified leads", icon: Inbox },
-  { href: "/settings/integrations", title: "Integrations", desc: "MLS photo sources + social posters (Buffer, Direct, Cowork)", icon: Briefcase },
+  { href: "/settings/integrations", title: "Integrations", desc: "MLS photo sources + social posters (Buffer, Direct, Cowork)", icon: Briefcase, ownerOnly: true },
   { href: "/settings/summary-design", title: "Summary design", desc: "Brand the client transaction-summary PDF (logo, color, tagline)", icon: FileText },
   { href: "/settings/activity", title: "Activity", desc: "Recent changes across the workspace", icon: ScrollText },
 ];
 
-// Admin / account controls — owner-gated pages live here.
+// Admin / account controls — owner-gated pages (server-enforced via requireOwner).
 const ADMIN: Section[] = [
-  { href: "/settings/team", title: "Team", desc: "Members, roles, and invited emails", icon: Users },
-  { href: "/settings/brokerage", title: "Brokerage", desc: "Broker name, license, EIN — printed on every CDA", icon: Building2 },
-  { href: "/settings/billing", title: "Billing", desc: "Subscription tier, payment method, invoices", icon: CreditCard },
-  { href: "/settings/account", title: "Account", desc: "Subscription overview · delete this workspace", icon: Shield },
-  { href: "/settings/demo-data", title: "Demo data", desc: "Generate / wipe sample transactions — never affects analytics", icon: ScrollText },
+  { href: "/settings/team", title: "Team", desc: "Members, roles, and invited emails", icon: Users, ownerOnly: true },
+  { href: "/settings/brokerage", title: "Brokerage", desc: "Broker name, license, EIN — printed on every CDA", icon: Building2, ownerOnly: true },
+  { href: "/settings/billing", title: "Billing", desc: "Subscription tier, payment method, invoices", icon: CreditCard, ownerOnly: true },
+  { href: "/settings/account", title: "Account", desc: "Subscription overview · delete this workspace", icon: Shield, ownerOnly: true },
+  { href: "/settings/demo-data", title: "Demo data", desc: "Generate / wipe sample transactions — never affects analytics", icon: ScrollText, ownerOnly: true },
 ];
 
-function SectionGrid({ sections }: { sections: Section[] }) {
+function SectionGrid({ sections, isOwner }: { sections: Section[]; isOwner: boolean }) {
   return (
     <div className="mt-3 grid gap-3 sm:grid-cols-2">
-      {sections.map((s) => (
-        <Link
-          key={s.href}
-          href={s.href}
-          className="flex items-start gap-3 rounded-lg border border-border bg-surface p-4 transition-colors hover:border-brand-500"
-        >
-          <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-brand-50 text-brand-700">
-            <s.icon className="h-4 w-4" strokeWidth={1.8} />
-          </div>
-          <div>
-            <div className="font-medium text-text">{s.title}</div>
-            <div className="mt-0.5 text-xs text-text-muted">{s.desc}</div>
-          </div>
-        </Link>
-      ))}
+      {sections.map((s) => {
+        const locked = s.ownerOnly && !isOwner;
+        if (locked) {
+          return (
+            <div
+              key={s.href}
+              title="Owner only — ask your workspace owner for access."
+              aria-disabled="true"
+              className="flex cursor-not-allowed items-start gap-3 rounded-lg border border-border bg-surface p-4 opacity-55"
+            >
+              <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-surface-2 text-text-subtle">
+                <Lock className="h-4 w-4" strokeWidth={1.8} />
+              </div>
+              <div>
+                <div className="flex items-center gap-1.5 font-medium text-text-muted">
+                  {s.title}
+                  <span className="rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-text-subtle">
+                    Owner only
+                  </span>
+                </div>
+                <div className="mt-0.5 text-xs text-text-subtle">{s.desc}</div>
+              </div>
+            </div>
+          );
+        }
+        return (
+          <Link
+            key={s.href}
+            href={s.href}
+            className="flex items-start gap-3 rounded-lg border border-border bg-surface p-4 transition-colors hover:border-brand-500"
+          >
+            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-brand-50 text-brand-700">
+              <s.icon className="h-4 w-4" strokeWidth={1.8} />
+            </div>
+            <div>
+              <div className="font-medium text-text">{s.title}</div>
+              <div className="mt-0.5 text-xs text-text-muted">{s.desc}</div>
+            </div>
+          </Link>
+        );
+      })}
     </div>
   );
 }
@@ -76,6 +105,8 @@ function SectionGrid({ sections }: { sections: Section[] }) {
 export default async function SettingsIndexPage() {
   const actor = await requireSession();
   if (actor instanceof Response) redirect("/login");
+
+  const isOwner = actor.role === "owner";
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -89,15 +120,19 @@ export default async function SettingsIndexPage() {
         <h2 className="text-xs font-semibold uppercase tracking-wide text-text-subtle">
           Personal &amp; workspace
         </h2>
-        <SectionGrid sections={PERSONAL} />
+        <SectionGrid sections={PERSONAL} isOwner={isOwner} />
       </section>
 
-      <section className="mt-8">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-text-subtle">
-          Admin
-        </h2>
-        <SectionGrid sections={ADMIN} />
-      </section>
+      {/* Account controls are owner-only (server-enforced). Non-owners don't
+          see the section at all — nothing here they can open. */}
+      {isOwner && (
+        <section className="mt-8">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-text-subtle">
+            Admin
+          </h2>
+          <SectionGrid sections={ADMIN} isOwner={isOwner} />
+        </section>
+      )}
     </div>
   );
 }
