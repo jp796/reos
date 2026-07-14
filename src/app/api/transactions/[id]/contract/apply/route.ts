@@ -198,7 +198,7 @@ export async function POST(
   // Persist Atlas Trace provenance from the extraction BEFORE clearing the
   // transient pending JSON, so the timeline badge survives the apply.
   const prov = buildDatesProvenance(ext);
-  if (prov) data.datesProvenanceJson = prov;
+  if (prov) data.datesProvenanceJson = prov as unknown as Prisma.InputJsonValue;
   data.pendingContractJson = Prisma.DbNull;
 
   await prisma.transaction.update({ where: { id: txn.id }, data });
