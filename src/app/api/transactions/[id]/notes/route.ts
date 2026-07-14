@@ -12,10 +12,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { env } from "@/lib/env";
 import { requireSession } from "@/lib/require-session";
 import { logError } from "@/lib/log";
 import { TelegramService } from "@/services/integrations/TelegramService";
+import { sendAccountGmail } from "@/services/integrations/GmailSendService";
 
 export const runtime = "nodejs";
 
@@ -263,8 +263,8 @@ async function sendShareListNotification(
 }
 
 /** Send a plain-text email from the account's connected Gmail to `recipients`.
- *  Shared by the share-list fan-out and @mention notifications. No-ops when
- *  Gmail isn't connected or OAuth env is missing. */
+ *  Shared by the share-list fan-out and @mention notifications. Thin wrapper
+ *  over the shared GmailSendService so the reminder cron reuses the same path. */
 async function sendGmailFromActor(
   accountId: string,
   actor: { email: string },
@@ -272,47 +272,5 @@ async function sendGmailFromActor(
   subject: string,
   text: string,
 ): Promise<void> {
-  if (recipients.length === 0) return;
-  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.GOOGLE_REDIRECT_URI) return;
-  const account = await prisma.account.findUnique({
-    where: { id: accountId },
-    select: { googleOauthTokensEncrypted: true },
-  });
-  if (!account?.googleOauthTokensEncrypted) return;
-
-  const { GoogleOAuthService, DEFAULT_SCOPES } = await import(
-    "@/services/integrations/GoogleOAuthService"
-  );
-  const { getEncryptionService } = await import("@/lib/encryption");
-  const { google } = await import("googleapis");
-
-  const oauth = new GoogleOAuthService(
-    {
-      clientId: env.GOOGLE_CLIENT_ID,
-      clientSecret: env.GOOGLE_CLIENT_SECRET,
-      redirectUri: env.GOOGLE_REDIRECT_URI,
-      scopes: DEFAULT_SCOPES,
-    },
-    prisma,
-    getEncryptionService(),
-  );
-  const auth = await oauth.createAuthenticatedClient(accountId);
-  const gmail = google.gmail({ version: "v1", auth });
-
-  const lines = [
-    `From: ${actor.email}`,
-    `To: ${recipients.join(", ")}`,
-    `Subject: ${subject}`,
-    `Content-Type: text/plain; charset=UTF-8`,
-    ``,
-    text,
-  ].join("\r\n");
-
-  const raw = Buffer.from(lines)
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-
-  await gmail.users.messages.send({ userId: "me", requestBody: { raw } });
+  await sendAccountGmail({ accountId, fromEmail: actor.email, recipients, subject, text });
 }

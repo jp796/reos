@@ -709,6 +709,9 @@ model Task {
   assignedTo    String?   @map("assigned_to")
   priority      String    @default("normal") // low, normal, high, urgent
   syncStatus    String    @default("pending") @map("sync_status") // pending, synced, failed
+  /// Due-date reminder windows already dispatched (e.g. ["d3","d1","d0"]),
+  /// so the daily reminder cron never double-pings a task in the same window.
+  remindersSentJson Json?  @map("reminders_sent_json")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 

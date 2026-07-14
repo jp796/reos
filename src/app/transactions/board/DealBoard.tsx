@@ -12,6 +12,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ChevronDown, Check, LayoutGrid, List } from "lucide-react";
+import { useToast } from "@/app/ToastProvider";
 
 export interface BoardRow {
   id: string;
@@ -58,6 +59,7 @@ function fmtDate(iso: string | null) {
 export function DealBoard({ initial }: { initial: BoardRow[] }) {
   const [rows, setRows] = useState<BoardRow[]>(initial);
   const [openId, setOpenId] = useState<string | null>(null);
+  const toast = useToast();
 
   async function changeStatus(id: string, next: string) {
     setOpenId(null);
@@ -73,7 +75,17 @@ export function DealBoard({ initial }: { initial: BoardRow[] }) {
             : { status: next },
         ),
       });
-      if (!res.ok) setRows(prev);
+      if (!res.ok) {
+        setRows(prev);
+        return;
+      }
+      const data = (await res.json().catch(() => null)) as { windDownCreated?: number } | null;
+      if (data?.windDownCreated && data.windDownCreated > 0) {
+        toast.success(
+          "Wind-down checklist created",
+          `${data.windDownCreated} holding-cost cancellation task(s) added — stop payment, utilities, insurance, recurring bills.`,
+        );
+      }
     } catch {
       setRows(prev);
     }

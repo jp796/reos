@@ -704,6 +704,18 @@ export async function runMorningTick(
     logError(e, { route: "MorningTick.webpush" });
   }
 
+  /* ============================================================
+   * Step 4.5 — Task due-date reminders (per team member: Telegram +
+   * email). Separate dispatch from the global brief because these go
+   * to each teammate, not just the owner's chat.
+   * ============================================================ */
+  try {
+    const { runTaskReminders } = await import("./TaskReminderService");
+    await runTaskReminders(db);
+  } catch (e) {
+    logError(e, { route: "MorningTick.taskReminders" });
+  }
+
   return {
     startedAt: startedAt.toISOString(),
     finishedAt: new Date().toISOString(),

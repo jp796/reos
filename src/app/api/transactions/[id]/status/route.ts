@@ -15,6 +15,10 @@ import { requireSession, assertSameAccount } from "@/lib/require-session";
 import { AutomationAuditService } from "@/services/integrations/FollowUpBossService";
 import { parseInputDate } from "@/lib/dates";
 import { logWorkflowEvent } from "@/lib/instrumentation";
+import {
+  qualifiesForWindDown,
+  createWindDownChecklist,
+} from "@/services/core/InvestorWindDownService";
 
 const STATUSES = new Set(["active", "pending", "closed", "dead", "terminated"]);
 
@@ -59,6 +63,33 @@ export async function PATCH(
   }
 
   await prisma.transaction.update({ where: { id }, data });
+
+  // Investor wind-down: when an investor/wholesale deal goes Pending past its
+  // inspection deadline, auto-create the holding-cost cancellation checklist
+  // (stop payment, cancel utilities/insurance/recurring bills). Idempotent.
+  let windDownCreated = 0;
+  try {
+    const representation = txn.assetId
+      ? (await prisma.asset.findUnique({ where: { id: txn.assetId }, select: { representation: true } }))?.representation ?? null
+      : null;
+    if (
+      qualifiesForWindDown({
+        newStatus: body.status,
+        prevStatus: txn.status,
+        transactionType: txn.transactionType,
+        representation,
+        inspectionDate: txn.inspectionDate,
+        inspectionObjectionDate: txn.inspectionObjectionDate,
+      })
+    ) {
+      const r = await createWindDownChecklist(prisma, id, {
+        closingDate: data.closingDate instanceof Date ? data.closingDate : txn.closingDate,
+      });
+      windDownCreated = r.created;
+    }
+  } catch {
+    /* never block the status change on the wind-down checklist */
+  }
 
   // Golden-workflow instrumentation (§15) — no PII, best-effort. Fire ONLY
   // on the transition INTO a terminal status; re-saving an already-closed
@@ -114,5 +145,5 @@ export async function PATCH(
     // never block the status change on audit failure
   }
 
-  return NextResponse.json({ ok: true, milestonesAutoCompleted });
+  return NextResponse.json({ ok: true, milestonesAutoCompleted, windDownCreated });
 }
