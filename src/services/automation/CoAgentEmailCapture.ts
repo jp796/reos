@@ -27,31 +27,50 @@ function parseFrom(from: string): { name: string | null; email: string | null } 
 }
 const domainOf = (email: string) => email.split("@")[1]?.toLowerCase() ?? "";
 
-/** Decode the plain-text body of a message (walks multipart, prefers text/plain). */
+/** Strip HTML to readable text so signatures in HTML-only emails are legible. */
+function stripHtml(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|tr|li|h[1-6])>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/** Decode a message body — prefers text/plain, falls back to HTML (stripped),
+ *  so signatures in HTML-only emails are readable. */
 function bodyText(msg: gmail_v1.Schema$Message): string {
-  const out: string[] = [];
+  const plain: string[] = [];
+  const html: string[] = [];
+  const decode = (data: string) => {
+    try {
+      return Buffer.from(data, "base64url").toString("utf8");
+    } catch {
+      return "";
+    }
+  };
   const walk = (parts?: gmail_v1.Schema$MessagePart[]) => {
     if (!parts) return;
     for (const p of parts) {
-      if (p.mimeType === "text/plain" && p.body?.data) {
-        try {
-          out.push(Buffer.from(p.body.data, "base64url").toString("utf8"));
-        } catch {
-          /* ignore */
-        }
-      }
+      if (p.mimeType === "text/plain" && p.body?.data) plain.push(decode(p.body.data));
+      else if (p.mimeType === "text/html" && p.body?.data) html.push(stripHtml(decode(p.body.data)));
       if (p.parts) walk(p.parts);
     }
   };
   if (msg.payload?.body?.data) {
-    try {
-      out.push(Buffer.from(msg.payload.body.data, "base64url").toString("utf8"));
-    } catch {
-      /* ignore */
-    }
+    const raw = decode(msg.payload.body.data);
+    if ((msg.payload.mimeType ?? "").includes("html")) html.push(stripHtml(raw));
+    else plain.push(raw);
   }
   walk(msg.payload?.parts);
-  return out.join("\n");
+  const joinedPlain = plain.join("\n").trim();
+  return joinedPlain.length > 40 ? joinedPlain : html.join("\n").trim();
 }
 
 export interface CoAgentResult {
@@ -215,14 +234,23 @@ async function gatherCandidates(
     /* return what we have */
   }
 
-  const freq = new Map<string, { count: number; msg: gmail_v1.Schema$Message; name: string | null }>();
+  const freq = new Map<string, { count: number; msg: gmail_v1.Schema$Message; name: string | null; bodyLen: number }>();
   for (const t of threads) {
     for (const msg of t.messages ?? []) {
       const from = parseFrom(header(msg, "from"));
       if (!from.email || excludeEmails.has(from.email) || ourDomains.has(domainOf(from.email))) continue;
+      const len = bodyText(msg).length;
       const cur = freq.get(from.email);
-      if (cur) cur.count++;
-      else freq.set(from.email, { count: 1, msg, name: from.name });
+      if (cur) {
+        cur.count++;
+        // Keep the meatiest message — most likely to carry a full signature.
+        if (len > cur.bodyLen) {
+          cur.msg = msg;
+          cur.bodyLen = len;
+        }
+      } else {
+        freq.set(from.email, { count: 1, msg, name: from.name, bodyLen: len });
+      }
     }
   }
   const candidates = [...freq.entries()].sort((a, b) => b[1].count - a[1].count).slice(0, 3);
