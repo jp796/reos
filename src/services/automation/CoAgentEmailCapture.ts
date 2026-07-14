@@ -173,7 +173,7 @@ async function gatherCandidates(
       titleCompanyEmail: true,
       lenderEmail: true,
       contact: { select: { primaryEmail: true } },
-      participants: { select: { contact: { select: { primaryEmail: true } } } },
+      participants: { select: { role: true, contact: { select: { primaryEmail: true } } } },
       account: {
         select: {
           brokerageProfile: { select: { agentEmailDomains: true } },
@@ -184,12 +184,17 @@ async function gatherCandidates(
   });
   if (!txn) return empty;
 
+  // Exclude only the CLIENT side (co-buyer/co-seller), title, lender, and our
+  // team — NOT agent participants. The other agent is often already on the deal
+  // as a participant; excluding them would throw out the person we're after.
   const excludeEmails = new Set<string>(
     [
       txn.contact?.primaryEmail ?? null,
       txn.titleCompanyEmail,
       txn.lenderEmail,
-      ...txn.participants.map((p) => p.contact?.primaryEmail ?? null),
+      ...txn.participants
+        .filter((p) => p.role === "co_buyer" || p.role === "co_seller")
+        .map((p) => p.contact?.primaryEmail ?? null),
       ...txn.account.users.map((u) => u.email),
     ]
       .filter((e): e is string => !!e)
