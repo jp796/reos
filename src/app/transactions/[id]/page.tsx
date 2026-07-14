@@ -1039,7 +1039,11 @@ export default async function TransactionDetailPage({
         aiBrief={aiBriefState}
       />
 
-      <NotesPanel transactionId={txn.id} currentUserId={actor.userId} />
+      <NotesPanel
+        transactionId={txn.id}
+        currentUserId={actor.userId}
+        team={team.map((t) => ({ id: t.id, name: t.name, email: t.email }))}
+      />
 
       {/* Tabbed workspace */}
       <DealWorkspaceTabs

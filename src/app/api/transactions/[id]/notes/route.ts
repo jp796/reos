@@ -15,6 +15,7 @@ import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { requireSession } from "@/lib/require-session";
 import { logError } from "@/lib/log";
+import { TelegramService } from "@/services/integrations/TelegramService";
 
 export const runtime = "nodejs";
 
@@ -123,6 +124,19 @@ export async function POST(
       }
     }
 
+    // Team chat: @mentions always notify the mentioned teammate directly —
+    // Telegram (instant) + email — so the conversation on the deal replaces
+    // scattered Google Chat. Best-effort; never blocks the post.
+    try {
+      await notifyMentions(actor.accountId, id, body.body, actor);
+    } catch (e) {
+      logError(e, {
+        route: "POST /api/transactions/[id]/notes#mentions",
+        accountId: actor.accountId,
+        transactionId: id,
+      });
+    }
+
     return NextResponse.json({ ok: true, note });
   } catch (e) {
     logError(e, {
@@ -134,6 +148,76 @@ export async function POST(
       { error: e instanceof Error ? e.message : "create failed" },
       { status: 500 },
     );
+  }
+}
+
+/**
+ * Parse @mentions from a note and notify each mentioned teammate directly.
+ * A mention matches a team member by "@FirstName", "@Full Name", or
+ * "@email-local-part". The author never notifies themselves. Each mentioned
+ * teammate gets an instant Telegram ping (if linked) + an email — so the deal
+ * thread is a real team chat, not scattered across Google Chat.
+ */
+async function notifyMentions(
+  accountId: string,
+  transactionId: string,
+  noteBody: string,
+  actor: { userId: string; name: string | null; email: string },
+): Promise<void> {
+  // No @ at all → nothing to do (keeps the common case free).
+  if (!noteBody.includes("@")) return;
+
+  const team = await prisma.user.findMany({
+    where: { accountId, id: { not: actor.userId } },
+    select: { id: true, name: true, email: true, telegramChatId: true },
+  });
+  if (team.length === 0) return;
+
+  const lower = noteBody.toLowerCase();
+  const mentioned = team.filter((u) => {
+    const tokens = new Set<string>();
+    if (u.name) {
+      tokens.add(u.name.toLowerCase());
+      const first = u.name.split(/\s+/)[0]?.toLowerCase();
+      if (first) tokens.add(first);
+    }
+    const local = u.email.split("@")[0]?.toLowerCase();
+    if (local) tokens.add(local);
+    return [...tokens].some((t) => t && lower.includes(`@${t}`));
+  });
+  if (mentioned.length === 0) return;
+
+  const txn = await prisma.transaction.findUnique({
+    where: { id: transactionId },
+    select: { propertyAddress: true },
+  });
+  const property = txn?.propertyAddress ?? "a deal";
+  const fromName = actor.name ?? actor.email;
+  const dealUrl = `https://www.myrealestateos.com/transactions/${transactionId}`;
+  const text = `${fromName} mentioned you on ${property}:\n\n${noteBody}\n\n${dealUrl}`;
+
+  // Telegram — instant, per-user. Best-effort per recipient.
+  if (TelegramService.isConfigured()) {
+    const tg = new TelegramService();
+    await Promise.all(
+      mentioned
+        .filter((u) => u.telegramChatId)
+        .map((u) =>
+          tg.sendMessage(text, { chatId: u.telegramChatId! }).catch(() => {}),
+        ),
+    );
+  }
+
+  // Email — to the mentioned teammates, via the account's connected Gmail.
+  const emails = mentioned.map((u) => u.email).filter(Boolean);
+  if (emails.length > 0) {
+    await sendGmailFromActor(
+      accountId,
+      actor,
+      emails,
+      `You were mentioned: ${property}`,
+      text,
+    ).catch(() => {});
   }
 }
 
@@ -172,12 +256,29 @@ async function sendShareListNotification(
   });
   const property = txn?.propertyAddress ?? "transaction";
 
-  if (
-    !env.GOOGLE_CLIENT_ID ||
-    !env.GOOGLE_CLIENT_SECRET ||
-    !env.GOOGLE_REDIRECT_URI
-  )
-    return;
+  const subject = `Note: ${property}`;
+  const fromName = actor.name ?? actor.email;
+  const text = `${fromName} added a note on ${property}:\n\n${noteBody}\n\n— Sent from REOS`;
+  await sendGmailFromActor(accountId, actor, shareList, subject, text);
+}
+
+/** Send a plain-text email from the account's connected Gmail to `recipients`.
+ *  Shared by the share-list fan-out and @mention notifications. No-ops when
+ *  Gmail isn't connected or OAuth env is missing. */
+async function sendGmailFromActor(
+  accountId: string,
+  actor: { email: string },
+  recipients: string[],
+  subject: string,
+  text: string,
+): Promise<void> {
+  if (recipients.length === 0) return;
+  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.GOOGLE_REDIRECT_URI) return;
+  const account = await prisma.account.findUnique({
+    where: { id: accountId },
+    select: { googleOauthTokensEncrypted: true },
+  });
+  if (!account?.googleOauthTokensEncrypted) return;
 
   const { GoogleOAuthService, DEFAULT_SCOPES } = await import(
     "@/services/integrations/GoogleOAuthService"
@@ -198,13 +299,9 @@ async function sendShareListNotification(
   const auth = await oauth.createAuthenticatedClient(accountId);
   const gmail = google.gmail({ version: "v1", auth });
 
-  const subject = `Note: ${property}`;
-  const fromName = actor.name ?? actor.email;
-  const text = `${fromName} added a note on ${property}:\n\n${noteBody}\n\n— Sent from REOS`;
-
   const lines = [
     `From: ${actor.email}`,
-    `To: ${shareList.join(", ")}`,
+    `To: ${recipients.join(", ")}`,
     `Subject: ${subject}`,
     `Content-Type: text/plain; charset=UTF-8`,
     ``,
@@ -217,8 +314,5 @@ async function sendShareListNotification(
     .replace(/\//g, "_")
     .replace(/=+$/, "");
 
-  await gmail.users.messages.send({
-    userId: "me",
-    requestBody: { raw },
-  });
+  await gmail.users.messages.send({ userId: "me", requestBody: { raw } });
 }

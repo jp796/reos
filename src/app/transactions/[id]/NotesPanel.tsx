@@ -42,12 +42,28 @@ interface NoteRow {
   read: boolean;
 }
 
+/** Render a note body with @mentions highlighted in ink blue. */
+function renderWithMentions(body: string) {
+  return body.split(/(@[\w.]+)/g).map((part, i) =>
+    /^@[\w.]+$/.test(part) ? (
+      <span key={i} className="font-medium text-brand-700">
+        {part}
+      </span>
+    ) : (
+      <span key={i}>{part}</span>
+    ),
+  );
+}
+
 export function NotesPanel({
   transactionId,
   currentUserId,
+  team = [],
 }: {
   transactionId: string;
   currentUserId: string;
+  /** Teammates who can be @mentioned (excludes the current user). */
+  team?: Array<{ id: string; name: string | null; email: string }>;
 }) {
   const toast = useToast();
   const [rows, setRows] = useState<NoteRow[] | null>(null);
@@ -94,6 +110,26 @@ export function NotesPanel({
     () => (rows ? rows.filter((r) => !r.read).length : 0),
     [rows],
   );
+
+  const mentionable = useMemo(
+    () => team.filter((t) => t.id !== currentUserId),
+    [team, currentUserId],
+  );
+
+  /** Insert @FirstName at the cursor (or end) so posting notifies them. */
+  function insertMention(u: { name: string | null; email: string }) {
+    const handle = "@" + (u.name?.split(/\s+/)[0] ?? u.email.split("@")[0]);
+    const el = draftRef.current;
+    setDraft((prev) => {
+      if (!el) return `${prev}${prev && !prev.endsWith(" ") ? " " : ""}${handle} `;
+      const start = el.selectionStart ?? prev.length;
+      const before = prev.slice(0, start);
+      const after = prev.slice(start);
+      const sep = before && !before.endsWith(" ") ? " " : "";
+      return `${before}${sep}${handle} ${after}`;
+    });
+    requestAnimationFrame(() => el?.focus());
+  }
 
   async function add() {
     const body = draft.trim();
@@ -191,9 +227,25 @@ export function NotesPanel({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           rows={3}
-          placeholder="Add a note… (e.g. 'EM check arrived 5/8, deposited 5/9')"
+          placeholder="Add a note or message the team… @mention to notify"
           className="w-full resize-y rounded border border-border bg-surface px-2 py-1.5 text-sm text-text placeholder:text-text-subtle focus:border-brand-500 focus:outline-none"
         />
+        {mentionable.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] text-text-subtle">Mention:</span>
+            {mentionable.map((u) => (
+              <button
+                key={u.id}
+                type="button"
+                onClick={() => insertMention(u)}
+                title={`Notify ${u.name ?? u.email} (Telegram + email)`}
+                className="rounded-full border border-border bg-surface px-2 py-0.5 text-[11px] font-medium text-brand-700 transition-colors hover:border-brand-400 hover:bg-brand-50 dark:hover:bg-brand-950/30"
+              >
+                @{u.name?.split(/\s+/)[0] ?? u.email.split("@")[0]}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
           <label className="inline-flex items-center gap-1.5 text-xs text-text-muted">
             <input
@@ -284,7 +336,7 @@ export function NotesPanel({
                   )}
                 </div>
                 <p className="mt-2 whitespace-pre-wrap text-sm text-text">
-                  {r.body}
+                  {renderWithMentions(r.body)}
                 </p>
               </li>
             );
