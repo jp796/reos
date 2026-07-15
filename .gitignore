@@ -44,3 +44,4 @@ prisma/dev.db*
 
 # Extraction regression fixtures — real contract PII, never commit
 test/fixtures/contracts/
+cleanup-reports/

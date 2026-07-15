@@ -147,6 +147,11 @@ async function pullGmail(accountId: string, txnId: string): Promise<StepResult> 
     if (ing.attached > 0 || ing.fieldsEnriched > 0) {
       ingestNote = ` Attached ${ing.attached} new doc(s)${ing.fieldsEnriched ? `, filled ${ing.fieldsEnriched} contact field(s)` : ""}.`;
     }
+    if (ing.flaggedForReview > 0) {
+      // A buyer/seller who's on more than one active deal sent attachments —
+      // we didn't guess which deal. Tell the user so they can attach manually.
+      ingestNote += ` ${ing.flaggedForReview} attachment(s) from a party on multiple deals need manual review.`;
+    }
   } catch (e) {
     void e; // never block the sync on doc ingest
   }
