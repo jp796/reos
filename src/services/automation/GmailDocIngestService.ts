@@ -6,10 +6,16 @@
  *
  * The old flow only pulled the newest contract PDF from the SmartFolder and
  * dropped everything else — title commitments, disclosures, addenda, closing
- * docs from the title company and the other agent, who rarely put the address
- * in the subject. This finds those by KNOWN SENDER + address, attaches each
- * attachment exactly once (dedup on Document.sourceRef), and updates the deal's
- * title/co-op fields when a title-company or co-op-agent email is seen.
+ * docs from the title company and the other agent.
+ *
+ * Attach precision (a wrong doc on a deal is worse than a missing one): a
+ * document auto-attaches ONLY when the deal's address is in the message OR the
+ * user filed the thread into the deal's folder. A sender-email-only match no
+ * longer attaches — title companies / co-agents work many deals, so their
+ * emails about other properties must not dump the wrong docs here. Real
+ * documents only (pdf/docx; images are signature junk), deduped on
+ * Document.sourceRef AND on (deal, filename). Sender-only messages still
+ * enrich the deal's title/co-op fields.
  */
 
 import type { PrismaClient } from "@prisma/client";
@@ -21,7 +27,10 @@ import { enrichFlatDealContacts } from "@/services/core/DealContactEnrichmentSer
 
 const MAX_THREADS = 40;
 const MAX_ATTACH = 60;
-const DOC_EXT = /\.(pdf|docx?|jpe?g|png|tiff?)$/i;
+// Real transaction documents only. Images (png/jpg/tiff) are almost always
+// email-signature logos/inline graphics, never contract docs — ingesting them
+// is what buried deals under 100+ "icon.png"/"logo.jpeg" junk files.
+const DOC_EXT = /\.(pdf|docx?)$/i;
 
 export interface IngestResult {
   scannedThreads: number;
@@ -106,6 +115,10 @@ export async function ingestDealDocs(
   const q = `has:attachment newer_than:180d${orParts.length ? ` (${orParts.join(" OR ")})` : ""}`;
 
   const threadSets: gmail_v1.Schema$Thread[] = [];
+  // Threads the user actually filed into the deal's REOS folder are trusted:
+  // foldering is an explicit "this belongs to this deal" signal, so their
+  // attachments may auto-attach even without an address in the body.
+  const foldered = new Set<string>();
   try {
     const { threads } = await gmail.searchThreadsPaged({ q, maxTotal: MAX_THREADS });
     threadSets.push(...threads);
@@ -119,6 +132,7 @@ export async function ingestDealDocs(
         labelIds: [txn.smartFolderLabelId],
         maxTotal: MAX_THREADS,
       });
+      for (const t of threads) if (t.id) foldered.add(t.id);
       threadSets.push(...threads);
     } catch {
       /* ignore */
@@ -143,12 +157,20 @@ export async function ingestDealDocs(
       const snippet = msg.snippet ?? "";
 
       // Confirm the message really belongs to THIS deal (a broad from:/address
-      // query can catch strays). Sender-email or address match is enough.
+      // query can catch strays).
       const match = scoreEmailAgainstDeal(
         { fromEmail: from.email, subject, bodyText: snippet },
         candidate,
       );
       if (!match) continue;
+
+      // ATTACH gate: only auto-attach when the deal's ADDRESS is in the message
+      // OR the user filed the thread into the deal's folder. A sender-email-only
+      // match is NOT enough — title companies and co-agents work many deals, so
+      // their emails about OTHER properties would otherwise dump the wrong docs
+      // here. (Sender-only messages still enrich title/co-op fields below.)
+      const trustedForAttach =
+        match.signal === "address" || (thread.id ? foldered.has(thread.id) : false);
 
       // Title-company enrichment from the sender.
       if (from.email && !txn.titleCompanyEmail && !enrich.titleCompanyEmail) {
@@ -165,6 +187,10 @@ export async function ingestDealDocs(
         }
       }
 
+      // Sender-only match → don't attach its documents (could be another deal),
+      // but we've already run the field enrichment above.
+      if (!trustedForAttach) continue;
+
       let atts;
       try {
         atts = await gmail.getMessageAttachments(msg.id);
@@ -178,6 +204,16 @@ export async function ingestDealDocs(
 
         const existing = await db.document.findUnique({ where: { sourceRef }, select: { id: true } });
         if (existing) {
+          result.skippedExisting++;
+          continue;
+        }
+        // Same file, already on this deal from another message (an offer PDF
+        // re-sent across replies/forwards) — attach it once, not per message.
+        const dupName = await db.document.findFirst({
+          where: { transactionId: txn.id, fileName: a.filename },
+          select: { id: true },
+        });
+        if (dupName) {
           result.skippedExisting++;
           continue;
         }
