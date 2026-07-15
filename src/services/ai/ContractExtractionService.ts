@@ -36,6 +36,7 @@ export type ExtractStreamEvent =
       value: unknown;
       confidence: number | null;
       snippet: string | null;
+      page: number | null;
       source: "text" | "vision" | "computed";
     }
   | { type: "done"; extraction: ContractExtraction & { _path: string } }
@@ -506,7 +507,7 @@ export class ContractExtractionService {
       field: unknown,
       source: "text" | "vision" | "computed",
     ) => {
-      const f = (field ?? {}) as { value?: unknown; confidence?: unknown; snippet?: unknown };
+      const f = (field ?? {}) as { value?: unknown; confidence?: unknown; snippet?: unknown; page?: unknown };
       if (f.value === null || f.value === undefined || f.value === "") return;
       emit({
         type: "field",
@@ -514,6 +515,7 @@ export class ContractExtractionService {
         value: f.value,
         confidence: typeof f.confidence === "number" ? f.confidence : null,
         snippet: typeof f.snippet === "string" ? f.snippet : null,
+        page: typeof f.page === "number" && Number.isFinite(f.page) && f.page >= 1 ? Math.round(f.page) : null,
         source,
       });
     };

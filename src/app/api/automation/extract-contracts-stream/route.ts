@@ -10,7 +10,7 @@
  * Event stream (each line: `data: <json>\n\n`):
  *   { type: "doc", name, index, total }        — starting a document
  *   { type: "status", message }                — progress narration
- *   { type: "field", key, value, source }      — a field was read
+ *   { type: "field", key, value, confidence, snippet, page, source }  — a field was read
  *   { type: "done", extraction }               — one document finished
  *   { type: "merged", extraction, missingCritical } — final merged result
  *   { type: "error", message }

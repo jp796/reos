@@ -1,18 +1,32 @@
 "use client";
 
 /**
- * LiveExtractionView — the split-screen "watch it read" experience.
- * Left: the document being read in real time. Right: the deal builds in
- * THREE visible phases that stream in sequence, like watching Claude work
- *   1. Deal terms   2. Contingency framework   3. Task list
- * The task list is the REAL AI-generated list (streamed from the engine),
- * not a static date map. The screen does not advance to review until all
- * three phases have streamed in (the `done` event).
+ * LiveExtractionView — the cinematic "watch Atlas read" experience (Atlas
+ * Trace §3). Left: the document being read in real time. Right: the deal
+ * builds in THREE visible phases (deal terms → contingencies → task list).
+ *
+ * The cinematic layer (§3): field events stream from the extraction engine in
+ * bursts, but we PACE them one fact at a time through a small queue so each
+ * source→result transformation reads as a discrete, causal step. Every fact
+ * lands with a motion beat (value transfer → settle) and leaves a persistent
+ * provenance badge — the exact clause + confidence + page Atlas read. This is
+ * "first ingestion" intensity; the badge survives after all motion ends.
+ *
+ * Reduced motion: facts commit immediately (no pacing/animation) and the
+ * provenance persists either way, so those users get equivalent information.
  */
 
 import { useEffect, useRef, useState } from "react";
+import { ProvenanceBadge } from "@/components/atlas-trace/ProvenanceBadge";
 
-type Field = { value: unknown; source: "text" | "vision" | "computed" };
+type Field = {
+  value: unknown;
+  source: "text" | "vision" | "computed";
+  confidence: number | null;
+  snippet: string | null;
+  page: number | null;
+};
+type FieldEvent = { key: string } & Field;
 type Contingency = { name: string; status: string; description?: string };
 type Task = {
   title: string;
@@ -53,6 +67,7 @@ const DISPLAY: Array<{ key: string; label: string; kind: "date" | "money" | "pct
   { key: "sellerSideCommissionPct", label: "Seller commission", kind: "pct" },
   { key: "buyerSideCommissionPct", label: "Buyer commission", kind: "pct" },
 ];
+const DISPLAY_KEYS = new Set(DISPLAY.map((d) => d.key));
 
 const STANDARD = [
   "inspection", "financing", "appraisal", "title", "insurance", "walkthrough",
@@ -65,6 +80,9 @@ const PRIORITY_TONE: Record<string, string> = {
   normal: "text-text-muted",
   low: "text-text-subtle",
 };
+
+/** ms per fact — brisk but readable; the whole point is to watch it land. */
+const PER_FACT_MS = 460;
 
 function fmt(kind: string, value: unknown): string {
   if (value == null || value === "") return "";
@@ -82,16 +100,25 @@ function fmtDate(iso: unknown): string {
     : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+function prefersReducedMotion(): boolean {
+  return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
 type Phase = "reading" | "tasks" | "done";
 
 export function LiveExtractionView({ files, side, strategy, onComplete, onError }: Props) {
   const [log, setLog] = useState<Array<{ text: string; kind: "doc" | "status" | "found" }>>([]);
   const [fields, setFields] = useState<Record<string, Field>>({});
+  const [activeKey, setActiveKey] = useState<string | null>(null);
   const [contingencies, setContingencies] = useState<Contingency[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [phase, setPhase] = useState<Phase>("reading");
+  const [pending, setPending] = useState(0); // facts queued but not yet revealed (for the Skip control)
   const logEndRef = useRef<HTMLDivElement>(null);
   const startedRef = useRef(false);
+  // Cinematic queue controls (refs so the SSE closure stays stable).
+  const flushAllRef = useRef<(() => void) | null>(null);
+  const skipRef = useRef(false);
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -101,6 +128,91 @@ export function LiveExtractionView({ files, side, strategy, onComplete, onError 
     if (startedRef.current) return;
     startedRef.current = true;
     const controller = new AbortController();
+
+    // ---- cinematic committer -------------------------------------------
+    const queue: FieldEvent[] = [];
+    const committed = new Set<string>();
+    let pumping = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let donePayload: { extraction: Record<string, unknown>; missingCritical: string[]; tasks: Task[] } | null = null;
+
+    const syncPending = () => setPending(queue.length);
+
+    const commit = (ev: FieldEvent) => {
+      committed.add(ev.key);
+      setFields((f) => ({
+        ...f,
+        [ev.key]: { value: ev.value, source: ev.source, confidence: ev.confidence, snippet: ev.snippet, page: ev.page },
+      }));
+      const dd = DISPLAY.find((d) => d.key === ev.key);
+      if (dd) {
+        const snip =
+          typeof ev.snippet === "string" && ev.snippet.trim()
+            ? ` — "${ev.snippet.trim().slice(0, 64)}"`
+            : "";
+        setLog((l) => [...l, { text: `✓ ${dd.label}: ${fmt(dd.kind, ev.value)}${snip}`, kind: "found" }]);
+      }
+    };
+
+    const maybeFinish = () => {
+      if (donePayload && queue.length === 0 && !pumping) {
+        const p = donePayload;
+        donePayload = null;
+        setPhase("done");
+        onComplete(p.extraction, p.missingCritical, p.tasks);
+      }
+    };
+
+    const pump = () => {
+      if (pumping) return;
+      const next = queue.shift();
+      syncPending();
+      if (!next) {
+        maybeFinish();
+        return;
+      }
+      if (skipRef.current || prefersReducedMotion()) {
+        commit(next);
+        pump();
+        return;
+      }
+      pumping = true;
+      setActiveKey(next.key);
+      commit(next);
+      timer = setTimeout(() => {
+        setActiveKey(null);
+        pumping = false;
+        pump();
+      }, PER_FACT_MS);
+    };
+
+    const flushAll = () => {
+      if (timer) { clearTimeout(timer); timer = null; }
+      pumping = false;
+      setActiveKey(null);
+      while (queue.length) commit(queue.shift()!);
+      syncPending();
+      maybeFinish();
+    };
+    flushAllRef.current = flushAll;
+
+    const ingestField = (ev: FieldEvent) => {
+      if (committed.has(ev.key)) {
+        // Already revealed — quietly update in place (e.g. a vision pass
+        // supersedes the text read). No re-animation.
+        setFields((f) => ({
+          ...f,
+          [ev.key]: { value: ev.value, source: ev.source, confidence: ev.confidence, snippet: ev.snippet, page: ev.page },
+        }));
+        return;
+      }
+      const i = queue.findIndex((q) => q.key === ev.key);
+      if (i >= 0) queue[i] = ev;
+      else queue.push(ev);
+      syncPending();
+      pump();
+    };
+    // --------------------------------------------------------------------
 
     (async () => {
       try {
@@ -168,22 +280,20 @@ export function LiveExtractionView({ files, side, strategy, onComplete, onError 
           }
           return;
         }
-        setFields((f) => ({ ...f, [key]: { value: ev.value, source: ev.source as Field["source"] } }));
-        // Brain-transparency: show WHAT was read + WHERE (the source text).
-        const dd = DISPLAY.find((d) => d.key === key);
-        if (dd && ev.value != null && ev.value !== "") {
-          const snip =
-            typeof ev.snippet === "string" && ev.snippet.trim()
-              ? ` — "${ev.snippet.trim().slice(0, 64)}"`
-              : "";
-          setLog((l) => [
-            ...l,
-            { text: `✓ ${dd.label}: ${fmt(dd.kind, ev.value)}${snip}`, kind: "found" },
-          ]);
-        }
+        // Only the fields we surface on the deal panel get the cinematic reveal.
+        if (!DISPLAY_KEYS.has(key)) return;
+        if (ev.value == null || ev.value === "") return;
+        ingestField({
+          key,
+          value: ev.value,
+          source: (ev.source as Field["source"]) ?? "text",
+          confidence: typeof ev.confidence === "number" ? ev.confidence : null,
+          snippet: typeof ev.snippet === "string" ? ev.snippet : null,
+          page: typeof ev.page === "number" ? ev.page : null,
+        });
       } else if (type === "merged") {
         // Terms + contingencies done — move to phase 3 (tasks), don't leave.
-        setPhase("tasks");
+        setPhase((p) => (p === "done" ? p : "tasks"));
       } else if (type === "task") {
         const t = ev.task as Task;
         if (t?.title) {
@@ -191,23 +301,29 @@ export function LiveExtractionView({ files, side, strategy, onComplete, onError 
           setLog((l) => [...l, { text: `＋ Task: ${t.title}`, kind: "found" }]);
         }
       } else if (type === "done") {
-        setPhase("done");
-        onComplete(
-          ev.extraction as Record<string, unknown>,
-          (ev.missingCritical as string[]) ?? [],
-          (ev.tasks as Task[]) ?? [],
-        );
+        // Hold the advance until the cinematic queue has fully drained, so we
+        // never cut the reveal short.
+        donePayload = {
+          extraction: ev.extraction as Record<string, unknown>,
+          missingCritical: (ev.missingCritical as string[]) ?? [],
+          tasks: (ev.tasks as Task[]) ?? [],
+        };
+        maybeFinish();
       } else if (type === "error") {
         onError(String(ev.message));
       }
     }
 
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      if (timer) clearTimeout(timer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const isCustom = (name: string) => !STANDARD.some((s) => name.toLowerCase().includes(s));
   const filledCount = DISPLAY.filter((d) => fields[d.key]?.value != null).length;
+  const showSkip = phase !== "done" && pending > 0 && !prefersReducedMotion();
 
   const steps: Array<{ label: string; state: "done" | "active" | "pending" }> = [
     { label: "Deal terms", state: phase === "reading" ? "active" : "done" },
@@ -238,6 +354,11 @@ export function LiveExtractionView({ files, side, strategy, onComplete, onError 
         ))}
       </div>
 
+      {/* Live-region announcement for the most recent committed fact (a11y). */}
+      <span className="sr-only" role="status" aria-live="polite">
+        {activeKey ? `Read ${DISPLAY.find((d) => d.key === activeKey)?.label ?? activeKey}` : ""}
+      </span>
+
       <div className="grid gap-4 md:grid-cols-2">
         {/* LEFT — reading the document */}
         <div className="rounded-lg border border-border bg-surface-2/40 p-4">
@@ -248,21 +369,24 @@ export function LiveExtractionView({ files, side, strategy, onComplete, onError 
             </h3>
           </div>
           <div className="max-h-[30rem] space-y-1 overflow-y-auto font-mono text-xs leading-relaxed">
-            {log.map((l, i) => (
-              <div
-                key={i}
-                className={
-                  l.kind === "doc"
-                    ? "mt-2 font-semibold text-text"
-                    : l.kind === "found"
-                      ? "text-emerald-600 dark:text-emerald-400"
-                      : "text-text-muted"
-                }
-              >
-                {l.kind === "doc" ? "📄 " : "   "}
-                {l.text}
-              </div>
-            ))}
+            {log.map((l, i) => {
+              const isLastFound = l.kind === "found" && i === log.length - 1 && activeKey != null;
+              return (
+                <div
+                  key={i}
+                  className={`${
+                    l.kind === "doc"
+                      ? "mt-2 font-semibold text-text"
+                      : l.kind === "found"
+                        ? "rounded px-1 text-emerald-600 dark:text-emerald-400"
+                        : "text-text-muted"
+                  } ${isLastFound ? "atlas-highlight" : ""}`}
+                >
+                  {l.kind === "doc" ? "📄 " : "   "}
+                  {l.text}
+                </div>
+              );
+            })}
             <div ref={logEndRef} />
           </div>
         </div>
@@ -273,32 +397,56 @@ export function LiveExtractionView({ files, side, strategy, onComplete, onError 
           <div>
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-sm font-medium">Deal terms</h3>
-              <span className="text-xs text-text-muted">{filledCount} fields</span>
+              <span className="flex items-center gap-2 text-xs text-text-muted">
+                {showSkip && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      skipRef.current = true;
+                      flushAllRef.current?.();
+                    }}
+                    className="rounded border border-border px-1.5 py-0.5 text-[10px] font-medium text-text-muted transition-colors hover:border-brand-300 hover:text-brand-700"
+                  >
+                    Show all now
+                  </button>
+                )}
+                {filledCount} fields
+              </span>
             </div>
             <div className="space-y-1">
               {DISPLAY.map((d) => {
                 const f = fields[d.key];
                 const has = f?.value != null && f.value !== "";
+                const isActive = activeKey === d.key;
                 return (
                   <div
                     key={d.key}
-                    className={`flex items-center justify-between gap-3 rounded px-2 py-1 text-sm transition-colors ${
+                    className={`rounded px-2 py-1 text-sm transition-colors ${
                       has ? "bg-emerald-50 dark:bg-emerald-950/30" : ""
-                    }`}
+                    } ${isActive ? "atlas-settle" : ""}`}
                   >
-                    <span className="text-text-muted">{d.label}</span>
-                    <span className="flex items-center gap-1.5 text-right font-medium">
-                      {has ? (
-                        <>
-                          {fmt(d.kind, f.value)}
-                          {f.source === "computed" && (
-                            <span className="rounded bg-accent-100 px-1 text-[10px] text-accent-600">derived</span>
-                          )}
-                        </>
-                      ) : (
-                        <span className="text-text-subtle/40">·····</span>
-                      )}
-                    </span>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-text-muted">{d.label}</span>
+                      <span className={`flex items-center gap-1.5 text-right font-medium ${isActive ? "atlas-transfer" : ""}`}>
+                        {has ? (
+                          <>
+                            {fmt(d.kind, f.value)}
+                            {f.source === "computed" && (
+                              <span className="rounded bg-accent-100 px-1 text-[10px] text-accent-600">derived</span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-text-subtle/40">·····</span>
+                        )}
+                      </span>
+                    </div>
+                    {has && (f.snippet || f.confidence != null) && (
+                      <div className="atlas-provenance mt-1 flex justify-end">
+                        <ProvenanceBadge
+                          prov={{ snippet: f.snippet, confidence: f.confidence, source: f.source, page: f.page }}
+                        />
+                      </div>
+                    )}
                   </div>
                 );
               })}

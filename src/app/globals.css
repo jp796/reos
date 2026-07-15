@@ -206,3 +206,44 @@
     outline-offset: 2px;
   }
 }
+
+/* ==========================================================================
+ * ATLAS TRACE — cinematic motion grammar (§3 rollout, ported from prototype
+ * lib/trace.css). Wet-ink movement across an organized file: a value lands
+ * from the reading, settles, and leaves a persistent provenance badge. Every
+ * animation is disabled under prefers-reduced-motion so provenance persists
+ * without motion. The single trace color is REOS ink blue (brand-500).
+ * ========================================================================== */
+@keyframes atlas-value-transfer {
+  0% { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  60% { opacity: 1; }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes atlas-destination-settle {
+  0% { box-shadow: 0 0 0 0 rgb(37 99 235 / 0); background-color: rgb(37 99 235 / 0.12); }
+  100% { box-shadow: 0 0 0 0 rgb(37 99 235 / 0); background-color: transparent; }
+}
+@keyframes atlas-provenance-appear {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes atlas-source-highlight {
+  0% { background-color: rgb(37 99 235 / 0.18); }
+  100% { background-color: transparent; }
+}
+.atlas-transfer { animation: atlas-value-transfer 400ms cubic-bezier(0.22,0.61,0.36,1) both; }
+.atlas-settle { animation: atlas-destination-settle 600ms ease-out forwards; }
+.atlas-provenance { animation: atlas-provenance-appear 150ms ease-out both; }
+.atlas-highlight { animation: atlas-source-highlight 700ms cubic-bezier(0.22,0.61,0.36,1) forwards; }
+
+/* Reduced motion: no flying values, no settle wash — just the final,
+   fully-provenanced state, shown immediately. Provenance persists either way. */
+@media (prefers-reduced-motion: reduce) {
+  .atlas-transfer,
+  .atlas-settle,
+  .atlas-provenance,
+  .atlas-highlight {
+    animation: none !important;
+  }
+  .atlas-transfer { opacity: 1 !important; transform: none !important; }
+}
