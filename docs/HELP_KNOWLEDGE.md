@@ -309,6 +309,18 @@ payments / balloon — and computes the metrics live (profit + ROI + days-to-fli
 cap rate + DSCR + cash flow, spread, etc.). Save to feed the deal into the
 unified Production P&L. (Endpoint: PATCH /api/assets/[id]/economics.)
 
+### Flip Analysis on a deal (4 exit scenarios)
+A deal can carry a full **Flip Analysis** — the four-exit evaluation (Fix & Flip,
+Wholetail, DSCR Rental, Owner Finance) with rehab estimator and comps→ARV, the
+same math as the standalone Flip Calculator. The deal page shows a **Flip Analysis**
+card: offer, ARV, rehab, projected profit, max-offer-for-$50k / 70%-LTV /
+break-even, plus each exit's headline with the best exit highlighted. "Open
+calculator" edits it. Analyses are stored per deal (FlipAnalysis, GET/POST
+/api/flip-analysis?transactionId=) and can be imported from JP's "Flip Calculator
+and Comparisons" workbook (matched to existing deals by address). A flip deal's
+saved analysis feeds the **$ Pipeline** — its Fix&Flip projected profit becomes the
+deal's expected income, with the max offer shown in the row note.
+
 ### Production — investment P&L
 The /production Revenue type panel now shows Investment P&L alongside Agency GCI:
 the summed headline metric (flip profit, wholesale spread, rental/creative cash
