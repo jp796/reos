@@ -94,6 +94,34 @@ function resolveFirmSideFromBrokerages(
   return null;
 }
 
+/** §4b — trust only the shape we render (never persist arbitrary client JSON).
+ *  Keeps {key,label,original,superseding} with scalar-only side fields. */
+function sanitizeConflicts(
+  raw: Array<Record<string, unknown>> | null | undefined,
+): Prisma.InputJsonValue | null {
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const side = (v: unknown) => {
+    const o = (v ?? {}) as Record<string, unknown>;
+    return {
+      value: o.value ?? null,
+      snippet: typeof o.snippet === "string" ? o.snippet.slice(0, 300) : null,
+      page: typeof o.page === "number" ? o.page : null,
+      confidence: typeof o.confidence === "number" ? o.confidence : null,
+      effectiveDate: typeof o.effectiveDate === "string" ? o.effectiveDate : null,
+    };
+  };
+  const out = raw
+    .filter((c) => c && typeof c === "object" && typeof c.key === "string")
+    .slice(0, 20)
+    .map((c) => ({
+      key: String(c.key).slice(0, 60),
+      label: typeof c.label === "string" ? c.label.slice(0, 60) : String(c.key),
+      original: side(c.original),
+      superseding: side(c.superseding),
+    }));
+  return out.length > 0 ? (out as unknown as Prisma.InputJsonValue) : null;
+}
+
 interface Body {
   address?: string;
   /** Which side the user represents ("buy" | "sell"); from the wizard
@@ -130,6 +158,8 @@ interface Body {
   titleCompany?: string | null;
   lenderName?: string | null;
   contractStage?: string | null;
+  /** §4b — addendum reconciliations (a later doc changed these terms). */
+  conflicts?: Array<Record<string, unknown>> | null;
   threadId?: string | null;
   // ── Investor-module signals (spec §5). Optional — the retail Gmail
   // scan never sends these, so a scanned contract classifies as
@@ -325,6 +355,8 @@ export async function POST(req: NextRequest) {
     },
   });
 
+  const datesConflictsJson = sanitizeConflicts(body.conflicts);
+
   const txn = await prisma.transaction.create({
     data: {
       accountId: account.id,
@@ -349,6 +381,7 @@ export async function POST(req: NextRequest) {
       lenderName: body.lenderName?.slice(0, 120) ?? null,
       contractStage: stage,
       contractAppliedAt: new Date(),
+      ...(datesConflictsJson ? { datesConflictsJson } : {}),
       // Default-assign to the creating user so "My queue" populates
       // from day 1. Leave null if this was auto-created by a cron.
       assignedUserId: actingUserId,

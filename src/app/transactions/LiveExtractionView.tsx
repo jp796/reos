@@ -45,6 +45,7 @@ interface Props {
     extraction: Record<string, unknown>,
     missingCritical: string[],
     tasks: Task[],
+    conflicts: Conflict[],
   ) => void;
   onError: (message: string) => void;
 }
@@ -144,7 +145,7 @@ export function LiveExtractionView({ files, side, strategy, onComplete, onError 
     const committed = new Set<string>();
     let pumping = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
-    let donePayload: { extraction: Record<string, unknown>; missingCritical: string[]; tasks: Task[] } | null = null;
+    let donePayload: { extraction: Record<string, unknown>; missingCritical: string[]; tasks: Task[]; conflicts: Conflict[] } | null = null;
 
     const syncPending = () => setPending(queue.length);
 
@@ -169,7 +170,7 @@ export function LiveExtractionView({ files, side, strategy, onComplete, onError 
         const p = donePayload;
         donePayload = null;
         setPhase("done");
-        onComplete(p.extraction, p.missingCritical, p.tasks);
+        onComplete(p.extraction, p.missingCritical, p.tasks, p.conflicts);
       }
     };
 
@@ -329,7 +330,13 @@ export function LiveExtractionView({ files, side, strategy, onComplete, onError 
           extraction: ev.extraction as Record<string, unknown>,
           missingCritical: (ev.missingCritical as string[]) ?? [],
           tasks: (ev.tasks as Task[]) ?? [],
+          conflicts: (ev.conflicts as Conflict[]) ?? [],
         };
+        // Ensure the reconciliation panel shows even if the 'conflict' event
+        // was missed (e.g. reduced-motion instant drain races the merge).
+        if (Array.isArray(ev.conflicts) && (ev.conflicts as Conflict[]).length > 0) {
+          setConflicts(ev.conflicts as Conflict[]);
+        }
         maybeFinish();
       } else if (type === "error") {
         onError(String(ev.message));

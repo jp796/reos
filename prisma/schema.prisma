@@ -445,6 +445,10 @@ model Transaction {
   /// persisted from the extraction so the timeline can show a clickable
   /// "where did this come from" badge long after pendingContractJson is cleared.
   datesProvenanceJson    Json?     @map("dates_provenance_json")
+  /// §4b — material terms a later document (addendum/counter) changed, as
+  /// [{key,label,original,superseding}], so the timeline can show a
+  /// "was X → now Y, amended" chip on the affected milestone.
+  datesConflictsJson     Json?     @map("dates_conflicts_json")
   contractAppliedAt      DateTime? @map("contract_applied_at")
   /// Snapshot of the last DocumentSynthesisService run — merged
   /// timeline dates, contingency statuses, and what changed — so the

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { DropZone } from "@/app/components/DropZone";
 import { LiveExtractionView } from "./LiveExtractionView";
+import { type Conflict } from "@/components/atlas-trace/ConflictComparison";
 import { MoneyInput } from "@/app/components/MoneyInput";
 import { toDateInputValue } from "@/lib/dates";
 
@@ -119,6 +120,7 @@ export function ManualContractUploadPanel() {
   const [extraction, setExtraction] = useState<Extraction | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [missingCritical, setMissingCritical] = useState<string[]>([]);
+  const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [pendingNames, setPendingNames] = useState<string[]>([]);
   const [liveFiles, setLiveFiles] = useState<File[] | null>(null);
 
@@ -165,8 +167,14 @@ export function ManualContractUploadPanel() {
     setLiveFiles(files);
   }
 
-  function onLiveComplete(rawEx: Record<string, unknown>, missing: string[]) {
+  function onLiveComplete(
+    rawEx: Record<string, unknown>,
+    missing: string[],
+    _tasks: unknown[],
+    conflictsFound: Conflict[],
+  ) {
     setMissingCritical(missing);
+    setConflicts(conflictsFound ?? []);
     applyExtraction(rawEx as Extraction);
     setLiveFiles(null);
   }
@@ -208,6 +216,9 @@ export function ManualContractUploadPanel() {
           // Footer-derived firm sides — lets the server find our own
           // brokerage and set the correct representation side.
           brokerages: extraction?.brokerages?.value ?? null,
+          // §4b — carry the addendum reconciliations so the timeline can show
+          // "was X → now Y, amended" on the affected milestone.
+          conflicts: conflicts.length > 0 ? conflicts : undefined,
         }),
       });
       const data = await res.json();

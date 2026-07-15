@@ -8,6 +8,31 @@ import {
   extractionFieldForMilestone,
   provenanceFromExtraction,
 } from "@/components/atlas-trace/ProvenanceBadge";
+import { ConflictInline, type Conflict } from "@/components/atlas-trace/ConflictComparison";
+
+/** §4b — find a persisted reconciliation for a milestone's extraction field. */
+function conflictForMilestone(conflicts: unknown, key: string): Conflict | null {
+  if (!Array.isArray(conflicts)) return null;
+  const c = conflicts.find(
+    (x) => x && typeof x === "object" && (x as { key?: unknown }).key === key,
+  );
+  return (c as Conflict) ?? null;
+}
+
+/** Format a reconciled value the way its field reads (date vs money vs text). */
+function fmtConflictValue(key: string, value: unknown): string {
+  if (value == null || value === "") return "—";
+  if (/Price|Amount/.test(key) && !Number.isNaN(Number(value))) {
+    return `$${Number(value).toLocaleString()}`;
+  }
+  if (/Date|Deadline/.test(key) && typeof value === "string") {
+    const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T12:00:00` : value);
+    if (!Number.isNaN(d.getTime())) {
+      return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    }
+  }
+  return String(value);
+}
 
 interface Milestone {
   id: string;
@@ -39,6 +64,9 @@ interface Props {
   /** Stored contract extraction (Transaction.pendingContractJson) — drives the
    *  Atlas Trace provenance badge on each extracted date. */
   extraction?: unknown;
+  /** §4b — persisted addendum reconciliations (Transaction.datesConflictsJson);
+   *  drives the "was X → now Y, amended" chip on the affected milestone. */
+  conflicts?: unknown;
   /**
    * Slot for inline panels (e.g. InspectionsPanel) that should
    * appear INSIDE the Timeline section so they're visually part of
@@ -458,8 +486,20 @@ export function TransactionTimeline(props: Props) {
                         </span>
                         {(() => {
                           const key = extractionFieldForMilestone(m.type, m.label);
-                          const prov = key ? provenanceFromExtraction(props.extraction, key) : null;
-                          return prov ? <ProvenanceBadge prov={prov} /> : null;
+                          if (!key) return null;
+                          const prov = provenanceFromExtraction(props.extraction, key);
+                          const conflict = conflictForMilestone(props.conflicts, key);
+                          return (
+                            <>
+                              {prov ? <ProvenanceBadge prov={prov} /> : null}
+                              {conflict ? (
+                                <ConflictInline
+                                  conflict={conflict}
+                                  format={(v) => fmtConflictValue(key, v)}
+                                />
+                              ) : null}
+                            </>
+                          );
                         })()}
                       </div>
                       <div className="mt-0.5 text-xs text-text-muted">

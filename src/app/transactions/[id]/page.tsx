@@ -413,6 +413,7 @@ export default async function TransactionDetailPage({
         effectiveDate={txn.contractDate?.toISOString() ?? null}
         closingDate={txn.closingDate?.toISOString() ?? null}
         extraction={txn.datesProvenanceJson ?? txn.pendingContractJson ?? null}
+        conflicts={txn.datesConflictsJson ?? null}
       >
         <InspectionsPanel
           transactionId={txn.id}

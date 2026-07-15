@@ -25,6 +25,7 @@ import {
 import { MoneyInput } from "@/app/components/MoneyInput";
 import { AtlasWelcome } from "./AtlasWelcome";
 import { LiveExtractionView } from "../LiveExtractionView";
+import { type Conflict } from "@/components/atlas-trace/ConflictComparison";
 import { toDateInputValue } from "@/lib/dates";
 
 type Side = "buyer" | "listing" | "both" | "investor";
@@ -144,6 +145,7 @@ export function NewTransactionWizard() {
   const [reading, setReading] = useState(false);
   const [aiTasks, setAiTasks] = useState<unknown[]>([]);
   const [missingCritical, setMissingCritical] = useState<string[]>([]);
+  const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [extraction, setExtraction] = useState<Extraction | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -222,12 +224,14 @@ export function NewTransactionWizard() {
     rawEx: Record<string, unknown>,
     missing: string[],
     tasks: unknown[],
+    conflictsFound: Conflict[],
   ) {
     const ex = rawEx as Extraction;
     setExtraction(ex);
     hydrateForm(ex);
     setMissingCritical(missing);
     setAiTasks(Array.isArray(tasks) ? tasks : []);
+    setConflicts(conflictsFound ?? []);
     setReading(false);
     setStep("review");
   }
@@ -275,6 +279,8 @@ export function NewTransactionWizard() {
         lenderName: form.lenderName.trim() || null,
         contractStage: extraction?.contractStage?.value ?? null,
       };
+      // §4b — carry addendum reconciliations onto the new deal's timeline.
+      if (conflicts.length > 0) body.conflicts = conflicts;
       // Investor side → strategy classifier signals route to the
       // investor module (Asset + strategy stages).
       if (side === "investor") Object.assign(body, investorSignals(strategy));
