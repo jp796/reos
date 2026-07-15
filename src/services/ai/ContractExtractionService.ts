@@ -54,6 +54,9 @@ export interface ContractExtractionField<T = string> {
   confidence: number;
   /** Short snippet from the contract showing the source of this value */
   snippet: string | null;
+  /** 1-based page the value was read from, when the model can attribute it
+   *  (from page markers in the text pass, or the image index in vision). */
+  page?: number | null;
 }
 
 /**
@@ -242,7 +245,7 @@ compensation agreement rider. Extract fields per the JSON schema.
 
 GENERAL RULES
 1. Return JSON matching the schema exactly. No prose outside JSON.
-2. For every field: { "value": ..., "confidence": 0..1, "snippet": "<=160 chars from source" }.
+2. For every field: { "value": ..., "confidence": 0..1, "snippet": "<=160 chars from source", "page": <1-based page the value appears on, or null> }. In the document text below, pages are separated by lines like "[[PAGE 3]]" — report the number of the [[PAGE n]] marker immediately preceding the value's snippet. If no markers are present or you cannot tell, use null for page.
 3. If a field is missing or not applicable, return { "value": null, "confidence": 0, "snippet": null }.
 4. Never invent values. If a deadline is computed (e.g. "5 business days after acceptance"),
    show the math in the snippet and only fill value if the effective date is known.
@@ -441,7 +444,7 @@ export class ContractExtractionService {
   async extract(
     buffer: Buffer,
   ): Promise<ContractExtraction & { _path: "text" | "vision" | "merged" }> {
-    const text = await new DocumentExtractionService().extractText(buffer);
+    const text = annotatePages(await new DocumentExtractionService().extractText(buffer));
     if (!text) {
       const v = await this.extractWithVision(buffer);
       return { ...computeRelativeDeadlines(v), _path: "vision" };
@@ -522,7 +525,7 @@ export class ContractExtractionService {
     };
 
     emit({ type: "status", message: "Opening the document…" });
-    const text = await new DocumentExtractionService().extractText(buffer);
+    const text = annotatePages(await new DocumentExtractionService().extractText(buffer));
 
     let textExtraction: ContractExtraction | null = null;
     if (text) {
@@ -627,7 +630,7 @@ export class ContractExtractionService {
             content: [
               {
                 type: "text",
-                text: `This is a signed contract PDF rendered as ${pngBuffers.length} images (pages 1..${pngBuffers.length}). Extract the fields per the schema below. Filled form values may appear as handwritten-style overlays over the underlying template. Read the OVERLAID values (what's filled in), not the template labels.
+                text: `This is a signed contract PDF rendered as ${pngBuffers.length} images (pages 1..${pngBuffers.length}). Extract the fields per the schema below. Filled form values may appear as handwritten-style overlays over the underlying template. Read the OVERLAID values (what's filled in), not the template labels. For each field, set "page" to the 1-based page image number (1..${pngBuffers.length}) where you saw the value, or null if unsure.
 
 Return JSON matching this schema:
 ${SCHEMA_HINT}`,
@@ -720,7 +723,7 @@ ${SCHEMA_HINT}`,
             content: [
               {
                 type: "text",
-                text: `This is a signed contract PDF rendered as ${pngBuffers.length} images (pages 1..${pngBuffers.length}). Extract the fields per the schema below. Filled form values may appear as handwritten-style overlays over the underlying template. Read the OVERLAID values (what's filled in), not the template labels.
+                text: `This is a signed contract PDF rendered as ${pngBuffers.length} images (pages 1..${pngBuffers.length}). Extract the fields per the schema below. Filled form values may appear as handwritten-style overlays over the underlying template. Read the OVERLAID values (what's filled in), not the template labels. For each field, set "page" to the 1-based page image number (1..${pngBuffers.length}) where you saw the value, or null if unsure.
 
 Return JSON matching this schema:
 ${SCHEMA_HINT}`,
@@ -1052,9 +1055,20 @@ export function deriveWalkthrough(
   return ex;
 }
 
+/** Insert [[PAGE n]] markers from pdf-parse's form-feed page separators so the
+ *  model can attribute each field to a page. No-op when the text has no \f
+ *  (single page or a text layer without page breaks) — page then stays null. */
+function annotatePages(text: string): string {
+  if (!text.includes("\f")) return text;
+  return text
+    .split("\f")
+    .map((p, i) => `[[PAGE ${i + 1}]]\n${p}`)
+    .join("\n");
+}
+
 function asField<T = string>(v: unknown): ContractExtractionField<T> {
   if (!v || typeof v !== "object") {
-    return { value: null, confidence: 0, snippet: null };
+    return { value: null, confidence: 0, snippet: null, page: null };
   }
   const o = v as Record<string, unknown>;
   const value = o.value === undefined ? null : (o.value as T | null);
@@ -1066,7 +1080,11 @@ function asField<T = string>(v: unknown): ContractExtractionField<T> {
     typeof o.snippet === "string" && o.snippet.trim()
       ? o.snippet.trim().slice(0, 240)
       : null;
-  return { value, confidence, snippet };
+  const page =
+    typeof o.page === "number" && Number.isFinite(o.page) && o.page >= 1
+      ? Math.round(o.page)
+      : null;
+  return { value, confidence, snippet, page };
 }
 
 /**

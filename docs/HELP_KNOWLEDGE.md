@@ -501,7 +501,7 @@ When no group is set up, deal @mentions fall back to per-user DMs (unchanged).
 
 ## Provenance on extracted dates (Atlas Trace)
 
-Every date Atlas read from a contract shows a small **Source** badge + a
+Every date Atlas read from a contract shows a small **page + Source** badge + a
 confidence % on the deal timeline. Click **Source** to see the exact clause
 Atlas pulled it from. Confidence under 70% turns amber — worth a second look.
 This is the first piece of Atlas Trace: a truthful, clickable trail from each

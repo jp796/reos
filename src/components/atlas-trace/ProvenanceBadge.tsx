@@ -114,7 +114,7 @@ export function provenanceFromExtraction(
   if (!extraction || typeof extraction !== "object") return null;
   const f = (extraction as Record<string, unknown>)[fieldKey];
   if (!f || typeof f !== "object") return null;
-  const rec = f as { snippet?: unknown; confidence?: unknown; source?: unknown };
+  const rec = f as { snippet?: unknown; confidence?: unknown; source?: unknown; page?: unknown };
   const snippet = typeof rec.snippet === "string" ? rec.snippet : null;
   const confidence = typeof rec.confidence === "number" ? rec.confidence : null;
   if (!snippet?.trim() && !confidence) return null;
@@ -122,5 +122,6 @@ export function provenanceFromExtraction(
     rec.source === "vision" || rec.source === "computed" || rec.source === "text"
       ? (rec.source as "text" | "vision" | "computed")
       : "text";
-  return { snippet, confidence, source };
+  const page = typeof rec.page === "number" && rec.page >= 1 ? Math.round(rec.page) : null;
+  return { snippet, confidence, source, page };
 }

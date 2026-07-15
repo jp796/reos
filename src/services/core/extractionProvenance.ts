@@ -24,6 +24,7 @@ export interface DateProvenance {
   snippet: string | null;
   confidence: number | null;
   source: "text" | "vision" | "computed";
+  page: number | null;
 }
 
 /** Build { fieldKey: {snippet, confidence, source} } from a ContractExtraction
@@ -38,7 +39,7 @@ export function buildDatesProvenance(
   for (const key of DATE_FIELDS) {
     const f = ex[key];
     if (!f || typeof f !== "object") continue;
-    const rec = f as { snippet?: unknown; confidence?: unknown; source?: unknown };
+    const rec = f as { snippet?: unknown; confidence?: unknown; source?: unknown; page?: unknown };
     const snippet = typeof rec.snippet === "string" && rec.snippet.trim() ? rec.snippet : null;
     const confidence = typeof rec.confidence === "number" ? rec.confidence : null;
     if (!snippet && confidence == null) continue;
@@ -46,7 +47,8 @@ export function buildDatesProvenance(
       rec.source === "vision" || rec.source === "computed" || rec.source === "text"
         ? (rec.source as "text" | "vision" | "computed")
         : "text";
-    out[key] = { snippet, confidence, source };
+    const page = typeof rec.page === "number" && rec.page >= 1 ? Math.round(rec.page) : null;
+    out[key] = { snippet, confidence, source, page };
   }
   return Object.keys(out).length > 0 ? out : null;
 }
