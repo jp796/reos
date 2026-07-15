@@ -18,6 +18,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ProvenanceBadge } from "@/components/atlas-trace/ProvenanceBadge";
+import { ConflictComparison, type Conflict } from "@/components/atlas-trace/ConflictComparison";
 
 type Field = {
   value: unknown;
@@ -100,6 +101,14 @@ function fmtDate(iso: unknown): string {
     : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+/** Format a value the way its field renders (money/date/pct/text) — used by
+ *  the §4 reconciliation cards so both sides read like the deal panel. */
+function fmtForKey(key: string, value: unknown): string {
+  const d = DISPLAY.find((x) => x.key === key);
+  if (!d) return value == null ? "—" : String(value);
+  return (d.kind === "date" ? fmtDate(value) : fmt(d.kind, value)) || "—";
+}
+
 function prefersReducedMotion(): boolean {
   return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
@@ -111,6 +120,7 @@ export function LiveExtractionView({ files, side, strategy, onComplete, onError 
   const [fields, setFields] = useState<Record<string, Field>>({});
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [contingencies, setContingencies] = useState<Contingency[]>([]);
+  const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [phase, setPhase] = useState<Phase>("reading");
   const [pending, setPending] = useState(0); // facts queued but not yet revealed (for the Skip control)
@@ -291,6 +301,18 @@ export function LiveExtractionView({ files, side, strategy, onComplete, onError 
           snippet: typeof ev.snippet === "string" ? ev.snippet : null,
           page: typeof ev.page === "number" ? ev.page : null,
         });
+      } else if (type === "conflict") {
+        // §4 — a later document changed material terms; show both values.
+        if (Array.isArray(ev.conflicts)) {
+          setConflicts(ev.conflicts as Conflict[]);
+          setLog((l) => [
+            ...l,
+            {
+              text: `⇄ Reconciled: ${(ev.conflicts as Conflict[]).map((c) => c.label).join(", ")} changed by a later document`,
+              kind: "found",
+            },
+          ]);
+        }
       } else if (type === "merged") {
         // Terms + contingencies done — move to phase 3 (tasks), don't leave.
         setPhase((p) => (p === "done" ? p : "tasks"));
@@ -393,6 +415,20 @@ export function LiveExtractionView({ files, side, strategy, onComplete, onError 
 
         {/* RIGHT — the deal building up */}
         <div className="max-h-[30rem] space-y-4 overflow-y-auto rounded-lg border border-border bg-surface p-4">
+          {/* §4 — Reconciled terms (a later document changed these) */}
+          {conflicts.length > 0 && (
+            <div className="atlas-provenance rounded-md border border-amber-300/70 bg-amber-50/50 p-3 dark:bg-amber-950/20">
+              <div className="reos-label mb-2 flex items-center gap-1.5 text-amber-800 dark:text-amber-300">
+                <span aria-hidden>⇄</span> Reconciled terms ({conflicts.length}) — a later document changed these
+              </div>
+              <div className="space-y-2.5">
+                {conflicts.map((c) => (
+                  <ConflictComparison key={c.key} conflict={c} format={(v) => fmtForKey(c.key, v)} />
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Phase 1 — Deal terms */}
           <div>
             <div className="mb-2 flex items-center justify-between">

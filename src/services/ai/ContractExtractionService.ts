@@ -972,6 +972,60 @@ function mergeByConfidence(
   return out;
 }
 
+/** One side of an addendum reconciliation — a value + where it was read. */
+export interface ConflictSide {
+  value: unknown;
+  snippet: string | null;
+  page: number | null;
+  confidence: number | null;
+  /** effectiveDate of the source document, so the UI can name base vs addendum. */
+  effectiveDate: string | null;
+}
+
+/** A material term that a later document changed (Atlas Trace §4). */
+export interface FieldConflict {
+  key: string;
+  label: string;
+  original: ConflictSide; // the superseded (earlier) value
+  superseding: ConflictSide; // the winning (later) value
+}
+
+/** Material terms worth surfacing a reconciliation for (label per key).
+ *  effectiveDate is deliberately excluded — it shifts between a base contract
+ *  and an addendum as each document's own signing date (and drives merge
+ *  ordering), so a "change" there is structural, not a renegotiated term. */
+const CONFLICT_FIELDS: Record<string, string> = {
+  purchasePrice: "Purchase price",
+  earnestMoneyAmount: "Earnest money",
+  earnestMoneyDueDate: "Earnest money due",
+  inspectionDeadline: "Inspection deadline",
+  inspectionObjectionDeadline: "Inspection objection",
+  titleCommitmentDeadline: "Title commitment",
+  titleObjectionDeadline: "Title objection",
+  financingDeadline: "Financing deadline",
+  walkthroughDate: "Final walkthrough",
+  closingDate: "Closing",
+  possessionDate: "Possession",
+};
+
+/** Compare two extracted values for material equality (dates + numbers + text). */
+function sameConflictValue(a: unknown, b: unknown): boolean {
+  if (a == null || b == null) return a === b;
+  if (typeof a === "number" || typeof b === "number") return Number(a) === Number(b);
+  return String(a).trim() === String(b).trim();
+}
+
+function conflictSide(field: unknown, effectiveDate: string | null): ConflictSide {
+  const o = (field ?? {}) as { value?: unknown; snippet?: unknown; page?: unknown; confidence?: unknown };
+  return {
+    value: o.value ?? null,
+    snippet: typeof o.snippet === "string" ? o.snippet : null,
+    page: typeof o.page === "number" ? o.page : null,
+    confidence: typeof o.confidence === "number" ? o.confidence : null,
+    effectiveDate,
+  };
+}
+
 /**
  * Merge several contract extractions into one, NEWEST-effective-date
  * wins per field. This is the offer + counter-offer (+ addenda) case:
@@ -980,12 +1034,17 @@ function mergeByConfidence(
  * offer read alone is mostly null by design — it points back to the base
  * for the timeline — so merging is the only way to get a full picture.
  *
+ * When `conflicts` is supplied, every material term a later document
+ * actually CHANGED (§4 addendum reconciliation) is collected into it —
+ * net original→superseding per key across the whole chain.
+ *
  * Each input should already have computeRelativeDeadlines applied. The
  * caller re-runs computeRelativeDeadlines + deriveWalkthrough on the
  * merged result so a changed effective/closing date recomputes cleanly.
  */
 export function mergeExtractionsByRecency(
   list: ContractExtraction[],
+  conflicts?: FieldConflict[],
 ): ContractExtraction {
   const docs = list.filter(Boolean);
   if (docs.length === 0) {
@@ -1003,8 +1062,14 @@ export function mergeExtractionsByRecency(
 
   const keys = Object.keys(ordered[0]) as Array<keyof ContractExtraction>;
   const out = { ...ordered[0] } as ContractExtraction;
+  // effectiveDate of the document that currently supplies out[k] (for §4 labels).
+  const baseEff = (ordered[0].effectiveDate?.value as string) ?? null;
+  const outEff: Record<string, string | null> = {};
+  for (const k of keys) outEff[k as string] = baseEff;
+
   for (let i = 1; i < ordered.length; i++) {
     const doc = ordered[i];
+    const docEff = (doc.effectiveDate?.value as string) ?? null;
     for (const k of keys) {
       if (k === "notes") {
         const nxt = (doc as unknown as { notes: string | null }).notes;
@@ -1015,7 +1080,39 @@ export function mergeExtractionsByRecency(
       // A newer document's field wins only when it actually carries a
       // value — otherwise the base offer's value is preserved.
       if (nf && nf.value !== null && nf.value !== "") {
+        const prev = (out as unknown as Record<string, ContractExtractionField<unknown> | undefined>)[k as string];
+        // §4: record a reconciliation when the newer doc CHANGES a material
+        // term that the running merge already had. Chain-aware: keep the net
+        // original→superseding per key.
+        if (
+          conflicts &&
+          CONFLICT_FIELDS[k as string] &&
+          prev &&
+          prev.value !== null &&
+          prev.value !== "" &&
+          !sameConflictValue(prev.value, nf.value)
+        ) {
+          const existing = conflicts.find((c) => c.key === (k as string));
+          if (existing) existing.superseding = conflictSide(nf, docEff);
+          else
+            conflicts.push({
+              key: k as string,
+              label: CONFLICT_FIELDS[k as string],
+              original: conflictSide(prev, outEff[k as string]),
+              superseding: conflictSide(nf, docEff),
+            });
+        }
         (out as unknown as Record<string, unknown>)[k] = nf;
+        outEff[k as string] = docEff;
+      }
+    }
+  }
+
+  // Drop any net no-ops (a term changed then reverted across the chain).
+  if (conflicts) {
+    for (let i = conflicts.length - 1; i >= 0; i--) {
+      if (sameConflictValue(conflicts[i].original.value, conflicts[i].superseding.value)) {
+        conflicts.splice(i, 1);
       }
     }
   }

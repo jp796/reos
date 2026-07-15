@@ -28,6 +28,7 @@ import {
   deriveWalkthrough,
   type ContractExtraction,
   type ExtractStreamEvent,
+  type FieldConflict,
 } from "@/services/ai/ContractExtractionService";
 import {
   generateAiTasks,
@@ -141,9 +142,20 @@ export async function POST(req: NextRequest) {
         }
 
         send({ type: "status", message: "Merging the documents (newest terms win)…" });
-        let merged = mergeExtractionsByRecency(extractions);
+        const conflicts: FieldConflict[] = [];
+        let merged = mergeExtractionsByRecency(extractions, conflicts);
         merged = computeRelativeDeadlines(merged);
         merged = deriveWalkthrough(merged);
+
+        // §4 — surface every term a later document (addendum/counter) changed,
+        // original → superseding, so the reconciliation is visible not silent.
+        if (conflicts.length > 0) {
+          send({
+            type: "status",
+            message: `${conflicts.length} term${conflicts.length === 1 ? "" : "s"} changed by a later document.`,
+          });
+          send({ type: "conflict", conflicts });
+        }
 
         const missing = CRITICAL.filter((k) => {
           const v = (merged[k] as { value?: unknown } | undefined)?.value;
@@ -157,6 +169,7 @@ export async function POST(req: NextRequest) {
           extraction: merged,
           documentCount: extractions.length,
           missingCritical: missing,
+          conflicts,
         });
 
         // ── Phase 3: the REAL AI task list ──
@@ -193,6 +206,7 @@ export async function POST(req: NextRequest) {
           documentCount: extractions.length,
           missingCritical: missing,
           tasks,
+          conflicts,
         });
       } catch (err) {
         send({
