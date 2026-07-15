@@ -48,6 +48,13 @@ export interface FlipInputs {
   fluellenPct: number; // B31 (1)
   partnerPct: number; // B32 (0)
   flipComps: Comp[]; // rows 42–46
+  /** Manual Fix&Flip ARV (B20). When > 0 it overrides the comps-derived ARV —
+   *  matches how the source sheets are filled (ARV typed in, comps left blank). */
+  arvOverride?: number | null;
+  /** Manual Fix&Flip interest $ (B24) / points $ (B25). When set, they override
+   *  the computed formulas — some source sheets hand-type these. */
+  flipInterestOverride?: number | null;
+  flipPointsOverride?: number | null;
   // Wholetail
   wholetailRehabBudget: number; // E17
   wholetailARV: number; // E20 (manual)
@@ -226,9 +233,16 @@ export function computeFlip(input: FlipInputs): FlipResult {
   const compsResult = comps(i.flipComps, i.sqft);
 
   // ---- FIX & FLIP ----
-  const ffArv = i.sqft * compsResult.avgPricePerSqft; // B20 = C5*D47
-  const ffInterest = (i.offerPrice + i.flipRehabBudget) * ((i.flipInterestRate / 12) * i.flipHoldingMonths); // B24
-  const ffPoints = i.offerPrice * i.flipPointsPct; // B25
+  // B20: manual ARV wins when supplied; else derive from comps (C5*D47).
+  const ffArv =
+    i.arvOverride != null && i.arvOverride > 0
+      ? i.arvOverride
+      : i.sqft * compsResult.avgPricePerSqft;
+  const ffInterest =
+    i.flipInterestOverride != null
+      ? i.flipInterestOverride
+      : (i.offerPrice + i.flipRehabBudget) * ((i.flipInterestRate / 12) * i.flipHoldingMonths); // B24
+  const ffPoints = i.flipPointsOverride != null ? i.flipPointsOverride : i.offerPrice * i.flipPointsPct; // B25
   const ffTotalExpenses =
     i.offerPrice +
     i.flipRehabBudget +

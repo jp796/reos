@@ -15,6 +15,34 @@
 import type { PrismaClient } from "@prisma/client";
 import { economicsFromBag, headlineMetric } from "@/services/core/DealEconomicsService";
 import type { Strategy } from "@/services/core/DealClassifierService";
+import { computeFlip, type FlipInputs } from "@/services/core/FlipCalcModel";
+
+/** Latest saved Flip Analysis per transaction → its Fix&Flip projected profit
+ *  and max offer, so a flip deal's pipeline income reflects the real analysis. */
+export interface FlipHeadline {
+  profit: number;
+  maxOfferForProfit: number;
+}
+export function flipHeadlineByTransaction(
+  analyses: Array<{ transactionId: string | null; inputsJson: unknown; updatedAt: Date }>,
+): Map<string, FlipHeadline> {
+  const latest = new Map<string, { updatedAt: Date; inputs: unknown }>();
+  for (const a of analyses) {
+    if (!a.transactionId) continue;
+    const cur = latest.get(a.transactionId);
+    if (!cur || a.updatedAt > cur.updatedAt) latest.set(a.transactionId, { updatedAt: a.updatedAt, inputs: a.inputsJson });
+  }
+  const out = new Map<string, FlipHeadline>();
+  for (const [txnId, { inputs }] of latest) {
+    try {
+      const r = computeFlip(inputs as FlipInputs);
+      out.set(txnId, { profit: r.fixFlip.profit, maxOfferForProfit: r.fixFlip.maxOfferForProfit });
+    } catch {
+      /* skip a malformed analysis */
+    }
+  }
+  return out;
+}
 
 export type IncomeStatus = "contracted" | "guess";
 export type IncomeSource = "auto" | "manual";
@@ -147,7 +175,7 @@ export async function getPipeline(
   db: PrismaClient,
   accountId: string,
 ): Promise<Pipeline> {
-  const [manual, deals] = await Promise.all([
+  const [manual, deals, flipAnalyses] = await Promise.all([
     db.pipelineIncomeItem.findMany({ where: { accountId } }),
     db.transaction.findMany({
       where: {
@@ -174,7 +202,13 @@ export async function getPipeline(
         },
       },
     }),
+    db.flipAnalysis.findMany({
+      where: { accountId },
+      select: { transactionId: true, inputsJson: true, updatedAt: true },
+    }),
   ]);
+
+  const flipByTxn = flipHeadlineByTransaction(flipAnalyses);
 
   // Manual rows first; collect the deals they already cover.
   const covered = new Set<string>();
@@ -197,6 +231,25 @@ export async function getPipeline(
   const autoRows: PipelineRow[] = [];
   for (const d of deals) {
     if (covered.has(d.id)) continue; // a manual line overrides this deal
+
+    // Flip deals with a saved Flip Analysis: the projected Fix&Flip profit from
+    // the analysis IS the pipeline income — the real number JP underwrote to.
+    const flip = d.asset?.strategy === "flip" ? flipByTxn.get(d.id) : undefined;
+    if (flip && flip.profit > 0) {
+      autoRows.push({
+        id: `auto:${d.id}`,
+        source: "auto",
+        business: "EPS",
+        property: d.propertyAddress ?? "(no address)",
+        disposition: "Flip Sale",
+        expectedIncome: flip.profit,
+        expectedDate: d.closingDate?.toISOString() ?? null,
+        status: statusForDeal(d.status),
+        note: `Max offer $${Math.round(flip.maxOfferForProfit).toLocaleString()} for $50k profit`,
+        transactionId: d.id,
+      });
+      continue;
+    }
 
     // Investor (principal) deals: proceeds come from the asset's strategy
     // economics — flip profit / wholesale assignment fee. Checked first so an

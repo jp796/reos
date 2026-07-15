@@ -41,6 +41,7 @@ import { ConvertListingButton } from "./ConvertListingButton";
 import { StagePanel } from "./StagePanel";
 import { DrawCapitalPanel } from "./DrawCapitalPanel";
 import { EconomicsPanel } from "./EconomicsPanel";
+import { FlipAnalysisCard } from "./FlipAnalysisCard";
 import { DealTypeControl } from "./DealTypeControl";
 import { readEntitlements } from "@/lib/entitlements";
 import { transactionState, type TransactionStateInput } from "@/lib/transactionState";
@@ -633,6 +634,10 @@ export default async function TransactionDetailPage({
       {txn.asset && txn.asset.representation === "principal" && (
         <DrawCapitalPanel assetId={txn.asset.id} />
       )}
+
+      {/* Saved Flip Analysis (imported from JP's workbook or entered in the
+          calculator) — renders only when the deal has one. */}
+      <FlipAnalysisCard transactionId={txn.id} accountId={actor.accountId} />
 
       {tags.length > 0 && (
         <section>
