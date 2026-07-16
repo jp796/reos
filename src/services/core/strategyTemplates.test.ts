@@ -91,9 +91,11 @@ check("every task key is unique within its stage", () => {
   }
 });
 
-check("flip has 7 stages, rental & creative have 6", () => {
-  assert(getStrategyTemplate("flip").length === 7, "flip 7");
-  assert(getStrategyTemplate("rental_brrrr").length === 6, "rental 6");
+check("consolidated flat lifecycles: flip=2 (acquisition), rental=3, creative=6", () => {
+  // FLAG 1: rehab/prep (flip) and reno/lease-up/refi (rental) moved to the
+  // Project, so the flat templates keep only transaction-phase stages.
+  assert(getStrategyTemplate("flip").length === 2, "flip 2");
+  assert(getStrategyTemplate("rental_brrrr").length === 3, "rental 3");
   assert(getStrategyTemplate("creative").length === 6, "creative 6");
 });
 
@@ -117,7 +119,7 @@ check("every stage order is contiguous 0..n-1 for all strategies", () => {
   }
 });
 
-check("flip nextStage walks all 7 and ends", () => {
+check("flip nextStage walks the 2 acquisition stages and ends", () => {
   let key: string | null = "potential";
   let count = 0;
   while (key) {
@@ -125,33 +127,24 @@ check("flip nextStage walks all 7 and ends", () => {
     const n = nextStage("flip", key);
     key = n?.key ?? null;
   }
-  assert(count === 7, `walked ${count} flip stages`);
+  assert(count === 2, `walked ${count} flip stages`);
 });
 
-check("market-entry stage is correct per strategy", () => {
-  assert(marketEntryStage("flip")?.key === "prep_to_list", "flip → prep_to_list");
+check("market-entry: wholesale keeps it; flip/rental moved market work to the Project", () => {
+  // Wholesale still overlaps the single transaction, so its disposition stage
+  // is the market entry. Flip/rental's market work (prep-to-list / lease-up)
+  // now lives in the Project + disposition transaction, so the flat template
+  // has no market-entry stage. (Gmail activation for those follows the
+  // disposition transaction — flagged as a follow-up.)
   assert(marketEntryStage("wholesale")?.key === "disposition", "wholesale → disposition");
-  assert(marketEntryStage("rental_brrrr")?.key === "lease_up", "rental → lease_up");
+  assert(marketEntryStage("flip") === null, "flip → none (moved to Project)");
+  assert(marketEntryStage("rental_brrrr") === null, "rental → none (moved to Project)");
   assert(marketEntryStage("retail") === null, "retail → none");
 });
 
-check("Gmail stays off pre-market, on at/after market entry (flip)", () => {
-  // Before market: acquisition + rehab stages → not reached.
-  assert(!hasReachedMarketEntry("flip", "under_contract_purchase"), "under contract not reached");
-  assert(!hasReachedMarketEntry("flip", "rehab"), "rehab not reached");
-  // At market entry and beyond → reached.
-  assert(hasReachedMarketEntry("flip", "prep_to_list"), "prep_to_list reached");
-  assert(hasReachedMarketEntry("flip", "on_market"), "on_market reached");
-  assert(hasReachedMarketEntry("flip", "sold"), "sold reached");
-  // No stage yet → not reached.
-  assert(!hasReachedMarketEntry("flip", null), "null not reached");
-});
-
-check("wholesale reaches market at disposition; BRRRR at lease_up", () => {
+check("wholesale reaches market at disposition (overlap strategy)", () => {
   assert(!hasReachedMarketEntry("wholesale", "under_contract"), "wholesale UC not reached");
   assert(hasReachedMarketEntry("wholesale", "disposition"), "wholesale disposition reached");
-  assert(!hasReachedMarketEntry("rental_brrrr", "renovations"), "BRRRR reno not reached");
-  assert(hasReachedMarketEntry("rental_brrrr", "lease_up"), "BRRRR lease_up reached");
 });
 
 console.log(`\n${passed} passed.`);

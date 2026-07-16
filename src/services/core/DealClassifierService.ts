@@ -24,6 +24,7 @@
 export type Strategy =
   | "retail"
   | "flip"
+  | "wholetail"
   | "wholesale"
   | "rental_brrrr"
   | "creative";

@@ -19,7 +19,7 @@ import { seedCreativeDeadlines } from "@/services/core/creativeDeadlines";
 
 export const runtime = "nodejs";
 
-const STRATEGIES = new Set(["retail", "flip", "wholesale", "rental_brrrr", "creative"]);
+const STRATEGIES = new Set(["retail", "flip", "wholetail", "wholesale", "rental_brrrr", "creative"]);
 const REPRESENTATIONS = new Set(["agency", "principal"]);
 const TITLE_PATHS = new Set(["takes_title", "assignment", "double_close", "contract_rights"]);
 const SUBSTRUCTURES = new Set(["subject_to", "seller_finance", "lease_option", "wrap"]);

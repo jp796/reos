@@ -334,6 +334,17 @@ model Transaction {
   zip                    String?
   transactionType        String    @default("buyer") @map("transaction_type") // buyer, seller, investor, wholesale, other
   side                   String?
+  /// Investor PM: this transaction's role in its Asset's lifecycle.
+  /// acquisition (the purchase) | disposition (relist/sell or lease-up
+  /// after the project) | refinance (BRRRR cash-out) | assignment
+  /// (wholesale). Null for legacy / retail single-transaction deals.
+  /// A disposition transaction runs its own pipeline that tracks
+  /// investment return + realtor commission separately (dispositionIncomeJson).
+  assetRole              String?   @map("asset_role")
+  /// Dual-income ledger for a disposition transaction (spec §9): keeps
+  /// { investmentReturn, realtorCommission } distinct so the disposition
+  /// pipeline reports investor P&L and agency GCI side by side.
+  dispositionIncomeJson  Json?     @map("disposition_income_json")
   status                 String    @default("active") // listing, active, pending, closed, dead
   pipelineName           String?   @map("pipeline_name")
   stageName              String?   @map("stage_name")
@@ -570,24 +581,56 @@ model Asset {
   @@map("assets")
 }
 
+/// A PM work episode on an Asset (rehab / make-ready / lease-up). The
+/// Investor PM state machine promotes this from a stub into the real
+/// container for the "project phase" that sits BETWEEN the acquisition
+/// transaction (closed) and the disposition transaction (relist/sell or
+/// lease-up). Instantiated from a code project template (projectTemplates.ts)
+/// with a bounded due-date timeline. Its tasks are Task rows carrying
+/// projectId; completing the auto-generated terminal "List it" task
+/// completes the Project and spins the disposition Transaction.
 model Project {
   id          String  @id @default(cuid())
   assetId     String  @map("asset_id")
   accountId   String  @map("account_id")
-  /// rehab | lease_up | servicing | stabilization | other (spec §2, §6).
+  /// rehab | make_ready | renovation_rent_ready | lease_up | servicing | other.
   type        String
   status      String  @default("active") // active | complete | archived
   budget      Float?
   actual      Float?
-  /// Draw schedule + capital stack relations land with Phase 2 (Flip).
+  /// Which projectTemplates.ts template instantiated this project.
+  projectTemplateKey String? @map("project_template_key")
+  /// Timeline anchor — project tasks' due dates are offset from this.
+  /// Defaults to the acquisition transaction's closing date.
+  startedAt          DateTime? @map("started_at")
+  /// startedAt + template.totalDays — the holding-window ceiling that
+  /// task due dates are bounded to (out-of-window dates are flagged).
+  targetCompletionAt DateTime? @map("target_completion_at")
+  completedAt        DateTime? @map("completed_at")
+  /// The acquisition transaction this project follows (its close is what
+  /// triggered the conversion).
+  sourceTransactionId      String? @map("source_transaction_id")
+  /// The disposition transaction spun up when the project completes
+  /// (relist/sell). Only flip / wholetail create one — a rental holds
+  /// (lease-up + cash-out refi are steps INSIDE the project), so it stays
+  /// null and the asset moves to Under Management instead.
+  dispositionTransactionId String? @map("disposition_transaction_id")
+  /// Where the money funding this project's draws comes from (FLAG 4):
+  /// { type: private_money|bridge|dscr|cash|hard_money|seller_note,
+  ///   lenderContactId?, amount?, rate?, notes? }. Surfaced on the project
+  /// alongside its draw schedule. Seeded from the asset's capital stack.
+  fundingSourceJson  Json? @map("funding_source_json")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  asset   Asset   @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  asset         Asset          @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  account       Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  tasks         Task[]
+  drawSchedules DrawSchedule[]
 
   @@index([assetId])
   @@index([accountId])
+  @@index([assetId, status], map: "idx_projects_asset_status")
   @@map("projects")
 }
 
@@ -602,6 +645,10 @@ model DrawSchedule {
   id               String   @id @default(cuid())
   assetId          String   @map("asset_id")
   accountId        String   @map("account_id")
+  /// The rehab Project these draws fund (FLAG 4). Rehab draws belong to
+  /// the Project (the "middle"), not loosely to the asset. Nullable for
+  /// legacy schedules created before the project link existed.
+  projectId        String?  @map("project_id")
   /// Retainage withheld from each release until punch-list (spec §7).
   retainagePercent Float    @default(10) @map("retainage_percent")
   /// Total rehab budget this schedule draws against (optional).
@@ -610,12 +657,14 @@ model DrawSchedule {
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  asset   Asset   @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  asset   Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  account Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
   draws   Draw[]
 
   @@index([assetId])
   @@index([accountId])
+  @@index([projectId])
   @@map("draw_schedules")
 }
 
@@ -746,6 +795,17 @@ model Task {
   /// Template task key (StageTemplate.tasks[].key) — dedupes
   /// re-instantiation of the same stage.
   templateKey   String?   @map("template_key")
+  /// Investor PM: when this task belongs to a project phase (rehab /
+  /// make-ready / lease-up), projectId links it to the Project container
+  /// so the project timeline can group + track its tasks, and completing
+  /// the last one auto-generates the terminal "List it" task.
+  projectId     String?   @map("project_id")
+  /// The auto-generated terminal task ("List it" / "List for rent") whose
+  /// completion completes the project and spins the disposition txn.
+  isListItTask  Boolean   @default(false) @map("is_list_it_task")
+  /// True when the computed due date fell OUTSIDE the transaction/holding
+  /// window and was surfaced for review rather than silently overflowed.
+  dueDateOutOfWindow Boolean @default(false) @map("due_date_out_of_window")
   fubTaskId     String?   @unique @map("fub_task_id")
   title         String
   description   String?
@@ -763,10 +823,12 @@ model Task {
   transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
   milestone   Milestone?  @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
   asset       Asset?      @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  project     Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   @@index([transactionId])
   @@index([milestoneId])
   @@index([assetId, stageKey], map: "idx_tasks_asset_stage")
+  @@index([projectId])
   @@index([dueAt, completedAt])
   @@map("tasks")
 }

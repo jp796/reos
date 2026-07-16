@@ -181,90 +181,12 @@ const FLIP: StageTemplate[] = [
       { key: "upload_purchase_agreement", name: "Upload purchase agreement", ownerRole: "agent" },
     ],
   },
-  {
-    key: "rehab",
-    name: "Rehab (Renovations)",
-    order: 2,
-    tasks: [
-      { key: "closing_docs", name: "Closing docs", ownerRole: "agent" },
-      { key: "reno_timeline", name: "Renovation timeline", ownerRole: "contractor" },
-      { key: "lockbox", name: "Contractor lockbox", ownerRole: "agent" },
-      { key: "change_orders", name: "Change orders", ownerRole: "contractor" },
-      { key: "record_mortgage", name: "Record mortgage", ownerRole: "title" },
-      { key: "draw_cycle", name: "Run draw cycle (request → verify → lien waiver → release)", ownerRole: "agent" },
-      { key: "weekly_photos", name: "Weekly pictures / video", ownerRole: "agent" },
-      { key: "weekly_contractor", name: "Weekly contractor update", ownerRole: "contractor" },
-      { key: "biweekly_lender", name: "Bi-weekly private lender email", ownerRole: "agent" },
-      { key: "punch_list", name: "Punch-list walkthrough", ownerRole: "agent" },
-      { key: "monthly_expense", name: "Monthly expense update", ownerRole: "agent" },
-    ],
-  },
-  {
-    key: "prep_to_list",
-    name: "Prep to List",
-    order: 3,
-    marketEntry: true,
-    tasks: [
-      { key: "cleaning", name: "Professional cleaning", ownerRole: "agent" },
-      { key: "staging", name: "Soft staging", ownerRole: "agent" },
-      { key: "photos", name: "Professional photos", ownerRole: "agent" },
-      { key: "list_property", name: "List property", ownerRole: "agent" },
-      { key: "invoices_net_sheet", name: "Invoices to Drive + net sheet", ownerRole: "agent" },
-      { key: "home_warranty", name: "Home warranty", ownerRole: "agent" },
-      { key: "walkthrough_video", name: "Walk-through video", ownerRole: "agent" },
-      { key: "open_house", name: "Schedule open house", ownerRole: "agent" },
-      { key: "listing_details", name: "Listing details", ownerRole: "agent" },
-      { key: "monthly_expense", name: "Monthly expense update", ownerRole: "agent" },
-    ],
-  },
-  {
-    key: "on_market",
-    name: "On Market",
-    order: 4,
-    tasks: [
-      { key: "scaffold_drive", name: "Drive folder", ownerRole: "agent", auto: true },
-      { key: "first_open_house", name: "1st open house", ownerRole: "agent" },
-      { key: "open_house_schedule", name: "Open-house schedule", ownerRole: "agent" },
-      { key: "email_lender_status", name: "Email private lender (new status)", ownerRole: "agent" },
-      { key: "reeval_price", name: "Re-evaluate for price drop", ownerRole: "agent" },
-      { key: "biweekly_lender", name: "Bi-weekly lender emails", ownerRole: "agent" },
-      { key: "monthly_expense", name: "Monthly expense update", ownerRole: "agent" },
-    ],
-  },
-  {
-    key: "pending",
-    name: "Pending",
-    order: 5,
-    tasks: [
-      { key: "closing_date", name: "Closing date", ownerRole: "title" },
-      { key: "buyer_repair_request", name: "Buyer repair request", ownerRole: "agent" },
-      { key: "remove_staging", name: "Remove soft staging after appraisal", ownerRole: "agent" },
-      { key: "bills_to_title", name: "Finalized bills to title", ownerRole: "title" },
-      { key: "update_net_sheet", name: "Update seller net sheet", ownerRole: "agent" },
-      { key: "finalize_pml_payoff", name: "Finalize private lender payoff", ownerRole: "agent" },
-      { key: "approve_settlement", name: "Approve settlement statement", ownerRole: "agent" },
-      { key: "mls_pending", name: "Update MLS to pending", ownerRole: "agent" },
-      { key: "send_contract_title", name: "Send contract to title", ownerRole: "title" },
-      { key: "warranty_buyer_name", name: "Home-warranty buyer-name update", ownerRole: "agent" },
-      { key: "final_expense", name: "Final expense updates", ownerRole: "agent" },
-    ],
-  },
-  {
-    key: "sold",
-    name: "Sold",
-    order: 6,
-    tasks: [
-      { key: "notify_pml", name: "Notify PML of sale", ownerRole: "agent" },
-      { key: "upload_closing_docs", name: "Upload closing docs to Drive", ownerRole: "agent" },
-      { key: "settlement_insurance_bookkeeper", name: "Settlement statement to insurance + bookkeeper", ownerRole: "agent" },
-      { key: "mls_sold", name: "Update MLS to sold", ownerRole: "agent" },
-      { key: "pay_profit_splits", name: "Pay profit splits", ownerRole: "agent" },
-      { key: "profit_reconciliation", name: "Profit reconciliation + post-mortem to Production", ownerRole: "agent" },
-      { key: "release_retainage", name: "Release retainage to contractor", ownerRole: "agent" },
-      { key: "remove_sign_lockbox", name: "Remove sign + lockbox", ownerRole: "agent" },
-      { key: "archive", name: "Archive Drive + board", ownerRole: "agent", auto: true },
-    ],
-  },
+  // ── Consolidation (FLAG 1): the MIDDLE of a flip — Rehab + Prep-to-List —
+  //    now lives ONLY in the Project (projectTemplates.ts flip_rehab), and the
+  //    BACK-END — On Market / Pending / Sold — lives on the disposition
+  //    transaction (DISPOSITION_TASKS in ProjectEngine.ts). The flat flip
+  //    lifecycle keeps only the acquisition front-end above so nothing
+  //    double-ups with the Project. ───────────────────────────────────────
 ];
 
 // ── Rental / BRRRR — 6 stages (spec §6.3) ─────────────────────────────
@@ -305,57 +227,15 @@ const RENTAL_BRRRR: StageTemplate[] = [
       { key: "close", name: "Close (deed + mortgage)", ownerRole: "title" },
     ],
   },
-  {
-    key: "renovations",
-    name: "Renovations (rent-ready spec)",
-    order: 2,
-    tasks: [
-      { key: "rehab_kickoff", name: "Rehab kickoff (SOW + draw schedule)", ownerRole: "contractor" },
-      { key: "draw_cycle", name: "Run draw cycle (lien waiver + retainage)", ownerRole: "agent" },
-      { key: "weekly_photos", name: "Weekly photos + contractor update", ownerRole: "agent" },
-      { key: "biweekly_lender", name: "Bi-weekly lender update", ownerRole: "agent" },
-      { key: "holding_cost", name: "Holding-cost tracking", ownerRole: "agent" },
-      { key: "punch_list", name: "Punch-list", ownerRole: "agent" },
-    ],
-  },
-  {
-    key: "lease_up",
-    name: "Lease-Up (Tenant Placement)",
-    order: 3,
-    marketEntry: true,
-    tasks: [
-      { key: "make_ready", name: "Make-ready / clean", ownerRole: "agent" },
-      { key: "landlord_insurance", name: "Switch to landlord / dwelling insurance", ownerRole: "agent" },
-      { key: "set_rent_listing", name: "Set rent + create listing", ownerRole: "agent" },
-      { key: "market_showings", name: "Market + schedule showings", ownerRole: "agent" },
-      { key: "tenant_screening", name: "Tenant screening (app, credit/bg, income, refs)", ownerRole: "agent" },
-      { key: "select_tenant", name: "Select tenant", ownerRole: "agent" },
-      { key: "execute_lease", name: "Execute lease", ownerRole: "agent" },
-      { key: "collect_deposit", name: "Collect deposit + first month", ownerRole: "client" },
-      { key: "move_in_inspection", name: "Move-in inspection (photos)", ownerRole: "inspector" },
-      { key: "rent_collection_setup", name: "Set up rent collection", ownerRole: "agent" },
-      { key: "transfer_utilities", name: "Transfer utilities", ownerRole: "client" },
-    ],
-  },
-  {
-    key: "refinance",
-    name: "Refinance (cash-out — 2nd closing)",
-    order: 4,
-    tasks: [
-      { key: "order_appraisal", name: "Order appraisal", ownerRole: "lender" },
-      { key: "submit_refi", name: "Submit refi app (DSCR)", ownerRole: "lender" },
-      { key: "provide_rent_roll", name: "Provide lease + rent roll", ownerRole: "agent" },
-      { key: "refi_closing", name: "Refi title / closing", ownerRole: "title" },
-      { key: "payoff_acquisition", name: "Pay off acquisition loan + private lender", ownerRole: "agent" },
-      { key: "receive_cashout", name: "Receive cash-out", ownerRole: "agent" },
-      { key: "reconcile_capital", name: "Reconcile capital recovered vs invested", ownerRole: "agent" },
-      { key: "update_capital_stack", name: "Update capital stack / notify partners", ownerRole: "agent" },
-    ],
-  },
+  // ── Consolidation (FLAG 1 + FLAG 3): the MIDDLE of a BRRRR — Renovations,
+  //    Lease-Up, AND the cash-out Refinance step — now live ONLY in the
+  //    Project (projectTemplates.ts rental_rent_ready). A rental never sells,
+  //    so there is NO disposition transaction; when the project completes the
+  //    asset moves straight to the recurring Under-Management hold below. ──
   {
     key: "under_management",
     name: "Under Management",
-    order: 5,
+    order: 2,
     isRecurring: true,
     tasks: [
       { key: "rent_collection", name: "Monthly rent collection", ownerRole: "agent" },
@@ -474,6 +354,10 @@ const CREATIVE: StageTemplate[] = [
  *  lifecycle (retail uses the existing milestone/checklist flow). */
 export const STRATEGY_TEMPLATES: Record<Strategy, StageTemplate[]> = {
   retail: [], // retail uses the existing milestone/checklist flow, not stages
+  // Wholetail has no flat-stage lifecycle: its acquisition uses the normal
+  // transaction flow and its make-ready PROJECT phase is driven by
+  // ProjectEngine + projectTemplates (then a disposition transaction).
+  wholetail: [],
   wholesale: WHOLESALE,
   flip: FLIP,
   rental_brrrr: RENTAL_BRRRR,

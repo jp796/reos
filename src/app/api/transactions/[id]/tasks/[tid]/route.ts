@@ -10,6 +10,7 @@ import type { Prisma } from "@prisma/client";
 import { requireSession, assertSameAccount } from "@/lib/require-session";
 import { parseInputDate } from "@/lib/dates";
 import { isCurrentStageComplete, advanceStage } from "@/services/core/StageEngine";
+import { onProjectTaskCompleted } from "@/services/core/ProjectEngine";
 
 const VALID_ASSIGNEES = new Set([
   "coordinator",
@@ -116,7 +117,27 @@ export async function PATCH(
     }
   }
 
-  return NextResponse.json({ ok: true, task: updated, stageAdvance });
+  // Investor PM (ProjectEngine): completing a project task auto-generates the
+  // terminal "List it" task once all other project work is done, and
+  // completing "List it" spins the disposition transaction. Non-blocking.
+  let projectTransition:
+    | { listItCreated?: string; dispositionTransactionId?: string }
+    | null = null;
+  if (updated.projectId && body.completedAt) {
+    try {
+      projectTransition = await onProjectTaskCompleted(prisma, {
+        taskId: updated.id,
+        actorUserId: actor.userId,
+      });
+    } catch (err) {
+      console.warn(
+        "project transition after task completion failed (non-blocking):",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
+  return NextResponse.json({ ok: true, task: updated, stageAdvance, projectTransition });
 }
 
 export async function DELETE(

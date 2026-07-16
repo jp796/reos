@@ -39,6 +39,7 @@ import { ProductionToggle } from "./ProductionToggle";
 import { RezenCompliancePrepPanel } from "./RezenCompliancePrepPanel";
 import { ConvertListingButton } from "./ConvertListingButton";
 import { StagePanel } from "./StagePanel";
+import { InvestorPmPanel } from "./InvestorPmPanel";
 import { DrawCapitalPanel } from "./DrawCapitalPanel";
 import { EconomicsPanel } from "./EconomicsPanel";
 import { FlipAnalysisCard } from "./FlipAnalysisCard";
@@ -445,6 +446,12 @@ export default async function TransactionDetailPage({
           )}
           currentStageKey={txn.asset.currentStageName}
         />
+      )}
+
+      {/* Investor PM: transaction↔project state machine — convert on close,
+          project timeline, reclassify, and the disposition dual-income view. */}
+      {isPrincipalDeal && txn.asset && (
+        <InvestorPmPanel assetId={txn.asset.id} />
       )}
 
       {txn.calendarEvents.length > 0 && (
