@@ -328,7 +328,11 @@ notes. Attach a partner + the amount they funded to any deal from the deal's
 **Private money** panel (quick-add a new partner inline, or pick from the
 directory). Each partner card shows which deals they're funding. Endpoints:
 GET/POST /api/private-money/partners, PATCH/DELETE /api/private-money/partners/[id],
-POST/DELETE /api/transactions/[id]/funding.
+POST/DELETE /api/transactions/[id]/funding. **Weekly partner update:** on a
+partner card, the mail icon drafts a factual "here's how your money is working"
+email from the deals they fund (status + closing + their position) — you review,
+edit, and click Send; REOS never emails a partner on its own. (POST
+/api/private-money/partners/[id]/update-email, `{send:true}` to send.)
 
 ### Production — investment P&L
 The /production Revenue type panel now shows Investment P&L alongside Agency GCI:

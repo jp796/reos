@@ -6,7 +6,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, Trash2, Pencil } from "lucide-react";
+import { Plus, Trash2, Pencil, Mail } from "lucide-react";
 import { useToast } from "@/app/ToastProvider";
 
 interface Deal {
@@ -36,6 +36,50 @@ export function PrivateMoneyDirectory({ initial }: { initial: Row[] }) {
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState<Draft>({});
   const [busy, setBusy] = useState(false);
+  // Weekly partner-update email (draft → review → send on click).
+  const [emailFor, setEmailFor] = useState<string | null>(null);
+  const [emailDraft, setEmailDraft] = useState<{ subject: string; body: string }>({ subject: "", body: "" });
+  const [emailBusy, setEmailBusy] = useState(false);
+
+  async function openEmail(r: Row) {
+    if (emailFor === r.id) { setEmailFor(null); return; }
+    setEmailBusy(true);
+    try {
+      const res = await fetch(`/api/private-money/partners/${r.id}/update-email`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? "failed");
+      setEmailDraft(d.draft);
+      setEmailFor(r.id);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't build the draft");
+    } finally {
+      setEmailBusy(false);
+    }
+  }
+
+  async function sendEmail(r: Row) {
+    if (!r.email) { toast.error("Add an email for this partner first"); return; }
+    setEmailBusy(true);
+    try {
+      const res = await fetch(`/api/private-money/partners/${r.id}/update-email`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ send: true, subject: emailDraft.subject, body: emailDraft.body }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? "failed");
+      toast.success(`Update sent to ${r.name}`);
+      setEmailFor(null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Send failed");
+    } finally {
+      setEmailBusy(false);
+    }
+  }
 
   function startCreate() {
     setDraft({});
@@ -142,10 +186,42 @@ export function PrivateMoneyDirectory({ initial }: { initial: Row[] }) {
                     {r.notes && <div className="mt-1 text-xs text-text-subtle">{r.notes}</div>}
                   </div>
                   <div className="flex shrink-0 gap-1">
+                    <button type="button" onClick={() => openEmail(r)} disabled={emailBusy} className="rounded p-1 text-text-subtle hover:text-brand-700" title="Draft weekly update"><Mail className="h-4 w-4" /></button>
                     <button type="button" onClick={() => startEdit(r)} className="rounded p-1 text-text-subtle hover:text-brand-700" title="Edit"><Pencil className="h-4 w-4" /></button>
                     <button type="button" onClick={() => del(r.id, r.name)} className="rounded p-1 text-text-subtle hover:text-red-600" title="Delete"><Trash2 className="h-4 w-4" /></button>
                   </div>
                 </div>
+
+                {emailFor === r.id && (
+                  <div className="mt-3 space-y-2 rounded-md border border-brand-200 bg-brand-50/40 p-3 dark:bg-brand-950/20">
+                    <div className="reos-label text-text-subtle">
+                      Weekly update {r.email ? `to ${r.email}` : "— add an email to send"}
+                    </div>
+                    <input
+                      className="reos-input"
+                      value={emailDraft.subject}
+                      onChange={(e) => setEmailDraft((d) => ({ ...d, subject: e.target.value }))}
+                    />
+                    <textarea
+                      className="reos-input font-mono text-xs"
+                      rows={8}
+                      value={emailDraft.body}
+                      onChange={(e) => setEmailDraft((d) => ({ ...d, body: e.target.value }))}
+                    />
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => sendEmail(r)}
+                        disabled={emailBusy || !r.email}
+                        className="rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
+                      >
+                        Send to {r.name.split(" ")[0]}
+                      </button>
+                      <button type="button" onClick={() => setEmailFor(null)} className="text-sm text-text-muted hover:text-text">Cancel</button>
+                      <span className="text-[11px] text-text-subtle">Review before sending — nothing goes out on its own.</span>
+                    </div>
+                  </div>
+                )}
                 {r.deals.length > 0 && (
                   <div className="mt-2 border-t border-border pt-2 text-xs">
                     <span className="text-text-subtle">Funding {r.deals.length} deal{r.deals.length === 1 ? "" : "s"}: </span>
