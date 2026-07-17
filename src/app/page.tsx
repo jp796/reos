@@ -678,6 +678,9 @@ export default async function Landing() {
           >
             hello@myrealestateos.com
           </a>
+          <div className="mt-2 text-text-subtle">
+            Powered by Atlas&nbsp;Trace&trade;
+          </div>
         </div>
       </footer>
     </div>

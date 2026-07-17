@@ -227,6 +227,9 @@ export default async function PublicTimelinePage({
             This timeline is view-only. Dates may change if the contract is
             amended.
           </div>
+          <div className="mt-2 text-[11px] text-stone-400">
+            REOS · Powered by Atlas&nbsp;Trace&trade;
+          </div>
         </footer>
       </main>
     </div>

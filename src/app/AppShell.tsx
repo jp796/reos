@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import { cn } from "@/lib/cn";
+import { PoweredByAtlasTrace } from "./components/PoweredByAtlasTrace";
 import { GlobalSearch } from "./components/GlobalSearch";
 import { Logo } from "./components/Logo";
 import { AccountSwitcher } from "./components/AccountSwitcher";
@@ -281,6 +282,9 @@ export function AppShell({
             </div>
           </header>
           <main className="flex-1 px-3 py-5 sm:px-5 sm:py-6">{children}</main>
+          <footer className="border-t border-border px-3 py-4 sm:px-5">
+            <PoweredByAtlasTrace align="left" />
+          </footer>
         </div>
       </div>
     </div>
