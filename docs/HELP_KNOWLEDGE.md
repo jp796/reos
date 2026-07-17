@@ -309,6 +309,17 @@ payments / balloon — and computes the metrics live (profit + ROI + days-to-fli
 cap rate + DSCR + cash flow, spread, etc.). Save to feed the deal into the
 unified Production P&L. (Endpoint: PATCH /api/assets/[id]/economics.)
 
+### Underwriting pipeline
+**/underwriting** (Automations → Underwriting; investor accounts) is your deal
+pipeline for properties you're evaluating. Every flip analysis you save *without*
+attaching it to a deal lands here as a candidate — each card shows the property,
+its best-exit projected profit, offer, ARV, rehab, and max offer. When a
+candidate goes live, click **Flip to deal**: REOS creates a real flip transaction
+(via create-from-scan) carrying the numbers and marries the analysis to it (so it
+shows on the deal's Flip Analysis card). Remove a candidate with the trash icon.
+New candidates come from the Flip Calculator ("Save analysis" with no deal
+attached). Endpoints: PATCH/DELETE /api/flip-analysis/[id].
+
 ### Flip Analysis on a deal (4 exit scenarios)
 A deal can carry a full **Flip Analysis** — the four-exit evaluation (Fix & Flip,
 Wholetail, DSCR Rental, Owner Finance) with rehab estimator and comps→ARV, the

@@ -84,7 +84,7 @@ export function FlipCalculator({
         toast.error("Couldn't save", (await res.json().catch(() => null))?.error);
         return;
       }
-      toast.success("Analysis saved", dealId ? "Attached to the deal." : "Saved to your account.");
+      toast.success("Analysis saved", dealId ? "Attached to the deal." : "Added to Underwriting — flip it to a deal when it goes live.");
     } finally {
       setSaving(false);
     }

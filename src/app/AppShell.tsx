@@ -16,6 +16,7 @@ import {
   TrendingUp,
   DollarSign,
   Landmark,
+  LineChart,
   Calculator,
   Filter,
   Megaphone,
@@ -75,6 +76,7 @@ const NAV_GROUPS: Array<{ label: string | null; items: NavItem[] }> = [
     label: "Automations",
     items: [
       { href: "/scan", label: "Scan", icon: Radar },
+      { href: "/underwriting", label: "Underwriting", icon: LineChart, investorOnly: true },
       { href: "/flip-calculator", label: "Flip Calculator", icon: Calculator, investorOnly: true },
       { href: "/voice", label: "Voice intake", icon: Mic },
       { href: "/forms", label: "Forms", icon: FileSignature },
