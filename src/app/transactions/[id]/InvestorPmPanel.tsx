@@ -63,6 +63,12 @@ interface ProjectState {
     stageName: string | null;
     dispositionIncomeJson: Record<string, unknown> | null;
   } | null;
+  income: {
+    investmentReturn: number | null;
+    realtorCommission: number | null;
+    basis: string;
+    hasAnalysis: boolean;
+  } | null;
 }
 
 const STRATEGY_OPTIONS: { value: string; label: string }[] = [
@@ -256,27 +262,34 @@ export function InvestorPmPanel({ assetId }: { assetId: string }) {
         </div>
       )}
 
-      {/* Disposition — dual income pipeline */}
-      {state.dispositionTransaction && (
+      {/* Dual-income ledger (FLAG 2) — computed from the deal's flip analysis.
+          Shown on the disposition, or as a projection while the project runs. */}
+      {(state.dispositionTransaction || (projectActive && state.income?.hasAnalysis)) && (
         <div className="mt-5 rounded-md border border-brand-200 bg-brand-50 p-4 dark:bg-brand-950/30">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-text">Disposition pipeline</h3>
-            <a href={`/transactions/${state.dispositionTransaction.id}`} className="text-xs font-medium text-brand-700 hover:underline">
-              Open disposition deal →
-            </a>
+            <h3 className="text-sm font-semibold text-text">
+              {state.dispositionTransaction ? "Disposition pipeline" : "Projected income"}
+            </h3>
+            {state.dispositionTransaction && (
+              <a href={`/transactions/${state.dispositionTransaction.id}`} className="text-xs font-medium text-brand-700 hover:underline">
+                Open disposition deal →
+              </a>
+            )}
           </div>
           <div className="mt-2 grid grid-cols-2 gap-3 text-sm">
             <div>
               <div className="text-[11px] uppercase tracking-wide text-text-muted">Investment return</div>
-              <div className="text-text">{fmtMoney(state.dispositionTransaction.dispositionIncomeJson?.investmentReturn)}</div>
+              <div className="text-text">{fmtMoney(state.income?.investmentReturn)}</div>
             </div>
             <div>
               <div className="text-[11px] uppercase tracking-wide text-text-muted">Realtor commission</div>
-              <div className="text-text">{fmtMoney(state.dispositionTransaction.dispositionIncomeJson?.realtorCommission)}</div>
+              <div className="text-text">{fmtMoney(state.income?.realtorCommission)}</div>
             </div>
           </div>
           <p className="mt-2 text-xs text-text-muted">
-            {state.dispositionTransaction.stageName ?? state.dispositionTransaction.status} · investment P&amp;L and agency commission tracked separately.
+            {state.income?.hasAnalysis
+              ? "Investment P&L and agency commission tracked separately — computed from this deal's flip analysis."
+              : "No flip-calculator analysis on this deal yet — run one to populate the income figures."}
           </p>
         </div>
       )}

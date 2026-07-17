@@ -5,6 +5,7 @@ import {
   duePhrase,
   buildReminderMessage,
   dayDiff,
+  tasksForMember,
 } from "./TaskReminderService";
 
 const now = new Date("2026-07-13T12:00:00Z");
@@ -65,5 +66,29 @@ describe("message building", () => {
     expect(duePhrase("d0")).toBe("due today");
     expect(duePhrase("d1")).toBe("due tomorrow");
     expect(duePhrase("d3")).toBe("due in 3 days");
+  });
+});
+
+describe("recipient scoping by assignment", () => {
+  const tasks = [
+    { id: "1", assignedUserId: "tc_mo" }, // MO retail deal, assigned to the MO TC
+    { id: "2", assignedUserId: "tc_wy" }, // WY retail deal, assigned to another TC
+    { id: "3", assignedUserId: null }, // unassigned investor deal
+  ];
+
+  test("owner gets every task", () => {
+    expect(tasksForMember(tasks, "owner", "owner").map((t) => t.id)).toEqual(["1", "2", "3"]);
+  });
+
+  test("a TC gets only transactions assigned to them", () => {
+    expect(tasksForMember(tasks, "tc_mo", "owner").map((t) => t.id)).toEqual(["1"]);
+  });
+
+  test("a TC on no assigned transaction gets nothing (no email)", () => {
+    expect(tasksForMember(tasks, "tc_none", "owner")).toEqual([]);
+  });
+
+  test("unassigned tasks reach only the owner", () => {
+    expect(tasksForMember(tasks, "tc_wy", "owner").some((t) => t.id === "3")).toBe(false);
   });
 });

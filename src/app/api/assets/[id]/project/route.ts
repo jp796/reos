@@ -10,6 +10,7 @@ import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/require-session";
 import type { Strategy, TitlePath } from "@/services/core/DealClassifierService";
 import { workflowLabel, hasProjectPhase } from "@/services/core/dealLabels";
+import { dualIncomeForAsset } from "@/services/core/dealIncome";
 
 export const runtime = "nodejs";
 
@@ -65,6 +66,9 @@ export async function GET(
       })
     : null;
 
+  // Dual-income ledger (FLAG 2), computed live from the deal's flip analysis.
+  const income = await dualIncomeForAsset(prisma, asset.id);
+
   return NextResponse.json({
     strategy,
     titlePath: asset.titlePath,
@@ -74,5 +78,6 @@ export async function GET(
     acquisitionClosed: acquisition?.status === "closed",
     project,
     dispositionTransaction,
+    income,
   });
 }

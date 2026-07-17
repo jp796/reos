@@ -71,6 +71,9 @@ interface DueTask {
   priority: string;
   property: string;
   transactionId: string;
+  /** The user this transaction is assigned to (its TC), or null. Non-owner
+   *  teammates are only reminded about transactions assigned to them. */
+  assignedUserId: string | null;
   alreadySent: ReminderWindow[];
 }
 
@@ -91,6 +94,21 @@ export function buildReminderMessage(tasks: DueTask[]): string {
   lines.push("");
   lines.push(`Open your day: ${TODAY_URL}`);
   return lines.join("\n");
+}
+
+/**
+ * Which of an account's due tasks a given teammate should be reminded about.
+ * The owner oversees everything (all tasks); everyone else is scoped to the
+ * transactions assigned to them — so a TC is never pinged about a deal that
+ * isn't hers. Exported + pure so the rule is unit-tested.
+ */
+export function tasksForMember<T extends { assignedUserId: string | null }>(
+  tasks: T[],
+  memberId: string,
+  ownerId: string,
+): T[] {
+  if (memberId === ownerId) return tasks;
+  return tasks.filter((t) => t.assignedUserId === memberId);
 }
 
 export interface TeamMember {
@@ -177,7 +195,7 @@ export async function runTaskReminders(
       remindersSentJson: true,
       transactionId: true,
       transaction: {
-        select: { accountId: true, propertyAddress: true },
+        select: { accountId: true, propertyAddress: true, assignedUserId: true },
       },
     },
   });
@@ -198,6 +216,7 @@ export async function runTaskReminders(
       priority: t.priority,
       property: t.transaction.propertyAddress ?? "(no address)",
       transactionId: t.transactionId,
+      assignedUserId: t.transaction.assignedUserId ?? null,
       alreadySent: already,
     });
     byAccount.set(acct, list);
@@ -211,37 +230,44 @@ export async function runTaskReminders(
     const team = await resolveAccountTeam(db, accountId);
     if (team.length === 0) continue;
 
-    const message = buildReminderMessage(tasks);
+    const owner = team.find((u) => u.role === "owner") ?? team[0]!;
+    const tg = TelegramService.isConfigured() ? new TelegramService() : null;
 
-    // Telegram — instant, per team member who has linked their chat.
-    if (TelegramService.isConfigured()) {
-      const tg = new TelegramService();
-      for (const u of team) {
-        if (!u.telegramChatId) continue;
+    // Scope each teammate to their own work: the owner oversees everything and
+    // gets every task; everyone else (TCs, admins) is only reminded about
+    // transactions ASSIGNED to them. This is what keeps a Missouri TC off
+    // Wyoming deals she isn't on — she's pinged only when a deal is hers.
+    for (const member of team) {
+      const memberTasks = tasksForMember(tasks, member.id, owner.id);
+      if (memberTasks.length === 0) continue;
+
+      const message = buildReminderMessage(memberTasks);
+
+      // Telegram — instant, to this member's linked chat.
+      if (tg && member.telegramChatId) {
         try {
-          await tg.sendMessage(message, { chatId: u.telegramChatId, parseMode: "HTML" });
+          await tg.sendMessage(message, { chatId: member.telegramChatId, parseMode: "HTML" });
           result.telegramSent++;
         } catch (e) {
           logError(e, { route: "TaskReminderService.telegram", accountId });
         }
       }
-    }
 
-    // Email — one message to the whole team, from the owner's identity via
-    // the account's connected Gmail.
-    const owner = team.find((u) => u.role === "owner") ?? team[0]!;
-    const emails = team.map((u) => u.email).filter(Boolean);
-    try {
-      const sent = await sendAccountGmail({
-        accountId,
-        fromEmail: owner.email,
-        recipients: emails,
-        subject: `REOS reminders — ${tasks.length} task${tasks.length === 1 ? "" : "s"} need attention`,
-        text: message,
-      });
-      if (sent) result.emailsSent++;
-    } catch (e) {
-      logError(e, { route: "TaskReminderService.email", accountId });
+      // Email — individually, from the owner's identity via the account Gmail.
+      if (member.email) {
+        try {
+          const sent = await sendAccountGmail({
+            accountId,
+            fromEmail: owner.email,
+            recipients: [member.email],
+            subject: `REOS reminders — ${memberTasks.length} task${memberTasks.length === 1 ? "" : "s"} need attention`,
+            text: message,
+          });
+          if (sent) result.emailsSent++;
+        } catch (e) {
+          logError(e, { route: "TaskReminderService.email", accountId });
+        }
+      }
     }
 
     // Mark each task's window as sent so we never double-ping it.

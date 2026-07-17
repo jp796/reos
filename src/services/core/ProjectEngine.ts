@@ -24,6 +24,7 @@ import { Prisma } from "@prisma/client";
 import type { Strategy } from "./DealClassifierService";
 import { hasProjectPhase, projectReturnsToMarketAs } from "./dealLabels";
 import { getProjectTemplate, projectTasks, type ProjectTemplate } from "./projectTemplates";
+import { dualIncomeForAsset } from "./dealIncome";
 
 type Db = PrismaClient;
 
@@ -380,6 +381,11 @@ export async function completeProjectAndCreateDisposition(
   const src = await acquisitionTxn(db, project.assetId);
   if (!src) return { ok: false, reason: "no_source_transaction" };
 
+  // Dual-income ledger (FLAG 2): compute investor P&L + realtor commission from
+  // the deal's flip-calculator analysis (JP's underwriting math). Null when no
+  // analysis exists yet — the panel shows "—" until one is saved.
+  const income = await dualIncomeForAsset(db, project.assetId);
+
   const disposition = await db.transaction.create({
     data: {
       accountId: project.accountId,
@@ -395,8 +401,12 @@ export async function completeProjectAndCreateDisposition(
       assetRole: "disposition",
       pipelineName: "Disposition",
       stageName: "Prep to list",
-      // Dual-income ledger seeded empty — filled from JP's underwriting sheet.
-      dispositionIncomeJson: { kind, investmentReturn: null, realtorCommission: null },
+      dispositionIncomeJson: {
+        kind,
+        investmentReturn: income.investmentReturn,
+        realtorCommission: income.realtorCommission,
+        basis: income.basis,
+      },
     },
     select: { id: true },
   });
