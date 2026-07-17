@@ -185,7 +185,9 @@ export async function runTaskReminders(
     where: {
       completedAt: null,
       dueAt: { not: null, lte: horizon },
-      transaction: { isDemo: false },
+      // Only live deals remind — a closed / dead / terminated transaction is
+      // done, so its lingering open tasks must not keep pinging the team.
+      transaction: { isDemo: false, status: { in: ["active", "listing", "pending"] } },
     },
     select: {
       id: true,

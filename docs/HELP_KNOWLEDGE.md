@@ -433,8 +433,10 @@ attaches a run to a deal; open `/flip-calculator?deal=<id>` to prefill.
 ## Task reminders (Telegram + email)
 
 Open tasks with a due date get reminders at 3 days / 1 day / today / overdue,
-by Telegram DM and email via the account's connected Gmail. **Scoped by
-assignment:** the owner is reminded about every deal; every other teammate (TCs,
+by Telegram DM and email via the account's connected Gmail. **Only live deals
+remind** — closed / dead / terminated transactions never send reminders, even if
+they still have open tasks. **Scoped by assignment:** the owner is reminded about
+every live deal; every other teammate (TCs,
 admins) is reminded only about the transactions **assigned to them** — so a TC is
 never pinged about a deal that isn't hers. Assign a transaction's TC on the deal
 (assignedUserId). Idempotent — no double-pings. Runs in the morning tick.
