@@ -321,6 +321,15 @@ and Comparisons" workbook (matched to existing deals by address). A flip deal's
 saved analysis feeds the **$ Pipeline** — its Fix&Flip projected profit becomes the
 deal's expected income, with the max offer shown in the row note.
 
+### Private money partners
+Your capital partners live in a directory at **/private-money** (Contacts →
+Private money; investor accounts) — name, company, email, phone, typical amount,
+notes. Attach a partner + the amount they funded to any deal from the deal's
+**Private money** panel (quick-add a new partner inline, or pick from the
+directory). Each partner card shows which deals they're funding. Endpoints:
+GET/POST /api/private-money/partners, PATCH/DELETE /api/private-money/partners/[id],
+POST/DELETE /api/transactions/[id]/funding.
+
 ### Production — investment P&L
 The /production Revenue type panel now shows Investment P&L alongside Agency GCI:
 the summed headline metric (flip profit, wholesale spread, rental/creative cash

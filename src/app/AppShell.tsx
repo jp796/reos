@@ -15,6 +15,7 @@ import {
   KanbanSquare,
   TrendingUp,
   DollarSign,
+  Landmark,
   Calculator,
   Filter,
   Megaphone,
@@ -53,7 +54,13 @@ const NAV_GROUPS: Array<{ label: string | null; items: NavItem[] }> = [
       { href: "/board", label: "Board", icon: KanbanSquare, investorOnly: true },
     ],
   },
-  { label: "Contacts", items: [{ href: "/contacts", label: "Contacts", icon: UsersRound }] },
+  {
+    label: "Contacts",
+    items: [
+      { href: "/contacts", label: "Contacts", icon: UsersRound },
+      { href: "/private-money", label: "Private money", icon: Landmark, investorOnly: true },
+    ],
+  },
   {
     label: "Intelligence",
     items: [

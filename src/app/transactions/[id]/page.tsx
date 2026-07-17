@@ -43,6 +43,7 @@ import { InvestorPmPanel } from "./InvestorPmPanel";
 import { DrawCapitalPanel } from "./DrawCapitalPanel";
 import { EconomicsPanel } from "./EconomicsPanel";
 import { FlipAnalysisCard } from "./FlipAnalysisCard";
+import { PrivateMoneyPanel } from "./PrivateMoneyPanel";
 import { DealTypeControl } from "./DealTypeControl";
 import { readEntitlements } from "@/lib/entitlements";
 import { transactionState, type TransactionStateInput } from "@/lib/transactionState";
@@ -186,6 +187,10 @@ export default async function TransactionDetailPage({
         },
       },
       inspections: { orderBy: [{ scheduledAt: "asc" }, { createdAt: "asc" }] },
+      dealFundings: {
+        orderBy: { createdAt: "asc" },
+        include: { partner: { select: { id: true, name: true, company: true } } },
+      },
       esignRequests: {
         orderBy: { createdAt: "desc" },
         include: {
@@ -645,6 +650,8 @@ export default async function TransactionDetailPage({
       {/* Saved Flip Analysis (imported from JP's workbook or entered in the
           calculator) — renders only when the deal has one. */}
       <FlipAnalysisCard transactionId={txn.id} accountId={actor.accountId} />
+
+      <PrivateMoneyPanel transactionId={txn.id} initialFundings={txn.dealFundings} />
 
       {tags.length > 0 && (
         <section>

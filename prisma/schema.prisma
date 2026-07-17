@@ -93,6 +93,7 @@ model Account {
   capitalStackEntries       CapitalStackEntry[]
   pipelineIncomeItems       PipelineIncomeItem[]
   flipAnalyses              FlipAnalysis[]
+  privateMoneyPartners      PrivateMoneyPartner[]
   sourceChannels            SourceChannel[]
   marketingSpends           MarketingSpend[]
   calendarEvents            CalendarEvent[]
@@ -510,6 +511,7 @@ model Transaction {
   inspections         TransactionInspection[]
   notes               TransactionNote[]
   esignRequests       EsignRequest[]
+  dealFundings        DealFunding[]
   assignedUser        User?                    @relation("AssignedTransactions", fields: [assignedUserId], references: [id], onDelete: SetNull)
 
   @@index([accountId])
@@ -1661,6 +1663,45 @@ model FlipAnalysis {
   @@index([accountId])
   @@index([transactionId])
   @@map("flip_analyses")
+}
+
+/// A private-money lender / capital partner in the account's directory. Managed
+/// once, then attached to any number of deals (via DealFunding) with the amount
+/// they funded on each. Feeds the weekly partner-update email.
+model PrivateMoneyPartner {
+  id            String   @id @default(cuid())
+  accountId     String   @map("account_id")
+  name          String
+  company       String?
+  email         String?
+  phone         String?
+  typicalAmount Float?   @map("typical_amount")
+  notes         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  account  Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  fundings DealFunding[]
+
+  @@index([accountId])
+  @@map("private_money_partners")
+}
+
+/// Links a private-money partner to a transaction they funded, with the amount.
+model DealFunding {
+  id            String   @id @default(cuid())
+  transactionId String   @map("transaction_id")
+  partnerId     String   @map("partner_id")
+  amount        Float?
+  note          String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  transaction Transaction         @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  partner     PrivateMoneyPartner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@index([transactionId])
+  @@index([partnerId])
+  @@map("deal_fundings")
 }
 
 /// Maps an outbound Telegram notification (a deal ping) to its transaction, so
