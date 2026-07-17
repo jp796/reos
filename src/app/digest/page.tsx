@@ -16,6 +16,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/require-session";
 import { dealVisibilityWhere } from "@/lib/deal-visibility";
+import { TeamFeatureEmailCard } from "./TeamFeatureEmailCard";
 
 export const dynamic = "force-dynamic";
 
@@ -171,6 +172,12 @@ export default async function DigestPage() {
           deal{silent.length === 1 ? "" : "s"}.
         </p>
       </header>
+
+      {actor.role === "owner" && (
+        <div className="mb-6">
+          <TeamFeatureEmailCard />
+        </div>
+      )}
 
       {/* KPI strip */}
       <section className="mb-8 grid grid-cols-2 gap-3 md:grid-cols-4">

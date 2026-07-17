@@ -454,6 +454,13 @@ admins) is reminded only about the transactions **assigned to them** — so a TC
 never pinged about a deal that isn't hers. Assign a transaction's TC on the deal
 (assignedUserId). Idempotent — no double-pings. Runs in the morning tick.
 
+## Team feature spotlight email
+On **/digest** (owner only) a "Team feature spotlight" card drafts a weekly
+"get more out of REOS" email — a rotating set of real feature tips + a
+productivity nudge. Review and edit it, then click **Send to N teammates**; it
+goes to everyone on the account (from your Gmail). Never auto-sends. (POST
+/api/team-digest, `{send:true}` to send.)
+
 ## Investor wind-down checklist
 
 When an investor/wholesale deal flips to **Pending** *after* its inspection
