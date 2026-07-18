@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Calculator, ArrowRight, Trash2, TrendingUp } from "lucide-react";
 import { useToast } from "@/app/ToastProvider";
+import { PropertyPhoto } from "@/app/components/PropertyPhoto";
 
 export interface Candidate {
   id: string;
@@ -148,38 +149,41 @@ function CandidateCard({ candidate: c }: { candidate: Candidate }) {
   }
 
   return (
-    <div className="group relative flex flex-col justify-between rounded-2xl border border-border bg-surface p-5 transition-shadow hover:shadow-md">
-      <div>
-        <div className="flex items-start justify-between gap-3">
-          <h3 className="font-medium leading-snug text-text">{c.address}</h3>
-          <button
-            type="button"
-            onClick={remove}
-            disabled={busy}
-            className="shrink-0 rounded p-1 text-text-subtle opacity-0 transition-opacity hover:text-red-600 group-hover:opacity-100"
-            title="Remove from underwriting"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="mt-3">
-          <div className={`font-display text-3xl font-semibold tabular-nums ${positive ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-            {money(c.profit)}
+    <div className="group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-surface transition-shadow hover:shadow-md">
+      {/* Property photo (Street View) — pulled from the address, hides if none */}
+      <PropertyPhoto address={c.address} className="h-32 w-full" rounded="rounded-none" />
+      <div className="flex flex-1 flex-col justify-between p-5">
+        <div>
+          <div className="flex items-start justify-between gap-3">
+            <h3 className="font-medium leading-snug text-text">{c.address}</h3>
+            <button
+              type="button"
+              onClick={remove}
+              disabled={busy}
+              className="shrink-0 rounded p-1 text-text-subtle opacity-0 transition-opacity hover:text-red-600 group-hover:opacity-100"
+              title="Remove from underwriting"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
           </div>
-          <div className="mt-0.5 text-xs text-text-subtle">projected profit · {c.exit}</div>
+
+          <div className="mt-3">
+            <div className={`font-display text-3xl font-semibold tabular-nums ${positive ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+              {money(c.profit)}
+            </div>
+            <div className="mt-0.5 text-xs text-text-subtle">projected profit · {c.exit}</div>
+          </div>
+
+          <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+            <Stat label="Offer" value={money(c.offer)} />
+            <Stat label="ARV" value={money(c.arv)} />
+            <Stat label="Rehab" value={money(c.rehab)} />
+            <Stat label="Max offer" value={money(c.maxOffer)} />
+          </dl>
         </div>
 
-        <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
-          <Stat label="Offer" value={money(c.offer)} />
-          <Stat label="ARV" value={money(c.arv)} />
-          <Stat label="Rehab" value={money(c.rehab)} />
-          <Stat label="Max offer" value={money(c.maxOffer)} />
-        </dl>
-      </div>
-
-      <div className="mt-5">
-        {confirming ? (
+        <div className="mt-5">
+          {confirming ? (
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -202,6 +206,7 @@ function CandidateCard({ candidate: c }: { candidate: Candidate }) {
             Flip to deal <ArrowRight className="h-4 w-4" />
           </button>
         )}
+        </div>
       </div>
     </div>
   );

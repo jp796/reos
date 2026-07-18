@@ -6,9 +6,10 @@
  * and can save a run attached to a deal.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Calculator, Save, Home, Plus, Trash2 } from "lucide-react";
 import { useToast } from "@/app/ToastProvider";
+import { PropertyPhoto } from "@/app/components/PropertyPhoto";
 import {
   computeFlip,
   DEFAULT_FLIP_INPUTS,
@@ -43,6 +44,13 @@ export function FlipCalculator({
 }) {
   const toast = useToast();
   const [address, setAddress] = useState(prefillAddress);
+  // Debounced address for the photo preview so typing doesn't fire a Google
+  // request per keystroke.
+  const [photoAddress, setPhotoAddress] = useState(prefillAddress);
+  useEffect(() => {
+    const t = setTimeout(() => setPhotoAddress(address), 700);
+    return () => clearTimeout(t);
+  }, [address]);
   const [inputs, setInputs] = useState<FlipInputs>(DEFAULT_FLIP_INPUTS);
   const [dealId, setDealId] = useState<string>(prefillDealId ?? "");
   const [saving, setSaving] = useState(false);
@@ -134,6 +142,12 @@ export function FlipCalculator({
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Property address" full>
                 <input value={address} onChange={(e) => setAddress(e.target.value)} className="reos-input" placeholder="2315 Thomes Ave" />
+                {photoAddress.trim().length > 6 && (
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <PropertyPhoto address={photoAddress} kind="streetview" className="aspect-[16/10]" rounded="rounded-lg" />
+                    <PropertyPhoto address={photoAddress} kind="satellite" className="aspect-[16/10]" rounded="rounded-lg" />
+                  </div>
+                )}
               </Field>
               <Num label="Square feet" value={inputs.sqft} onChange={(v) => set({ sqft: v })} />
               <Num label="Offer price" value={inputs.offerPrice} onChange={(v) => set({ offerPrice: v })} money />

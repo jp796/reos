@@ -23,6 +23,12 @@ const schema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_REDIRECT_URI: z.string().url().optional(),
 
+  // Google Maps Platform API key — Street View Static + Static Maps +
+  // Geocoding, used to auto-pull property photos on address entry. Server-side
+  // only (never exposed to the client); the /api/property-image proxy holds it.
+  // Optional so the app boots before it's wired; property photos no-op until set.
+  GOOGLE_MAPS_API_KEY: z.string().optional(),
+
   // Meta (Facebook + Instagram) OAuth — used by /api/auth/meta and
   // the social-posting flow. Optional so the app boots fine before
   // the Meta app is wired; Meta features no-op until all three are set.
