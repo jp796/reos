@@ -309,6 +309,15 @@ payments / balloon — and computes the metrics live (profit + ROI + days-to-fli
 cap rate + DSCR + cash flow, spread, etc.). Save to feed the deal into the
 unified Production P&L. (Endpoint: PATCH /api/assets/[id]/economics.)
 
+### Property photos (Google Street View + satellite)
+When you enter a property address (Flip Calculator, Underwriting cards), REOS
+auto-pulls a **Street View** curb photo and a **satellite** aerial from Google
+Maps. Images come through a server-side proxy (GET /api/property-image?address=&kind=streetview|satellite)
+so the API key never reaches the browser; the photo hides itself when there's no
+imagery for an address. The key (GOOGLE_MAPS_API_KEY) is restricted to Street
+View Static / Maps Static / Geocoding and lives in Secret Manager. Effectively
+free (Google's ~$200/mo credit ≈ 28k lookups).
+
 ### Underwriting pipeline
 **/underwriting** (Automations → Underwriting; investor accounts) is your deal
 pipeline for properties you're evaluating. Every flip analysis you save *without*
