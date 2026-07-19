@@ -336,9 +336,10 @@ function SidebarContents({
     return null;
   }, [pathname]);
 
-  // Collapsible groups. Default (no stored pref) = only the active group is
-  // open, so the sidebar reads as a clean set of dropdowns. Explicit user
-  // toggles persist across sessions.
+  // Collapsible groups. Default (no stored pref) = OPEN, so no feature is ever
+  // hidden behind a collapsed group a user didn't knowingly close (this bit us
+  // repeatedly — new items in Automations/Contacts were invisible). The active
+  // group is always forced open. Explicit user collapses persist across sessions.
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   useEffect(() => {
     try {
@@ -349,11 +350,11 @@ function SidebarContents({
   }, []);
 
   const isGroupOpen = (label: string) =>
-    label in openGroups ? openGroups[label] : label === activeGroupLabel;
+    label === activeGroupLabel || (label in openGroups ? openGroups[label] : true);
 
   function toggleGroup(label: string) {
     setOpenGroups((prev) => {
-      const next = { ...prev, [label]: !(label in prev ? prev[label] : label === activeGroupLabel) };
+      const next = { ...prev, [label]: !(label in prev ? prev[label] : true) };
       try {
         localStorage.setItem("reos_nav_groups", JSON.stringify(next));
       } catch {
