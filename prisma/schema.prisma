@@ -1960,3 +1960,59 @@ model ExtractionLearning {
   @@index([accountId, active])
   @@map("extraction_learnings")
 }
+
+// ─── Valuation subsystem (RPR-style blended valuation) ───────────────────────
+// Standalone value-opinion blending. Its own Property table (distinct from the
+// transaction-side Asset model) so a valuation run can exist before a deal does.
+// Int autoincrement ids here match the valuation lib/route (propertyId: number).
+
+model Property {
+  id           Int              @id @default(autoincrement())
+  address      String
+  zip          String?
+  beds         Int?
+  baths        Float?
+  sqft         Int?
+  lotSqft      Int?
+  yearBuilt    Int?
+  propertyType String?
+  createdAt    DateTime         @default(now())
+  runs         ValuationRun[]
+
+  @@map("properties")
+}
+
+model ValuationRun {
+  id              Int                @id @default(autoincrement())
+  property        Property           @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  propertyId      Int
+  targetCondition String? // e.g. "C2" / "C3" repaired target (UAD scale)
+  blendedValue    Float
+  valueLow        Float
+  valueHigh       Float
+  spreadPct       Float
+  confidence      String // "high" | "medium" | "low"
+  sourceCount     Int
+  notes           String?
+  createdAt       DateTime           @default(now())
+  sources         ValuationSource[]
+
+  @@index([propertyId])
+  @@map("valuation_runs")
+}
+
+model ValuationSource {
+  id        Int          @id @default(autoincrement())
+  run       ValuationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  runId     Int
+  source    String // "engine" | "rpr_rvm" | "zillow" | "redfin" | "realtor" | "manual"
+  value     Float
+  weight    Float
+  isOutlier Boolean      @default(false)
+  included  Boolean      @default(true)
+  enteredBy String       @default("auto") // "auto" | "manual"
+  createdAt DateTime     @default(now())
+
+  @@index([runId])
+  @@map("valuation_sources")
+}
