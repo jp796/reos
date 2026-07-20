@@ -37,7 +37,7 @@ const nextConfig = {
 
   // Security headers applied to every response. Audit passes:
   //   - HSTS (force HTTPS for 2 years, subdomains)
-  //   - X-Frame-Options DENY (no clickjacking)
+  //   - X-Frame-Options SAMEORIGIN (no cross-site clickjacking; own frames OK)
   //   - X-Content-Type-Options nosniff (no MIME-sniff attacks)
   //   - Referrer-Policy strict-origin-when-cross-origin
   //   - Permissions-Policy locks unused browser features
@@ -52,7 +52,11 @@ const nextConfig = {
         key: "Strict-Transport-Security",
         value: "max-age=63072000; includeSubDomains; preload",
       },
-      { key: "X-Frame-Options", value: "DENY" },
+      // SAMEORIGIN (not DENY): still blocks cross-site clickjacking, but lets
+      // the app frame its OWN same-origin content — e.g. the in-app document
+      // viewer's <iframe src="/api/transactions/…/documents/…">. DENY refused
+      // that same-origin frame ("refused to connect").
+      { key: "X-Frame-Options", value: "SAMEORIGIN" },
       { key: "X-Content-Type-Options", value: "nosniff" },
       { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
       {
