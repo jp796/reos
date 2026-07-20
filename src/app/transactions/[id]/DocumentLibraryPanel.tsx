@@ -37,6 +37,7 @@ import {
   Eye,
   ExternalLink as OpenTabIcon,
   X,
+  CheckCircle2,
 } from "lucide-react";
 import { useToast } from "../../ToastProvider";
 
@@ -103,6 +104,39 @@ function fmtConfidence(c: number | null): string {
   return `${Math.round(c * 100)}%`;
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * POST a FormData with real upload-progress reporting. `fetch()` cannot report
+ * byte progress; XMLHttpRequest.upload.onprogress can. Returns a Response-shaped
+ * object so call sites keep using `res.ok` / `await res.json()` unchanged.
+ */
+function xhrUpload(
+  url: string,
+  body: FormData,
+  onProgress: (pct: number) => void,
+): Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        onProgress(Math.min(100, Math.round((e.loaded / e.total) * 100)));
+      }
+    };
+    xhr.onload = () => {
+      const text = xhr.responseText;
+      resolve({
+        ok: xhr.status >= 200 && xhr.status < 300,
+        status: xhr.status,
+        json: async () => (text ? JSON.parse(text) : {}),
+      });
+    };
+    xhr.onerror = () => reject(new Error("network error during upload"));
+    xhr.send(body);
+  });
+}
+
 /**
  * UploadDocsControl — drop ANY file(s) into this transaction's library.
  * Posts to POST /api/transactions/:id/documents, then refreshes so the
@@ -112,6 +146,8 @@ function UploadDocsControl({ transactionId }: { transactionId: string }) {
   const router = useRouter();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(0); // 0–100, real bytes uploaded
+  const [done, setDone] = useState(false); // brief "complete" state before close
   const [dragging, setDragging] = useState(false);
   const [open, setOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -156,8 +192,10 @@ function UploadDocsControl({ transactionId }: { transactionId: string }) {
   }
 
   async function upload(files: FileList | null) {
-    if (!files || files.length === 0) return;
+    if (!files || files.length === 0 || busy) return;
     setBusy(true);
+    setDone(false);
+    setProgress(0);
     // A fresh single-PDF contract goes through the review/apply flow, so
     // we don't auto-synthesize over it. Everything else (added notices,
     // addenda, multi-file drops) gets reconciled automatically.
@@ -175,9 +213,10 @@ function UploadDocsControl({ transactionId }: { transactionId: string }) {
         // is never lost.
         const efd = new FormData();
         efd.append("file", only);
-        const er = await fetch(
+        const er = await xhrUpload(
           `/api/transactions/${transactionId}/contract/extract`,
-          { method: "POST", body: efd },
+          efd,
+          setProgress,
         );
         if (er.ok) {
           reviewFlow = true;
@@ -188,11 +227,13 @@ function UploadDocsControl({ transactionId }: { transactionId: string }) {
         } else {
           const fd = new FormData();
           fd.append("file", only);
-          const res = await fetch(
+          setProgress(0); // fallback re-uploads the bytes; restart the bar
+          const res = await xhrUpload(
             `/api/transactions/${transactionId}/documents`,
-            { method: "POST", body: fd },
+            fd,
+            setProgress,
           );
-          const data = await res.json();
+          const data = (await res.json()) as { error?: string };
           if (!res.ok) throw new Error(data.error ?? "upload failed");
           toast.success(
             "Added 1 file",
@@ -203,11 +244,12 @@ function UploadDocsControl({ transactionId }: { transactionId: string }) {
         // Non-PDF, or multiple files: store in the document library.
         const fd = new FormData();
         Array.from(files).forEach((f) => fd.append("file", f));
-        const res = await fetch(`/api/transactions/${transactionId}/documents`, {
-          method: "POST",
-          body: fd,
-        });
-        const data = await res.json();
+        const res = await xhrUpload(
+          `/api/transactions/${transactionId}/documents`,
+          fd,
+          setProgress,
+        );
+        const data = (await res.json()) as { error?: string; count?: number };
         if (!res.ok) throw new Error(data.error ?? "upload failed");
         toast.success(
           `Added ${data.count} file${data.count === 1 ? "" : "s"}`,
@@ -216,11 +258,17 @@ function UploadDocsControl({ transactionId }: { transactionId: string }) {
       }
       if (!reviewFlow) await syncFromDocuments();
       startTransition(() => router.refresh());
+      // Show a clear "complete" beat before the modal disappears.
+      setProgress(100);
+      setDone(true);
+      await sleep(1100);
       setOpen(false); // reached only on success — dismiss the modal
     } catch (e) {
       toast.error("Upload failed", e instanceof Error ? e.message : "unknown");
     } finally {
       setBusy(false);
+      setDone(false);
+      setProgress(0);
     }
   }
 
@@ -315,17 +363,45 @@ function UploadDocsControl({ transactionId }: { transactionId: string }) {
                       : "border-border bg-surface-2/30 hover:border-brand-400"
                   }`}
                 >
-                  <UploadIcon className="h-6 w-6 text-text-muted" />
+                  {done ? (
+                    <CheckCircle2 className="h-8 w-8 text-emerald-500" />
+                  ) : (
+                    <UploadIcon
+                      className={`h-6 w-6 ${busy ? "animate-pulse text-brand-500" : "text-text-muted"}`}
+                    />
+                  )}
                   <span className="text-base font-medium text-text">
-                    {busy
-                      ? "Uploading…"
-                      : dragging
-                        ? "Drop to add"
-                        : "Drag & drop your files here"}
+                    {done
+                      ? "Upload complete"
+                      : busy
+                        ? progress >= 100
+                          ? "Processing…"
+                          : "Uploading…"
+                        : dragging
+                          ? "Drop to add"
+                          : "Drag & drop your files here"}
                   </span>
                   <span className="text-xs text-text-muted">
-                    Any file lands in the library — a PDF contract is auto-read too
+                    {done
+                      ? "All set — closing…"
+                      : "Any file lands in the library — a PDF contract is auto-read too"}
                   </span>
+
+                  {(busy || done) && (
+                    <div className="mt-3 w-full max-w-xs">
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-surface-2">
+                        <div
+                          className={`h-full rounded-full transition-all duration-300 ease-out ${
+                            done ? "bg-emerald-500" : "bg-brand-500"
+                          } ${busy && !done && progress >= 100 ? "animate-pulse" : ""}`}
+                          style={{ width: `${done ? 100 : progress}%` }}
+                        />
+                      </div>
+                      <div className="mt-1 text-right text-[11px] tabular-nums text-text-muted">
+                        {done ? "Done" : `${progress}%`}
+                      </div>
+                    </div>
+                  )}
                 </label>
 
                 {/* Locations */}
