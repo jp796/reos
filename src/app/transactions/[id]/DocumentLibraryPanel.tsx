@@ -389,16 +389,28 @@ function UploadDocsControl({ transactionId }: { transactionId: string }) {
 
                   {(busy || done) && (
                     <div className="mt-3 w-full max-w-xs">
-                      <div className="h-2 w-full overflow-hidden rounded-full bg-surface-2">
-                        <div
-                          className={`h-full rounded-full transition-all duration-300 ease-out ${
-                            done ? "bg-emerald-500" : "bg-brand-500"
-                          } ${busy && !done && progress >= 100 ? "animate-pulse" : ""}`}
-                          style={{ width: `${done ? 100 : progress}%` }}
-                        />
+                      <style>{`@keyframes reosIndet{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}`}</style>
+                      <div className="relative h-2 w-full overflow-hidden rounded-full bg-surface-2">
+                        {done ? (
+                          // Finished — solid full bar.
+                          <div className="h-full w-full rounded-full bg-emerald-500" />
+                        ) : progress < 100 ? (
+                          // Bytes genuinely in flight — real determinate fill.
+                          <div
+                            className="h-full rounded-full bg-brand-500 transition-all duration-200 ease-out"
+                            style={{ width: `${progress}%` }}
+                          />
+                        ) : (
+                          // Bytes done, server reading the file — no % to show, so
+                          // sweep an indeterminate segment instead of freezing at 100%.
+                          <div
+                            className="absolute inset-y-0 left-0 w-2/5 rounded-full bg-brand-500"
+                            style={{ animation: "reosIndet 1.1s ease-in-out infinite" }}
+                          />
+                        )}
                       </div>
                       <div className="mt-1 text-right text-[11px] tabular-nums text-text-muted">
-                        {done ? "Done" : `${progress}%`}
+                        {done ? "Done" : progress < 100 ? `${progress}%` : "Working…"}
                       </div>
                     </div>
                   )}
