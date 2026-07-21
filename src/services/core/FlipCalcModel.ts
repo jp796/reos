@@ -55,6 +55,10 @@ export interface FlipInputs {
    *  the computed formulas — some source sheets hand-type these. */
   flipInterestOverride?: number | null;
   flipPointsOverride?: number | null;
+  /** Manual "Listing ARV" — the retail list-side after-repair value, hand-typed
+   *  from the source sheet (like wholetailARV / rentalARV). Pending: which
+   *  scenario/formula it drives. */
+  listingARV: number;
   // Wholetail
   wholetailRehabBudget: number; // E17
   wholetailARV: number; // E20 (manual)
@@ -98,6 +102,7 @@ export const DEFAULT_FLIP_INPUTS: FlipInputs = {
   fluellenPct: 1,
   partnerPct: 0,
   flipComps: [],
+  listingARV: 0,
   wholetailRehabBudget: 0,
   wholetailARV: 0,
   wholetailHoldingMonths: 3,
@@ -192,6 +197,7 @@ export interface FlipResult {
   comps: CompsResult;
   closingCostsAuto: number; // H12
   fixFlip: FixFlipResult;
+  listing: FixFlipResult;
   wholetail: WholetailResult;
   rental: RentalResult;
   ownerFinance: OwnerFinanceResult;
@@ -243,34 +249,39 @@ export function computeFlip(input: FlipInputs): FlipResult {
       ? i.flipInterestOverride
       : (i.offerPrice + i.flipRehabBudget) * ((i.flipInterestRate / 12) * i.flipHoldingMonths); // B24
   const ffPoints = i.flipPointsOverride != null ? i.flipPointsOverride : i.offerPrice * i.flipPointsPct; // B25
-  const ffTotalExpenses =
-    i.offerPrice +
-    i.flipRehabBudget +
-    ffInterest +
-    ffPoints +
-    closingCostsAuto +
-    ffArv * commTotalPct +
-    (carryAnnual / 12) * i.flipHoldingMonths; // B26
-  const ffProfit = ffArv - ffTotalExpenses; // B30
   const extraRealtor = (arv: number) =>
     i.commissionType === "Seller Agent"
       ? arv * i.commListingPct
       : i.commissionType === "Referral Agent"
         ? (arv * i.commListingPct) / 3
         : 0;
-  const fixFlip: FixFlipResult = {
-    arv: ffArv,
-    interest: ffInterest,
-    points: ffPoints,
-    totalExpenses: ffTotalExpenses,
-    maxOfferForProfit: ffArv - (ffTotalExpenses - i.offerPrice) - 50000, // B27
-    maxOffer70Ltv: ffArv * 0.7 - i.flipRehabBudget, // B28
-    breakEvenOffer: ffArv - ffTotalExpenses + i.offerPrice, // B29
-    profit: ffProfit,
-    fluellen: ffProfit * i.fluellenPct, // B33
-    partner: ffProfit * i.partnerPct, // B34
-    extraRealtor: extraRealtor(ffArv), // B35
+  const flipAtArv = (arv: number): FixFlipResult => {
+    const totalExpenses =
+      i.offerPrice +
+      i.flipRehabBudget +
+      ffInterest +
+      ffPoints +
+      closingCostsAuto +
+      arv * commTotalPct +
+      (carryAnnual / 12) * i.flipHoldingMonths; // B26
+    const profit = arv - totalExpenses; // B30
+
+    return {
+      arv,
+      interest: ffInterest,
+      points: ffPoints,
+      totalExpenses,
+      maxOfferForProfit: arv - (totalExpenses - i.offerPrice) - 50000, // B27
+      maxOffer70Ltv: arv * 0.7 - i.flipRehabBudget, // B28
+      breakEvenOffer: arv - totalExpenses + i.offerPrice, // B29
+      profit,
+      fluellen: profit * i.fluellenPct, // B33
+      partner: profit * i.partnerPct, // B34
+      extraRealtor: extraRealtor(arv), // B35
+    };
   };
+  const fixFlip = flipAtArv(ffArv);
+  const listing = flipAtArv(i.listingARV);
 
   // ---- WHOLETAIL ----
   const wtArv = i.wholetailARV; // E20 (manual)
@@ -362,5 +373,5 @@ export function computeFlip(input: FlipInputs): FlipResult {
     totalProfit3yr: ofInitialCashProfit + ofCashflowTotal3yr + ofPayoffProfit, // K36
   };
 
-  return { rehab, comps: compsResult, closingCostsAuto, fixFlip, wholetail, rental, ownerFinance };
+  return { rehab, comps: compsResult, closingCostsAuto, fixFlip, listing, wholetail, rental, ownerFinance };
 }

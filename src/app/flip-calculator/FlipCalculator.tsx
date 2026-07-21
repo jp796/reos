@@ -6,8 +6,8 @@
  * and can save a run attached to a deal.
  */
 
-import { useEffect, useMemo, useState } from "react";
-import { Calculator, Save, Home, Plus, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Calculator, Save, Home, Plus, Trash2, ImagePlus, Loader2 } from "lucide-react";
 import { useToast } from "@/app/ToastProvider";
 import { PropertyPhoto } from "@/app/components/PropertyPhoto";
 import {
@@ -18,6 +18,7 @@ import {
   type CommissionType,
   type RehabChoice,
 } from "@/services/core/FlipCalcModel";
+import type { ExtractedComp } from "@/services/ai/CompsScreenshotService";
 
 const money = (n: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(
@@ -31,6 +32,11 @@ const money2 = (n: number) =>
 interface Deal {
   id: string;
   address: string;
+}
+
+interface ReviewCompRow extends ExtractedComp {
+  id: string;
+  checked: boolean;
 }
 
 export function FlipCalculator({
@@ -54,6 +60,10 @@ export function FlipCalculator({
   const [inputs, setInputs] = useState<FlipInputs>(DEFAULT_FLIP_INPUTS);
   const [dealId, setDealId] = useState<string>(prefillDealId ?? "");
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [reviewRows, setReviewRows] = useState<ReviewCompRow[]>([]);
+  const screenshotInputRef = useRef<HTMLInputElement | null>(null);
 
   const r = useMemo(() => computeFlip(inputs), [inputs]);
   const set = (patch: Partial<FlipInputs>) => setInputs((prev) => ({ ...prev, ...patch }));
@@ -70,6 +80,124 @@ export function FlipCalculator({
   }
   function removeComp(idx: number) {
     set({ flipComps: inputs.flipComps.filter((_, i) => i !== idx) });
+  }
+
+  function setReviewRow(id: string, patch: Partial<ReviewCompRow>) {
+    setReviewRows((prev) => prev.map((row) => (row.id === id ? { ...row, ...patch } : row)));
+  }
+
+  async function importFromImage(file: File) {
+    if (importing) return;
+
+    setImporting(true);
+    setImportError(null);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 65_000);
+
+    try {
+      const form = new FormData();
+      form.set("image", file);
+
+      const res = await fetch("/api/flip-calculator/comps-from-screenshot", {
+        method: "POST",
+        body: form,
+        signal: controller.signal,
+      });
+      const body = (await res.json().catch(() => null)) as
+        | { comps?: ExtractedComp[]; error?: string }
+        | null;
+
+      if (!res.ok) {
+        const message = body?.error ?? `Import failed (HTTP ${res.status})`;
+        setImportError(message);
+        toast.error("Couldn't import comps", message);
+        return;
+      }
+
+      const comps = Array.isArray(body?.comps) ? body.comps : [];
+      if (comps.length === 0) {
+        const message = "No comps found — try a clearer screenshot";
+        setReviewRows([]);
+        setImportError(message);
+        toast.info(message);
+        return;
+      }
+
+      setReviewRows(
+        comps.map((comp) => ({
+          ...comp,
+          id: crypto.randomUUID(),
+          checked:
+            comp.salePrice != null &&
+            comp.salePrice > 0 &&
+            comp.sqft != null &&
+            comp.sqft > 0,
+        })),
+      );
+      toast.success("Comps ready to review", `${comps.length} row${comps.length === 1 ? "" : "s"} extracted.`);
+    } catch (e) {
+      const message =
+        e instanceof DOMException && e.name === "AbortError"
+          ? "Import timed out while reading the screenshot"
+          : e instanceof Error
+            ? e.message
+            : "Import failed";
+      setImportError(message);
+      toast.error("Couldn't import comps", message);
+    } finally {
+      clearTimeout(timeout);
+      setImporting(false);
+    }
+  }
+
+  function onScreenshotFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) {
+      void importFromImage(file);
+    }
+    e.target.value = "";
+  }
+
+  function onScreenshotPaste(e: React.ClipboardEvent<HTMLDivElement>) {
+    const items = Array.from(e.clipboardData?.items ?? []);
+    const imageItem = items.find((item) => item.type.startsWith("image/"));
+    if (!imageItem) return;
+
+    const file = imageItem.getAsFile();
+    if (!file) {
+      setImportError("Clipboard image could not be read");
+      toast.error("Couldn't import comps", "Clipboard image could not be read");
+      return;
+    }
+
+    e.preventDefault();
+    void importFromImage(file);
+  }
+
+  function applyReviewedComps() {
+    const checkedRows = reviewRows.filter((row) => row.checked);
+    if (checkedRows.length === 0) return;
+
+    const eligible = checkedRows
+      .filter((row) => row.salePrice != null && row.salePrice > 0 && row.sqft != null && row.sqft > 0)
+      .map((row) => ({ salePrice: row.salePrice ?? 0, sqft: row.sqft ?? 0 }));
+
+    if (eligible.length === 0) {
+      toast.error("No usable comps selected", "Each selected comp needs a sale price and square feet.");
+      return;
+    }
+
+    set({ flipComps: eligible.slice(0, 5) });
+
+    if (checkedRows.length > 5) {
+      toast.info("Only the first 5 checked comps were applied");
+    } else if (eligible.length < checkedRows.length) {
+      toast.info("Only comps with sale price and square feet were applied");
+    }
+
+    setReviewRows([]);
+    setImportError(null);
   }
 
   async function save() {
@@ -183,6 +311,123 @@ export function FlipCalculator({
             <p className="mb-2 text-xs text-text-muted">
               Add up to 5 flip comps. Average $/sqft × square feet sets the Fix &amp; Flip ARV.
             </p>
+            <div
+              tabIndex={0}
+              onPaste={onScreenshotPaste}
+              className="mb-3 rounded-lg border border-dashed border-border bg-surface-2 p-3 focus:outline-none focus:ring-2 focus:ring-brand-500/40"
+            >
+              <input
+                ref={screenshotInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={onScreenshotFileChange}
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={importing}
+                  onClick={() => screenshotInputRef.current?.click()}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+                >
+                  {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+                  {importing ? "Reading screenshot…" : "Import from MLS screenshot"}
+                </button>
+                <span className="text-xs text-text-muted">or paste a screenshot (⌘V)</span>
+              </div>
+              {importError ? <p className="mt-2 text-xs text-red-600">{importError}</p> : null}
+              {importing ? <p className="mt-2 text-xs text-text-muted">Reading screenshot… this can take up to a minute.</p> : null}
+            </div>
+            {reviewRows.length > 0 && (
+              <div className="mb-3 rounded-lg border border-border bg-surface-2 p-3">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-left text-xs text-text">
+                    <thead className="text-text-muted">
+                      <tr className="border-b border-border">
+                        <th className="pb-2 pr-2 font-medium">Use</th>
+                        <th className="pb-2 pr-2 font-medium">Address</th>
+                        <th className="pb-2 pr-2 font-medium">Sold price</th>
+                        <th className="pb-2 pr-2 font-medium">Sqft</th>
+                        <th className="pb-2 pr-2 font-medium">$/sqft</th>
+                        <th className="pb-2 pr-2 font-medium">Beds</th>
+                        <th className="pb-2 pr-2 font-medium">Baths</th>
+                        <th className="pb-2 font-medium">Sold date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {reviewRows.map((row) => (
+                        <tr key={row.id} className="border-b border-border/60 last:border-0">
+                          <td className="py-2 pr-2 align-middle">
+                            <input
+                              type="checkbox"
+                              checked={row.checked}
+                              disabled={importing}
+                              onChange={(e) => setReviewRow(row.id, { checked: e.target.checked })}
+                            />
+                          </td>
+                          <td className="py-2 pr-2 align-middle text-text-muted">{row.address ?? "—"}</td>
+                          <td className="py-2 pr-2 align-middle">
+                            <input
+                              className="reos-input h-8 min-w-[120px] tabular-nums"
+                              inputMode="decimal"
+                              value={row.salePrice ?? ""}
+                              disabled={importing}
+                              onChange={(e) =>
+                                setReviewRow(row.id, {
+                                  salePrice: parseOptionalPositiveNumber(e.target.value),
+                                })
+                              }
+                            />
+                          </td>
+                          <td className="py-2 pr-2 align-middle">
+                            <input
+                              className="reos-input h-8 min-w-[96px] tabular-nums"
+                              inputMode="decimal"
+                              value={row.sqft ?? ""}
+                              disabled={importing}
+                              onChange={(e) =>
+                                setReviewRow(row.id, {
+                                  sqft: parseOptionalPositiveNumber(e.target.value),
+                                })
+                              }
+                            />
+                          </td>
+                          <td className="py-2 pr-2 align-middle tabular-nums text-text-muted">
+                            {row.salePrice != null && row.salePrice > 0 && row.sqft != null && row.sqft > 0
+                              ? money2(row.salePrice / row.sqft)
+                              : "—"}
+                          </td>
+                          <td className="py-2 pr-2 align-middle tabular-nums text-text-muted">{row.beds ?? "—"}</td>
+                          <td className="py-2 pr-2 align-middle tabular-nums text-text-muted">{row.baths ?? "—"}</td>
+                          <td className="py-2 align-middle text-text-muted">{row.soldDate ?? "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={importing || reviewRows.filter((row) => row.checked).length === 0}
+                    onClick={applyReviewedComps}
+                    className="inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+                  >
+                    Apply {reviewRows.filter((row) => row.checked).length} comp{reviewRows.filter((row) => row.checked).length === 1 ? "" : "s"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={importing}
+                    onClick={() => {
+                      setReviewRows([]);
+                      setImportError(null);
+                    }}
+                    className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm font-medium text-text hover:bg-surface-1 disabled:opacity-60"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="space-y-2">
               {inputs.flipComps.map((c, idx) => (
                 <div key={idx} className="flex items-center gap-2">
@@ -249,6 +494,7 @@ export function FlipCalculator({
 
           <Card title="Other scenarios (inputs)">
             <div className="grid gap-3 sm:grid-cols-2">
+              <Num label="Listing / Retail ARV" value={inputs.listingARV} onChange={(v) => set({ listingARV: v })} money />
               <Num label="Wholetail ARV" value={inputs.wholetailARV} onChange={(v) => set({ wholetailARV: v })} money />
               <Num label="Wholetail rehab" value={inputs.wholetailRehabBudget} onChange={(v) => set({ wholetailRehabBudget: v })} money />
               <Num label="Rental ARV" value={inputs.rentalARV} onChange={(v) => set({ rentalARV: v })} money />
@@ -275,6 +521,20 @@ export function FlipCalculator({
               ["Interest / points", `${money(r.fixFlip.interest)} / ${money(r.fixFlip.points)}`],
               ["My split", money(r.fixFlip.fluellen)],
               ["Extra realtor $", money(r.fixFlip.extraRealtor)],
+            ]}
+          />
+          <Scenario
+            title="Listing / Retail"
+            profit={r.listing.profit}
+            rows={[
+              ["ARV", money(r.listing.arv)],
+              ["Total expenses", money(r.listing.totalExpenses)],
+              ["Max offer · $50k profit", money(r.listing.maxOfferForProfit)],
+              ["Max offer · 70% LTV", money(r.listing.maxOffer70Ltv)],
+              ["Break-even offer", money(r.listing.breakEvenOffer)],
+              ["Interest / points", `${money(r.listing.interest)} / ${money(r.listing.points)}`],
+              ["My split", money(r.listing.fluellen)],
+              ["Extra realtor $", money(r.listing.extraRealtor)],
             ]}
           />
           <Scenario
@@ -326,6 +586,12 @@ export function FlipCalculator({
 function num(s: string): number {
   const n = Number(s.replace(/[^0-9.-]/g, ""));
   return Number.isFinite(n) ? n : 0;
+}
+
+function parseOptionalPositiveNumber(s: string): number | null {
+  if (!s.trim()) return null;
+  const value = num(s);
+  return value > 0 ? value : null;
 }
 
 function pctText(fraction: number): string {
