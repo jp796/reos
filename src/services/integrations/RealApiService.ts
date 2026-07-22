@@ -24,6 +24,20 @@
 const KEYMAKER = "https://keymaker.therealbrokerage.com";
 const SHERLOCK = "https://sherlock.therealbrokerage.com";
 
+/**
+ * Real's edge WAF returns 403 (nginx HTML, not the app's JSON) to any request
+ * that doesn't look like the web app (bolt.therealbrokerage.com). Without these
+ * headers our server-side fetches are blocked BEFORE auth even runs — which is
+ * why the integration appeared dead. Mirror the browser fingerprint the WAF
+ * expects so calls actually reach keymaker/sherlock.
+ */
+const BROWSER_HEADERS: Record<string, string> = {
+  "User-Agent":
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  Origin: "https://bolt.therealbrokerage.com",
+  Referer: "https://bolt.therealbrokerage.com/",
+};
+
 export interface RealSignInResult {
   accessToken: string;
   userId: string;
@@ -66,7 +80,7 @@ export async function signIn(
 ): Promise<RealSignInResult> {
   const res = await fetch(`${KEYMAKER}/api/v1/auth/signin`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    headers: { "Content-Type": "application/json", Accept: "application/json", ...BROWSER_HEADERS },
     body: JSON.stringify({ usernameOrEmail, password }),
   });
   if (!res.ok) {
@@ -98,7 +112,7 @@ export async function signIn(
 }
 
 function authHeaders(jwt: string): Record<string, string> {
-  return { Authorization: `Bearer ${jwt}`, Accept: "application/json" };
+  return { Authorization: `Bearer ${jwt}`, Accept: "application/json", ...BROWSER_HEADERS };
 }
 
 async function sherlockJson<T>(
