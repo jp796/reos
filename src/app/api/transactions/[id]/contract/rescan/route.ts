@@ -37,6 +37,7 @@ import {
   EmailTransactionMatchingService,
 } from "@/services/integrations/GmailService";
 import { ContractExtractionService } from "@/services/ai/ContractExtractionService";
+import { getDocumentBytes } from "@/services/storage/DocumentStorage";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -268,7 +269,7 @@ export async function POST(
     where: {
       transactionId: txn.id,
       category: "contract",
-      rawBytes: { not: null },
+      OR: [{ rawBytes: { not: null } }, { gcsPath: { not: null } }],
     },
     orderBy: [
       { sourceDate: "desc" },
@@ -281,7 +282,7 @@ export async function POST(
   candidates.sort((a, b) => b.internalDate - a.internalDate);
   const gmailNewest = candidates[0];
   const useStored =
-    storedDoc && storedDoc.rawBytes && storedTs >= (gmailNewest?.internalDate ?? 0);
+    storedDoc && (storedDoc.rawBytes || storedDoc.gcsPath) && storedTs >= (gmailNewest?.internalDate ?? 0);
 
   if (!useStored && candidates.length === 0) {
     return NextResponse.json({
@@ -298,8 +299,9 @@ export async function POST(
   let buffer: Buffer;
   let pickedFilename: string;
   let pickedSource: "gmail" | "stored_upload";
-  if (useStored && storedDoc?.rawBytes) {
-    buffer = Buffer.from(storedDoc.rawBytes);
+  const storedBytes = useStored ? await getDocumentBytes(storedDoc) : null;
+  if (useStored && storedBytes) {
+    buffer = storedBytes;
     pickedFilename = storedDoc.fileName;
     pickedSource = "stored_upload";
   } else {

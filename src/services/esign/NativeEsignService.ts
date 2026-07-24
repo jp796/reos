@@ -24,6 +24,7 @@ import {
   DEFAULT_SCOPES,
 } from "@/services/integrations/GoogleOAuthService";
 import { pdfPageCount } from "@/services/ai/PdfRender";
+import { getDocumentBytes } from "@/services/storage/DocumentStorage";
 import {
   finalizeSignedPdf,
   renderPdfPage,
@@ -304,11 +305,12 @@ export async function getSignerView(token: string, ip: string, userAgent: string
 
   const doc = await prisma.document.findUnique({
     where: { id: req.documentId },
-    select: { fileName: true, rawBytes: true },
+    select: { fileName: true, rawBytes: true, gcsPath: true },
   });
-  if (!doc?.rawBytes) return null;
+  const esignBytes = await getDocumentBytes(doc);
+  if (!doc || !esignBytes) return null;
   const pageCount =
-    (await pdfPageCount(Buffer.from(doc.rawBytes))) ?? 1;
+    (await pdfPageCount(esignBytes)) ?? 1;
 
   if (!recipient.viewedAt) {
     await prisma.$transaction([
@@ -362,10 +364,11 @@ export async function getSignerPagePng(token: string, page: number) {
   if (!recipient) return null;
   const doc = await prisma.document.findUnique({
     where: { id: recipient.esignRequest.documentId },
-    select: { rawBytes: true },
+    select: { rawBytes: true, gcsPath: true },
   });
-  if (!doc?.rawBytes) return null;
-  return renderPdfPage(Buffer.from(doc.rawBytes), page);
+  const pageBytes = await getDocumentBytes(doc);
+  if (!pageBytes) return null;
+  return renderPdfPage(pageBytes, page);
 }
 
 export async function recordConsent(token: string, ip: string, userAgent: string) {
@@ -481,18 +484,19 @@ export async function finalizeRequest(requestId: string): Promise<void> {
   const req = await prisma.esignRequest.findUnique({
     where: { id: requestId },
     include: {
-      document: { select: { id: true, fileName: true, rawBytes: true, category: true } },
+      document: { select: { id: true, fileName: true, rawBytes: true, gcsPath: true, category: true } },
       recipients: { include: { fields: true }, orderBy: { signingOrder: "asc" } },
       events: { orderBy: { occurredAt: "asc" } },
     },
   });
-  if (!req?.document?.rawBytes) {
+  const srcBytes = await getDocumentBytes(req?.document);
+  if (!req?.document || !srcBytes) {
     throw new Error("finalize: source document bytes missing");
   }
 
   const recipientById = new Map(req.recipients.map((r) => [r.id, r] as const));
   const finalized = await finalizeSignedPdf({
-    pdfBytes: Buffer.from(req.document.rawBytes),
+    pdfBytes: srcBytes,
     title: req.title,
     requestId: req.id,
     recipients: req.recipients.map(

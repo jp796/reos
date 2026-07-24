@@ -17,6 +17,7 @@ import { requireSession } from "@/lib/require-session";
 import { isDealVisible } from "@/lib/deal-visibility";
 import { DocumentExtractionService } from "@/services/ai/DocumentExtractionService";
 import { gmailForAccount } from "@/services/integrations/gmailForAccount";
+import { getDocumentBytes } from "@/services/storage/DocumentStorage";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -100,21 +101,21 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   // 1. Files: explicit doc, or a clear SS doc.
   const docs = await prisma.document.findMany({
     where: { transactionId: txn.id },
-    select: { id: true, fileName: true, category: true, rawBytes: true, uploadedAt: true },
+    select: { id: true, fileName: true, category: true, rawBytes: true, gcsPath: true, uploadedAt: true },
     orderBy: { uploadedAt: "desc" },
   });
-  const withBytes = docs.filter((d) => d.rawBytes);
+  const withBytes = docs.filter((d) => d.rawBytes || d.gcsPath);
   if (body.documentId) {
     const d = withBytes.find((x) => x.id === body.documentId);
     if (!d) return NextResponse.json({ error: "document not found" }, { status: 404 });
-    buffer = Buffer.from(d.rawBytes as Buffer);
+    buffer = (await getDocumentBytes(d)) as Buffer;
     source = d.fileName;
   } else {
     const ssMatches = withBytes.filter(
       (d) => d.category === "closing" || d.category === "settlement" || SS_RE.test(d.fileName),
     );
     if (ssMatches.length === 1) {
-      buffer = Buffer.from(ssMatches[0].rawBytes as Buffer);
+      buffer = (await getDocumentBytes(ssMatches[0])) as Buffer;
       source = ssMatches[0].fileName;
     } else if (ssMatches.length > 1) {
       return NextResponse.json({

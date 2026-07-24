@@ -12,6 +12,7 @@ import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/require-session";
 import { pdfPageCount } from "@/services/ai/PdfRender";
 import { renderPdfPage } from "@/services/esign/EsignPdfService";
+import { getDocumentBytes } from "@/services/storage/DocumentStorage";
 
 export const runtime = "nodejs";
 
@@ -37,12 +38,12 @@ export async function GET(
       transactionId: id,
       transaction: { accountId: actor.accountId },
     },
-    select: { rawBytes: true, mimeType: true },
+    select: { rawBytes: true, gcsPath: true, mimeType: true },
   });
-  if (!doc?.rawBytes || doc.mimeType !== "application/pdf") {
+  const buffer = await getDocumentBytes(doc);
+  if (!buffer || doc?.mimeType !== "application/pdf") {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
-  const buffer = Buffer.from(doc.rawBytes);
 
   if (url.searchParams.get("meta") === "1") {
     const pageCount = (await pdfPageCount(buffer)) ?? 1;

@@ -19,6 +19,7 @@ import {
   buildRezenPrepReport,
   loadSlotsForProfile,
 } from "@/services/core/RezenCompliancePrep";
+import { getDocumentBytes } from "@/services/storage/DocumentStorage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,6 +62,7 @@ export async function GET(
       extractedText: true,
       source: true,
       rawBytes: true,
+      gcsPath: true,
       mimeType: true,
       suggestedRezenSlot: true,
       suggestedRezenConfidence: true,
@@ -73,7 +75,7 @@ export async function GET(
   const showTransaction = txn.side !== "sell";
   const showListing = txn.side === "sell" || txn.side === "both";
   const cleanDocs = documents.map(
-    ({ rawBytes: _r, mimeType: _m, ...d }) => d,
+    ({ rawBytes: _r, gcsPath: _g, mimeType: _m, ...d }) => d,
   );
   const reports: Array<{
     folder: string;
@@ -148,11 +150,13 @@ export async function GET(
       const matchId = item.matches[0]?.id;
       if (!matchId) continue;
       const doc = docsById.get(matchId);
-      if (!doc?.rawBytes || !item.rezenFilename) continue;
+      if (!doc || !item.rezenFilename) continue;
+      const docBytes = await getDocumentBytes(doc);
+      if (!docBytes) continue;
       const path = folder
         ? `${folder}/${item.rezenFilename}`
         : item.rezenFilename;
-      zip.file(path, doc.rawBytes);
+      zip.file(path, docBytes);
     }
   }
 
