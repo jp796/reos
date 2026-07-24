@@ -10,7 +10,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Send, X, Check, Loader2 } from "lucide-react";
+import { Sparkles, Send, X, Check, Loader2, Paperclip, Download, FileText, ImageIcon } from "lucide-react";
 
 interface ProposedAction {
   tool: string;
@@ -20,6 +20,12 @@ interface ProposedAction {
 type Msg =
   | { role: "user" | "atlas" | "system"; text: string }
   | { role: "proposal"; text: string; actions: ProposedAction[] };
+/** A file staged in the composer, inlined as a data URL for one turn. */
+interface StagedFile {
+  fileName: string;
+  mimeType: string;
+  dataUrl: string;
+}
 
 export function DealAtlasChat({
   transactionId,
@@ -33,6 +39,46 @@ export function DealAtlasChat({
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([]);
+  // Files/screenshots staged for the next turn. Read-and-discard: Atlas uses
+  // them to answer, REOS never stores them (saving to the deal is separate).
+  const [attachments, setAttachments] = useState<StagedFile[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  async function stageFiles(files: File[]) {
+    const next: StagedFile[] = [];
+    for (const f of files.slice(0, 6)) {
+      if (f.size > 10 * 1024 * 1024) continue; // 10MB per file
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result));
+        r.onerror = reject;
+        r.readAsDataURL(f);
+      });
+      next.push({ fileName: f.name, mimeType: f.type || "application/octet-stream", dataUrl });
+    }
+    if (next.length) setAttachments((a) => [...a, ...next].slice(0, 6));
+  }
+
+  function onPaste(e: React.ClipboardEvent) {
+    const imgs = Array.from(e.clipboardData?.items ?? [])
+      .filter((i) => i.type.startsWith("image/"))
+      .map((i) => i.getAsFile())
+      .filter((f): f is File => !!f);
+    if (imgs.length) {
+      e.preventDefault();
+      void stageFiles(imgs);
+    }
+  }
+
+  function downloadReply(text: string) {
+    const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `atlas-${new Date().toISOString().slice(0, 10)}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -41,15 +87,23 @@ export function DealAtlasChat({
 
   async function send() {
     const text = input.trim();
-    if (!text || busy) return;
+    if ((!text && attachments.length === 0) || busy) return;
+    const staged = attachments;
     setInput("");
-    setMsgs((m) => [...m, { role: "user", text }]);
+    setAttachments([]);
+    setMsgs((m) => [
+      ...m,
+      {
+        role: "user",
+        text: text || `(${staged.length} attachment${staged.length === 1 ? "" : "s"})`,
+      },
+    ]);
     setBusy(true);
     try {
       const res = await fetch(`/api/transactions/${transactionId}/atlas`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ message: text, attachments: staged }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Atlas error");
@@ -181,6 +235,16 @@ export function DealAtlasChat({
               }
             >
               {m.text}
+              {m.role === "atlas" && m.text.length > 120 && (
+                <button
+                  type="button"
+                  onClick={() => downloadReply(m.text)}
+                  title="Download this reply"
+                  className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-brand-700 hover:underline"
+                >
+                  <Download className="h-3 w-3" /> Download
+                </button>
+              )}
             </div>
           ),
         )}
@@ -191,10 +255,62 @@ export function DealAtlasChat({
         )}
       </div>
 
-      <div className="border-t border-border p-3">
+      <div
+        className="border-t border-border p-3"
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => {
+          e.preventDefault();
+          void stageFiles(Array.from(e.dataTransfer.files ?? []));
+        }}
+      >
+        {attachments.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {attachments.map((f, i) => (
+              <span
+                key={`${f.fileName}-${i}`}
+                className="inline-flex items-center gap-1 rounded-full border border-border bg-surface-2 px-2 py-0.5 text-[11px] text-text-muted"
+              >
+                {f.mimeType.startsWith("image/") ? (
+                  <ImageIcon className="h-3 w-3" />
+                ) : (
+                  <FileText className="h-3 w-3" />
+                )}
+                <span className="max-w-[10rem] truncate">{f.fileName}</span>
+                <button
+                  type="button"
+                  onClick={() => setAttachments((a) => a.filter((_, j) => j !== i))}
+                  className="text-text-subtle hover:text-red-600"
+                  aria-label={`Remove ${f.fileName}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
         <div className="flex items-end gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/*,application/pdf,.doc,.docx"
+            className="hidden"
+            onChange={(e) => {
+              void stageFiles(Array.from(e.target.files ?? []));
+              e.target.value = "";
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            title="Attach a file or screenshot"
+            className="rounded-md border border-border p-2 text-text-subtle transition-colors hover:border-brand-300 hover:text-brand-700"
+          >
+            <Paperclip className="h-4 w-4" />
+          </button>
           <textarea
             value={input}
+            onPaste={onPaste}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {

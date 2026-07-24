@@ -24,6 +24,80 @@ import { toDateInputValue } from "@/lib/dates";
 
 const MODEL = process.env.OPENAI_CHAT_MODEL ?? "gpt-4.1-mini";
 
+/** How much extracted text from one attached document we feed the model. */
+const DOC_ATTACH_CHARS = 12_000;
+
+/**
+ * A file the user dropped into the chat for THIS turn. Deliberately transient:
+ * REOS reads it to answer and never stores the bytes (saving a file to a deal
+ * is a separate, explicit action through the document library).
+ *   - image    → data: URL, read by the vision model (screenshots, photos)
+ *   - document → text already extracted server-side (PDF/DOCX)
+ */
+export interface AtlasAttachment {
+  kind: "image" | "document";
+  fileName: string;
+  /** images only — data:image/...;base64,... */
+  dataUrl?: string;
+  /** documents only — extracted text */
+  text?: string;
+}
+
+/** What the browser posts: the file inline as a data URL. */
+export interface RawAtlasAttachment {
+  fileName: string;
+  mimeType: string;
+  dataUrl: string;
+}
+
+/** Total inline attachment budget per turn (base64 inflates ~33%). */
+const MAX_ATTACH_BYTES = 12 * 1024 * 1024;
+
+/**
+ * Turn browser-posted files into model-ready attachments: images pass straight
+ * to the vision model, documents get their text extracted server-side. Nothing
+ * is written to the database — this is read-and-discard for one turn.
+ */
+export async function prepareAtlasAttachments(
+  raw: RawAtlasAttachment[],
+): Promise<{ attachments: AtlasAttachment[]; skipped: string[] }> {
+  const attachments: AtlasAttachment[] = [];
+  const skipped: string[] = [];
+  let budget = MAX_ATTACH_BYTES;
+
+  for (const f of raw.slice(0, 6)) {
+    const b64 = f.dataUrl.split(",")[1] ?? "";
+    const approxBytes = Math.floor((b64.length * 3) / 4);
+    if (approxBytes <= 0 || approxBytes > budget) {
+      skipped.push(f.fileName);
+      continue;
+    }
+    budget -= approxBytes;
+
+    if (f.mimeType.startsWith("image/")) {
+      attachments.push({ kind: "image", fileName: f.fileName, dataUrl: f.dataUrl });
+      continue;
+    }
+    // Documents: extract text now, discard the bytes.
+    try {
+      const { DocumentExtractionService } = await import(
+        "@/services/ai/DocumentExtractionService"
+      );
+      const text = await new DocumentExtractionService().extractText(
+        Buffer.from(b64, "base64"),
+      );
+      if (text?.trim()) {
+        attachments.push({ kind: "document", fileName: f.fileName, text });
+      } else {
+        skipped.push(f.fileName);
+      }
+    } catch {
+      skipped.push(f.fileName);
+    }
+  }
+  return { attachments, skipped };
+}
+
 /** The REOS help knowledge base, so Atlas can answer how-to questions too.
  *  Cached per process; same source the /help assistant uses. */
 let cachedHelp: string | null = null;
@@ -292,12 +366,30 @@ export async function askAtlas(
   db: PrismaClient,
   actor: AtlasActor,
   userText: string,
+  attachments: AtlasAttachment[] = [],
 ): Promise<AtlasReply> {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY not configured");
   }
   const ctx = await buildContext(db, actor.accountId);
   const tools = openAiToolSpecs();
+
+  // Attachments are TRANSIENT — read for this turn, never persisted. Documents
+  // arrive as already-extracted text; screenshots as data: URLs for vision.
+  const docText = attachments
+    .filter((a) => a.kind === "document" && a.text?.trim())
+    .map((a) => `--- Attached file: ${a.fileName} ---\n${a.text!.slice(0, DOC_ATTACH_CHARS)}`)
+    .join("\n\n");
+  const images = attachments.filter((a) => a.kind === "image" && a.dataUrl);
+
+  const textPart = [userText.slice(0, 4000), docText].filter(Boolean).join("\n\n");
+  const userContent: unknown =
+    images.length > 0
+      ? [
+          { type: "text", text: textPart },
+          ...images.map((a) => ({ type: "image_url", image_url: { url: a.dataUrl } })),
+        ]
+      : textPart;
 
   const messages: Array<Record<string, unknown>> = [
     { role: "system", content: SYSTEM },
@@ -306,7 +398,7 @@ export async function askAtlas(
       content: `CONTEXT (account: ${ctx.account.businessName}):\n${JSON.stringify(ctx)}`,
     },
     { role: "system", content: `HELP KNOWLEDGE (for how-to questions):\n${loadHelpKnowledge()}` },
-    { role: "user", content: userText.slice(0, 2000) },
+    { role: "user", content: userContent },
   ];
 
   const proposedActions: ProposedAction[] = [];

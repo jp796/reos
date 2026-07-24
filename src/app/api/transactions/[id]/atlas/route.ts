@@ -14,7 +14,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/require-session";
-import { askAtlas, type ProposedAction } from "@/services/ai/AtlasChatService";
+import {
+  askAtlas,
+  prepareAtlasAttachments,
+  type ProposedAction,
+  type RawAtlasAttachment,
+} from "@/services/ai/AtlasChatService";
 import { executeTool, type AtlasActor } from "@/services/ai/AtlasTools";
 import { isDealVisible } from "@/lib/deal-visibility";
 import { logError } from "@/lib/log";
@@ -52,7 +57,11 @@ export async function POST(
   };
   const dealLabel = txn.propertyAddress || txn.contact?.fullName || "this deal";
 
-  let body: { message?: string; executeActions?: ProposedAction[] };
+  let body: {
+    message?: string;
+    executeActions?: ProposedAction[];
+    attachments?: RawAtlasAttachment[];
+  };
   try {
     body = await req.json();
   } catch {
@@ -75,9 +84,17 @@ export async function POST(
 
     // Ask Atlas.
     const message = (body.message ?? "").trim();
-    if (!message) return NextResponse.json({ error: "empty message" }, { status: 400 });
-    const scoped = `Regarding the deal at ${dealLabel}: ${message}`;
-    const reply = await askAtlas(prisma, atlasActor, scoped);
+    const rawAttachments = Array.isArray(body.attachments) ? body.attachments : [];
+    if (!message && rawAttachments.length === 0) {
+      return NextResponse.json({ error: "empty message" }, { status: 400 });
+    }
+    // Read any dropped screenshots/files for THIS turn only — never stored.
+    const { attachments, skipped } = await prepareAtlasAttachments(rawAttachments);
+    const scoped = `Regarding the deal at ${dealLabel}: ${message || "(see attached)"}`;
+    const reply = await askAtlas(prisma, atlasActor, scoped, attachments);
+    if (skipped.length > 0) {
+      reply.text = `${reply.text}\n\n_(Couldn't read: ${skipped.join(", ")})_`;
+    }
     return NextResponse.json({
       ok: true,
       text: reply.text,
