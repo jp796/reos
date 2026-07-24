@@ -733,7 +733,12 @@ export default async function TransactionDetailPage({
             suggestedRezenSlot: d.suggestedRezenSlot,
             suggestedRezenConfidence: d.suggestedRezenConfidence,
             classifiedAt: d.classifiedAt?.toISOString() ?? null,
-            hasRawBytes: d.rawBytes !== null && d.rawBytes !== undefined,
+            // "Do we have this file's bytes?" — true whether they live in GCS
+            // (new uploads) or Postgres (legacy). Checking rawBytes alone made
+            // every GCS-stored doc look empty in the UI.
+            hasRawBytes:
+              (d.rawBytes !== null && d.rawBytes !== undefined) ||
+              (d.gcsPath !== null && d.gcsPath !== undefined),
             hasExtractedText:
               d.extractedText !== null &&
               d.extractedText !== undefined &&
