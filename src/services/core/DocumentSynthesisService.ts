@@ -15,6 +15,7 @@
  */
 
 import { type PrismaClient, Prisma } from "@prisma/client";
+import { getDocumentBytes } from "@/services/storage/DocumentStorage";
 import {
   ContractExtractionService,
   computeRelativeDeadlines,
@@ -216,10 +217,11 @@ export async function synthesizeDeal(
       batch.map(async (d) => {
         const full = await db.document.findUnique({
           where: { id: d.id },
-          select: { rawBytes: true },
+          select: { rawBytes: true, gcsPath: true },
         });
-        if (!full?.rawBytes) return null;
-        const a = await analyzeDoc(d.id, d.fileName, Buffer.from(full.rawBytes));
+        const docBytes = await getDocumentBytes(full);
+        if (!docBytes) return null;
+        const a = await analyzeDoc(d.id, d.fileName, docBytes);
         // Cache the analysis + classified category on the doc.
         await db.document
           .update({
@@ -248,12 +250,13 @@ export async function synthesizeDeal(
     } else if (env.OPENAI_API_KEY) {
       const full = await db.document.findUnique({
         where: { id: contractDoc.docId },
-        select: { rawBytes: true },
+        select: { rawBytes: true, gcsPath: true },
       });
-      if (full?.rawBytes) {
+      const contractBytes = await getDocumentBytes(full);
+      if (contractBytes) {
         const svc = new ContractExtractionService(env.OPENAI_API_KEY);
         baseline = computeRelativeDeadlines(
-          await svc.extract(Buffer.from(full.rawBytes)),
+          await svc.extract(contractBytes),
         ) as unknown as Record<string, { value: unknown } | undefined>;
         // Persist the baseline back onto the contract doc for next time.
         contractDoc.baseline = baseline;

@@ -29,6 +29,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/require-session";
 import { logError } from "@/lib/log";
+import { getDocumentBytes } from "@/services/storage/DocumentStorage";
 
 export const runtime = "nodejs";
 
@@ -81,19 +82,20 @@ export async function GET(
   // Future: when we migrate to GCS-backed storageUrl, redirect to a
   // signed URL instead of streaming bytes through Cloud Run. For now
   // rawBytes is the source of truth.
-  if (!doc.rawBytes) {
+  const fileBytes = await getDocumentBytes(doc);
+  if (!fileBytes) {
     return NextResponse.json(
       { error: "file bytes not stored", hint: "document may be metadata-only" },
       { status: 410 },
     );
   }
 
-  return new NextResponse(new Uint8Array(doc.rawBytes), {
+  return new NextResponse(new Uint8Array(fileBytes), {
     status: 200,
     headers: {
       "Content-Type": doc.mimeType || "application/octet-stream",
       "Content-Disposition": `${disposition}; filename="${doc.fileName.replace(/"/g, "")}"`,
-      "Content-Length": String(doc.rawBytes.length),
+      "Content-Length": String(fileBytes.length),
       "Cache-Control": "private, no-store",
     },
   });

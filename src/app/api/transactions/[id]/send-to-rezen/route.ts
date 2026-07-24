@@ -40,6 +40,7 @@ import {
   type ReosDocForPush,
 } from "@/services/core/RezenPushService";
 import { logError } from "@/lib/log";
+import { getDocumentBytes } from "@/services/storage/DocumentStorage";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -126,7 +127,11 @@ export async function POST(
     txn.state,
   );
   const documents = await prisma.document.findMany({
-    where: { transactionId: id, rawBytes: { not: null } },
+    // Bytes may live in Postgres (legacy) or GCS (new uploads) — accept either.
+    where: {
+      transactionId: id,
+      OR: [{ rawBytes: { not: null } }, { gcsPath: { not: null } }],
+    },
     select: {
       id: true,
       fileName: true,
@@ -235,9 +240,10 @@ export async function POST(
       // Pull the raw bytes for this doc.
       const docRow = await prisma.document.findFirst({
         where: { id: m.doc.id, transactionId: id },
-        select: { rawBytes: true, fileName: true, mimeType: true },
+        select: { rawBytes: true, gcsPath: true, fileName: true, mimeType: true },
       });
-      if (!docRow?.rawBytes) {
+      const docBytes = await getDocumentBytes(docRow);
+      if (!docRow || !docBytes) {
         results.push({
           fileName: m.doc.fileName,
           slotLabel: m.doc.slotLabel,
@@ -249,7 +255,7 @@ export async function POST(
       }
       try {
         await uploadDocumentToItem(jwt, m.item.id, {
-          fileBytes: new Uint8Array(docRow.rawBytes),
+          fileBytes: new Uint8Array(docBytes),
           fileName: m.doc.rezenFilename ?? docRow.fileName,
           mimeType: docRow.mimeType,
           name: m.doc.rezenFilename ?? docRow.fileName,

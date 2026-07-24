@@ -11,6 +11,7 @@
  */
 
 import type { PrismaClient } from "@prisma/client";
+import { getDocumentBytes } from "@/services/storage/DocumentStorage";
 import {
   ContractExtractionService,
   computeRelativeDeadlines,
@@ -65,16 +66,17 @@ export async function rescanDeal(
     docs.find((d) => /contract|offer|purchase|agreement/i.test(d.fileName)) ?? docs[0];
   const full = await db.document.findUnique({
     where: { id: pick.id },
-    select: { rawBytes: true },
+    select: { rawBytes: true, gcsPath: true },
   });
-  if (!full?.rawBytes) {
+  const docBytes = await getDocumentBytes(full);
+  if (!docBytes) {
     return none(`The document on file (${pick.fileName}) has no stored file to scan — re-upload the contract and rescan.`);
   }
 
   // ── Re-extract ──
   if (!env.OPENAI_API_KEY) return none("Extraction isn't configured (no OpenAI key).");
   const svc = new ContractExtractionService(env.OPENAI_API_KEY);
-  const ex = computeRelativeDeadlines(await svc.extract(Buffer.from(full.rawBytes)));
+  const ex = computeRelativeDeadlines(await svc.extract(docBytes));
   const f = ex as unknown as Record<string, { value: unknown } | undefined>;
   const v = (k: string) => f[k]?.value ?? null;
 

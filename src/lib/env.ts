@@ -23,6 +23,11 @@ const schema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_REDIRECT_URI: z.string().url().optional(),
 
+  // GCS bucket holding document bytes. When unset, REOS runs in legacy
+  // rawBytes-only mode (bytes in Postgres) — set it to enable direct-to-GCS
+  // uploads. See services/storage/DocumentStorage.ts.
+  GCS_DOCUMENTS_BUCKET: z.string().optional(),
+
   // Google Maps Platform API key — Street View Static + Static Maps +
   // Geocoding, used to auto-pull property photos on address entry. Server-side
   // only (never exposed to the client); the /api/property-image proxy holds it.

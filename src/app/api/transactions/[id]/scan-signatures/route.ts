@@ -20,6 +20,7 @@ import { env } from "@/lib/env";
 import { requireSession } from "@/lib/require-session";
 import { scanSignatures } from "@/services/ai/SignatureScanService";
 import { logError } from "@/lib/log";
+import { getDocumentBytes } from "@/services/storage/DocumentStorage";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -61,14 +62,14 @@ export async function POST(
     where: {
       transactionId: id,
       mimeType: { contains: "pdf" },
-      rawBytes: { not: null },
+      OR: [{ rawBytes: { not: null } }, { gcsPath: { not: null } }],
       ...(body.docId
         ? { id: body.docId }
         : body.force
           ? {}
           : { signatureScannedAt: null }),
     },
-    select: { id: true, fileName: true, rawBytes: true },
+    select: { id: true, fileName: true, rawBytes: true, gcsPath: true },
     orderBy: { uploadedAt: "desc" },
     take: BATCH_CAP + 1, // +1 so we can report `remaining`
   });
@@ -86,8 +87,10 @@ export async function POST(
 
   for (const d of batch) {
     try {
+      const sigBytes = await getDocumentBytes(d);
+      if (!sigBytes) continue;
       const r = await scanSignatures(
-        Buffer.from(d.rawBytes as Uint8Array),
+        sigBytes,
         env.OPENAI_API_KEY,
       );
       await prisma.document.update({

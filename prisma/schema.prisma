@@ -851,6 +851,12 @@ model Document {
   /// extracted later without refetching. For Cloud Run, migrate
   /// this to GCS blob storage once total corpus >~500MB.
   rawBytes       Bytes?   @map("raw_bytes")
+  /// GCS object path for this document's bytes (e.g.
+  /// "accounts/<accountId>/transactions/<txnId>/<docId>/<file>"). New uploads
+  /// go straight to the bucket, so rawBytes stays null for them; legacy docs
+  /// keep their bytes in Postgres. ALWAYS read bytes via
+  /// DocumentStorage.getDocumentBytes() so both paths work transparently.
+  gcsPath        String?  @map("gcs_path")
   source         String   @default("upload") // upload, gmail_attachment, fub_attachment
   /// Stable de-dup key for auto-ingested docs, e.g. "gmail:<messageId>:<attachmentId>".
   /// Lets the Gmail doc-ingest attach every attachment on a deal's threads
