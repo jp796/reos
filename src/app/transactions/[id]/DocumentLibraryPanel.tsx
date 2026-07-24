@@ -40,6 +40,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { useToast } from "../../ToastProvider";
+import { uploadDocuments } from "@/app/lib/uploadDocuments";
 
 interface DocumentRow {
   id: string;
@@ -200,6 +201,9 @@ function UploadDocsControl({ transactionId }: { transactionId: string }) {
     // we don't auto-synthesize over it. Everything else (added notices,
     // addenda, multi-file drops) gets reconciled automatically.
     let reviewFlow = false;
+    // Set when the direct-to-GCS path ran — it already triggers analysis, so
+    // the blocking client-side synthesize call must be skipped.
+    let skipSync = false;
     try {
       const only = files.length === 1 ? files[0] : null;
       const isPdf =
@@ -241,22 +245,25 @@ function UploadDocsControl({ transactionId }: { transactionId: string }) {
           );
         }
       } else {
-        // Non-PDF, or multiple files: store in the document library.
-        const fd = new FormData();
-        Array.from(files).forEach((f) => fd.append("file", f));
-        const res = await xhrUpload(
-          `/api/transactions/${transactionId}/documents`,
-          fd,
-          setProgress,
-        );
-        const data = (await res.json()) as { error?: string; count?: number };
-        if (!res.ok) throw new Error(data.error ?? "upload failed");
+        // Non-PDF, or multiple files: upload the bytes STRAIGHT to storage
+        // (signed URLs, in parallel) instead of pushing them through the
+        // server into Postgres. Falls back to the legacy multipart route
+        // automatically when GCS isn't configured.
+        const res = await uploadDocuments(transactionId, Array.from(files), {
+          origin: "library",
+          onProgress: setProgress,
+        });
+        if (!res.ok) throw new Error(res.error ?? "upload failed");
         toast.success(
-          `Added ${data.count} file${data.count === 1 ? "" : "s"}`,
-          "They're in the library now.",
+          `Added ${res.count} file${res.count === 1 ? "" : "s"}`,
+          res.legacy
+            ? "They're in the library now."
+            : "Uploaded — reading them in the background.",
         );
+        // The direct path already kicked analysis; don't block on it again.
+        skipSync = !res.legacy;
       }
-      if (!reviewFlow) await syncFromDocuments();
+      if (!reviewFlow && !skipSync) await syncFromDocuments();
       startTransition(() => router.refresh());
       // Show a clear "complete" beat before the modal disappears.
       setProgress(100);
